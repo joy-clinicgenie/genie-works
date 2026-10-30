@@ -18,6 +18,7 @@
     "db:reset": "npm run reset -w @clinic-genie/db",
     "db:backup": "npm run backup -w @clinic-genie/db",
     "db:restore-test": "npm run restore-test -w @clinic-genie/db",
+    "db:recovery-fixture": "npm run recovery-fixture -w @clinic-genie/db",
     "dev": "node scripts/dev.mjs",
     "typecheck": "npm run typecheck --workspaces --if-present",
     "lint": "npm run lint --workspaces --if-present",

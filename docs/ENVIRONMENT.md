@@ -33,6 +33,7 @@ Used by the embedded database on this machine and by `npm run db:rehearse`.
 | `ANALYTICS_FIXTURE_MODE` | When on, provider calls must stay on this machine. |
 | `ANALYTICS_ALLOW_REMOTE_WORKER` | Allows the worker database host to be remote. Leave unset for local work. |
 | `MIGRATE_ALLOW_REMOTE` | Allows `db:migrate` to use a remote non-production host. Leave unset for local work. Production still refuses. |
+| `RECOVERY_ALLOWED_DB_PATTERN` | Name marker required by backup and restore-test. Unset means `rehearsal`. The shared application database, the enquiry database, a remote host and production stay refused. |
 | `GENIE_WORKS_BASE_URL` | Optional local base URL for a consumer probe. |
 
 ## Staging

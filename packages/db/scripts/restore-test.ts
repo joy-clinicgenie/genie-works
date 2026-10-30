@@ -1,23 +1,29 @@
 import { resolve } from "node:path";
-import { latestBackupFile, restoreTest } from "../src/backup";
+import { assertRecoverySource, latestBackupFile, restoreTest } from "../src/backup";
 import { closePools, getAdminPool } from "../src/client";
 import { loadRootEnv, requireEnv } from "../src/env";
-import { assertSafeTarget, describeDatabaseTarget } from "../src/migrate";
+import { describeDatabaseTarget } from "../src/migrate";
 
 loadRootEnv();
 const adminUrl = requireEnv("DATABASE_ADMIN_URL");
-assertSafeTarget(adminUrl);
+assertRecoverySource(adminUrl);
 console.log(describeDatabaseTarget(adminUrl));
-const file = process.argv[2] ? resolve(process.argv[2]) : latestBackupFile(resolve(process.cwd().includes("packages/db") ? "../../backups" : "backups"));
+const args = process.argv.slice(2).filter((arg) => arg !== "--");
+const keep = args.includes("--keep");
+const fileArg = args.find((arg) => !arg.startsWith("--"));
+const file = fileArg ? resolve(fileArg) : latestBackupFile(resolve(process.cwd().includes("packages/db") ? "../../backups" : "backups"));
 if (!file) {
   console.error("No backup file found. Run npm run db:backup first.");
   process.exit(1);
 }
 try {
-  const v = await restoreTest(getAdminPool(), adminUrl, file, { keep: process.argv.includes("--keep"), appPassword: process.env.APP_DB_PASSWORD || "cg_app_dev" });
+  const v = await restoreTest(getAdminPool(), adminUrl, file, { keep, appPassword: process.env.APP_DB_PASSWORD || "cg_app_dev" });
   console.log(`Restore test of ${file}`);
   console.log(`Counts: ${JSON.stringify(v.counts)}`);
   console.log(`Orphans: ${JSON.stringify(v.orphans)}`);
+  console.log(`Blog: ${JSON.stringify(v.blog)}`);
+  console.log(`Migrations match: ${v.migrationsMatch}`);
+  console.log(`Sign-in tables left empty: ${JSON.stringify(v.invalidated)}`);
   console.log(`RLS enabled: ${v.rlsEnabled}`);
   console.log(`Isolation check: ${JSON.stringify(v.isolationCheck)}`);
   if (v.mismatches.length) {

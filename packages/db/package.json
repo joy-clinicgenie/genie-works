@@ -13,6 +13,7 @@
     "reset": "tsx scripts/reset.ts",
     "backup": "tsx scripts/backup.ts",
     "restore-test": "tsx scripts/restore-test.ts",
+    "recovery-fixture": "tsx scripts/recovery-fixture.ts",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "test": "vitest run",
     "seed-load": "tsx scripts/seed-load.ts",

@@ -7,7 +7,16 @@
 import { mkdirSync, readFileSync, writeFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import pg from "pg";
-import { databaseNameFromUrl, ensureAppRole, runMigrations } from "./migrate";
+import { assertSafeTarget, ensureAppRole, runMigrations } from "./migrate";
+import { databaseTarget, maintenanceUrl } from "./testing/targets";
+
+/**
+ * Copied business and identity tables. Auth.js session cookies, one-time
+ * verification tokens and development magic links are deliberately absent:
+ * a restore must not revive an old sign-in. Staff sign in again. The `users`
+ * and `accounts` rows are kept so an existing identity link can be used.
+ */
+export const BACKUP_EXCLUDED_TABLES = ["sessions", "verification_token", "dev_magic_links"] as const;
 
 export const BACKUP_TABLES = [
   "staff_users",
@@ -21,6 +30,7 @@ export const BACKUP_TABLES = [
   "enquiry_status_events",
   "blog_articles",
   "blog_article_versions",
+  "blog_activity",
   "blog_media",
   "blog_approvals",
   "blog_publications",
@@ -75,6 +85,35 @@ export const BACKUP_TABLES = [
   "accounts",
 ] as const;
 
+function quoteIdent(name: string): string {
+  if (!/^[a-z_][a-z0-9_]*$/.test(name)) throw new Error("Refusing recovery: the database name is not a plain identifier.");
+  return `"${name}"`;
+}
+
+/** Backup and restore-test sources. Shared, enquiry and production databases are refused before any write. */
+export function assertRecoverySource(url: string): { database: string } {
+  assertSafeTarget(url);
+  const target = databaseTarget(url);
+  assertRecoveryDatabaseName(target.database);
+  return { database: target.database };
+}
+
+export function assertRecoveryDatabaseName(database: string): void {
+  if (!/^[a-z_][a-z0-9_]*$/.test(database)) throw new Error("Refusing recovery: the database name is not a plain identifier.");
+  if (database === "clinic_genie" || database === "neondb" || database === "postgres" || database.includes("enquiry")) {
+    throw new Error("Refusing recovery: that database is shared or is the enquiry source.");
+  }
+  if (database.endsWith("_restore_test")) throw new Error("Refusing recovery: the source is already a restore destination.");
+  const pattern = process.env.RECOVERY_ALLOWED_DB_PATTERN || "rehearsal";
+  if (!database.includes(pattern)) throw new Error(`Refusing recovery: database name does not contain "${pattern}".`);
+}
+
+/** Isolated destination. It is never the source database. */
+export function recoveryDestinationName(sourceDatabase: string): string {
+  assertRecoveryDatabaseName(sourceDatabase);
+  return `${sourceDatabase}_restore_test`;
+}
+
 export interface BackupFile {
   format: "clinic-genie-logical-v1";
   createdAt: string;
@@ -86,8 +125,11 @@ export interface BackupFile {
 export async function writeBackup(pool: pg.Pool, outDir: string): Promise<{ file: string; counts: Record<string, number> }> {
   mkdirSync(outDir, { recursive: true });
   const client = await pool.connect();
-  const runId = (await client.query<{ id: string }>("insert into backup_runs (kind, target) values ('backup', $1) returning id", [outDir])).rows[0]!.id;
+  let runId: string | undefined;
   try {
+    const current = await client.query<{ name: string }>("select current_database() as name");
+    assertRecoveryDatabaseName(current.rows[0]!.name);
+    runId = (await client.query<{ id: string }>("insert into backup_runs (kind, target) values ('backup', $1) returning id", [outDir])).rows[0]!.id;
     await client.query("begin isolation level repeatable read");
     const migrations = (await client.query<{ name: string }>("select name from schema_migrations order by name")).rows.map((r) => r.name);
     const tables: Record<string, unknown[]> = {};
@@ -110,7 +152,9 @@ export async function writeBackup(pool: pg.Pool, outDir: string): Promise<{ file
     return { file, counts };
   } catch (err) {
     await client.query("rollback").catch(() => {});
-    await client.query("update backup_runs set finished_at = now(), outcome = 'failed', notes = $2 where id = $1", [runId, String((err as Error).message).slice(0, 300)]);
+    if (runId) {
+      await client.query("update backup_runs set finished_at = now(), outcome = 'failed', notes = $2 where id = $1", [runId, String((err as Error).message).slice(0, 300)]);
+    }
     throw err;
   } finally {
     client.release();
@@ -129,6 +173,9 @@ export interface RestoreVerification {
   mismatches: string[];
   orphans: Record<string, number>;
   rlsEnabled: boolean;
+  migrationsMatch: boolean;
+  invalidated: Record<(typeof BACKUP_EXCLUDED_TABLES)[number], number>;
+  blog: { articles: number; versions: number; activity: number; activityMissingArticle: number; activityClientMismatch: number };
   isolationCheck: { userA: number; userB: number; total: number } | null;
 }
 
@@ -137,25 +184,30 @@ export interface RestoreVerification {
  * relationships and access policies. Records the result in the SOURCE database's backup_runs table.
  */
 export async function restoreTest(sourcePool: pg.Pool, adminUrl: string, backupPath: string, opts: { keep?: boolean; appPassword: string }): Promise<RestoreVerification> {
+  const sourceDb = assertRecoverySource(adminUrl).database;
+  const testDb = recoveryDestinationName(sourceDb);
   const body = JSON.parse(readFileSync(backupPath, "utf8")) as BackupFile;
   if (body.format !== "clinic-genie-logical-v1") throw new Error("Unsupported backup format");
-  const sourceDb = databaseNameFromUrl(adminUrl);
-  const testDb = `${sourceDb}_restore_test`;
-  const maintenanceUrl = adminUrl.replace(/\/[^/?]+(\?|$)/, "/postgres$1");
+  const connected = await sourcePool.query<{ name: string }>("select current_database() as name");
+  if (connected.rows[0]?.name !== sourceDb) throw new Error("Refusing recovery: the connection is not the declared source.");
   const runId = (await sourcePool.query<{ id: string }>("insert into backup_runs (kind, target, artefact_ref) values ('restore_test', $1, $2) returning id", [testDb, backupPath])).rows[0]!.id;
-  const maintenance = new pg.Pool({ connectionString: maintenanceUrl, max: 1 });
+  const maintenance = new pg.Pool({ connectionString: maintenanceUrl(adminUrl), max: 1 });
   let testPool: pg.Pool | undefined;
   try {
-    await maintenance.query(`drop database if exists "${testDb}" with (force)`);
-    await maintenance.query(`create database "${testDb}"`);
-    const testUrl = adminUrl.replace(/\/[^/?]+(\?|$)/, `/${testDb}$1`);
-    testPool = new pg.Pool({ connectionString: testUrl, max: 2 });
+    await maintenance.query(`drop database if exists ${quoteIdent(testDb)} with (force)`);
+    await maintenance.query(`create database ${quoteIdent(testDb)}`);
+    const testUrl = new URL(adminUrl);
+    testUrl.pathname = `/${testDb}`;
+    testPool = new pg.Pool({ connectionString: testUrl.toString(), max: 2 });
     await ensureAppRole(testPool, opts.appPassword);
     await runMigrations(testPool);
     const client = await testPool.connect();
     try {
       await client.query("begin");
       await client.query("set session_replication_role = replica"); // skip append-only guard triggers while loading a verified snapshot
+      // Migrations insert the internal agency row. Replace those rows with the snapshot so identifiers match.
+      for (const table of [...BACKUP_TABLES].reverse()) await client.query(`delete from ${table}`);
+      for (const table of BACKUP_EXCLUDED_TABLES) await client.query(`delete from ${table}`);
       for (const table of BACKUP_TABLES) {
         const rows = body.tables[table] ?? [];
         if (!rows.length) continue;
@@ -175,12 +227,14 @@ export async function restoreTest(sourcePool: pg.Pool, adminUrl: string, backupP
       client.release();
     }
     const verification = await verifyRestore(testPool, body);
-    const passed = verification.mismatches.length === 0 && Object.values(verification.orphans).every((n) => n === 0) && verification.rlsEnabled;
+    const passed = verification.mismatches.length === 0;
     await sourcePool.query("update backup_runs set finished_at = now(), outcome = $2, record_counts = $3, notes = $4 where id = $1", [
       runId,
       passed ? "passed" : "failed",
       JSON.stringify(verification.counts),
-      passed ? `Restored ${backupPath} into ${testDb}; counts, relationships and RLS verified.` : `Mismatches: ${verification.mismatches.join("; ")}`,
+      passed
+        ? `Restored into ${testDb}. Counts, relationships, blog activity and migrations matched. Auth.js sessions, verification tokens and development magic links were left empty.`
+        : `Mismatches: ${verification.mismatches.join("; ")}`.slice(0, 300),
     ]);
     return verification;
   } catch (err) {
@@ -214,11 +268,33 @@ async function verifyRestore(pool: pg.Pool, body: BackupFile): Promise<RestoreVe
   };
   for (const [name, sql] of Object.entries(checks)) {
     orphans[name] = Number((await pool.query<{ count: string }>(sql)).rows[0]!.count);
+    if (orphans[name] !== 0) mismatches.push(`${name}: ${orphans[name]}`);
+  }
+  const blog = {
+    articles: Number((await pool.query<{ n: string }>("select count(*) as n from blog_articles")).rows[0]!.n),
+    versions: Number((await pool.query<{ n: string }>("select count(*) as n from blog_article_versions")).rows[0]!.n),
+    activity: Number((await pool.query<{ n: string }>("select count(*) as n from blog_activity")).rows[0]!.n),
+    activityMissingArticle: Number((await pool.query<{ n: string }>("select count(*) as n from blog_activity a where not exists (select 1 from blog_articles b where b.id = a.article_id)")).rows[0]!.n),
+    activityClientMismatch: Number((await pool.query<{ n: string }>("select count(*) as n from blog_activity a join blog_articles b on b.id = a.article_id where a.client_id <> b.client_id")).rows[0]!.n),
+  };
+  if (blog.activityMissingArticle !== 0) mismatches.push(`blog_activity_without_article: ${blog.activityMissingArticle}`);
+  if (blog.activityClientMismatch !== 0) mismatches.push(`blog_activity_client_mismatch: ${blog.activityClientMismatch}`);
+  const versionsWithoutArticle = Number((await pool.query<{ n: string }>("select count(*) as n from blog_article_versions v where not exists (select 1 from blog_articles a where a.id = v.article_id)")).rows[0]!.n);
+  if (versionsWithoutArticle !== 0) mismatches.push(`blog_versions_without_article: ${versionsWithoutArticle}`);
+  const applied = (await pool.query<{ name: string }>("select name from schema_migrations order by name")).rows.map((row) => row.name);
+  const expectedMigrations = [...body.migrations].sort();
+  const migrationsMatch = applied.join("\n") === expectedMigrations.join("\n");
+  if (!migrationsMatch) mismatches.push(`migrations: expected ${expectedMigrations.length}, found ${applied.length}`);
+  const invalidated = {} as RestoreVerification["invalidated"];
+  for (const table of BACKUP_EXCLUDED_TABLES) {
+    invalidated[table] = Number((await pool.query<{ n: string }>(`select count(*) as n from ${table}`)).rows[0]!.n);
+    if (invalidated[table] !== 0) mismatches.push(`${table}: expected 0 after sign-in invalidation, found ${invalidated[table]}`);
   }
   const rls = await pool.query<{ n: string }>(
-    "select count(*) as n from pg_tables t join pg_class c on c.relname = t.tablename where t.schemaname = 'public' and t.tablename in ('tasks','clients','websites','audit_events') and c.relrowsecurity",
+    "select count(*) as n from pg_tables t join pg_class c on c.relname = t.tablename where t.schemaname = 'public' and t.tablename in ('tasks','clients','websites','audit_events','blog_activity') and c.relrowsecurity",
   );
-  const rlsEnabled = Number(rls.rows[0]!.n) === 4;
+  const rlsEnabled = Number(rls.rows[0]!.n) === 5;
+  if (!rlsEnabled) mismatches.push("rls: required tables are not all protected");
   // Access policy spot check: two scoped users see only their own client's submissions.
   let isolationCheck: RestoreVerification["isolationCheck"] = null;
   const users = await pool.query<{ id: string; email: string }>("select id, email from staff_users where email in ('specialist-a@example.invalid','specialist-b@example.invalid') order by email");
@@ -238,6 +314,11 @@ async function verifyRestore(pool: pg.Pool, body: BackupFile): Promise<RestoreVe
       }
     };
     isolationCheck = { userA: await countAs(users.rows[0]!.id), userB: await countAs(users.rows[1]!.id), total };
+    if (isolationCheck.total > 0 && isolationCheck.userA === isolationCheck.total && isolationCheck.userB === isolationCheck.total) {
+      mismatches.push("isolation: both specialists can see every task");
+    }
+  } else {
+    mismatches.push("isolation: seeded specialists were not found");
   }
-  return { counts, mismatches, orphans, rlsEnabled, isolationCheck };
+  return { counts, mismatches, orphans, rlsEnabled, migrationsMatch, invalidated, blog, isolationCheck };
 }

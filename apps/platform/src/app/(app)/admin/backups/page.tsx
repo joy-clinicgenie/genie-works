@@ -14,7 +14,7 @@ export default async function AdminBackupsPage() {
   const runs = await staffTx(access, (db) => listBackupRuns(db, 50));
   return (
     <>
-      <Notice tone="neutral" title="How this works">Backups are logical exports written by <code>npm run db:backup</code>. Restore tests load the latest export into an isolated database, verify record counts, relationships and access policies, then record the outcome here. Managed hosting adds its own physical backups, which are not claimed on this page.</Notice>
+      <Notice tone="neutral" title="How this works">Backups are logical exports written by <code>npm run db:backup</code>. Restore tests load that export into a separate local database, verify record counts, relationships, blog activity and migrations, then record the outcome here. Auth.js sessions, verification tokens and development magic links are left empty so an old sign-in does not come back. Managed hosting adds its own physical backups, which are not claimed on this page.</Notice>
       <Card className="mt-4">
         <CardHeader title="Recorded runs" />
         <Table caption="Backup and restore runs">
