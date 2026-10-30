@@ -77,6 +77,28 @@ body {
   font-variant-numeric: tabular-nums;
 }
 
+.article-line {
+  min-height: 1.75rem;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.article-line:focus,
+.article-line:focus-visible,
+.article-title:focus,
+.article-title:focus-visible,
+.article-plain:focus,
+.article-plain:focus-visible {
+  outline: none;
+  outline-offset: 0;
+}
+
+.article-line[data-empty="true"]::before {
+  content: attr(data-placeholder);
+  color: var(--color-muted);
+  pointer-events: none;
+}
+
 @utility card {
   background: var(--color-surface);
   border-radius: 1.5rem;

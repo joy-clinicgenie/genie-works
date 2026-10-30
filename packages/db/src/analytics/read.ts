@@ -111,6 +111,32 @@ export function reportCsv(report: PublishedReport, title: string): string {
   return `${lines.join("\n")}\n`;
 }
 
+/** Complete days only. A missing or incomplete day stays null and is not filled in. */
+export async function dailySessionSeries(db: Queryable, input: {
+  clientId: string;
+  websiteId: string;
+  templateKey: string;
+  metric: string;
+  start: string;
+  end: string;
+}): Promise<Array<{ date: string; value: number | null }>> {
+  const { rows } = await db.query<{ source_date: string; state: string; value_numeric: number | null }>(
+    `select distinct on (c.source_date) c.source_date::text, c.state, m.value_numeric
+     from analytics_coverage c
+     join analytics_report_partitions p on p.connection_id = c.connection_id and p.template_key = c.template_key and p.published
+       and c.source_date between p.start_date and p.end_date
+     left join analytics_report_rows r on r.partition_id = p.id and r.dimension_key = c.source_date::text
+     left join analytics_metric_values m on m.report_row_id = r.id and m.metric_key = $4 and m.value_state = 'available'
+     where c.client_id = $1 and c.website_id = $2 and c.template_key = $3 and c.source_date between $5 and $6
+     order by c.source_date, p.generation desc`,
+    [input.clientId, input.websiteId, input.templateKey, input.metric, input.start, input.end],
+  );
+  return rows.map((row) => ({
+    date: row.source_date,
+    value: row.state === "complete" && row.value_numeric !== null ? Number(row.value_numeric) : null,
+  }));
+}
+
 export async function additivePeriod(db: Queryable, input: {
   clientId: string;
   websiteId: string;

@@ -1,4 +1,5 @@
-import Link from "next/link";
+import type { ReactNode } from "react";
+import { InnerNavFrame, InnerNavGroup, InnerNavLink } from "@/components/shell/InnerNav";
 
 const TABS = [
   { id: "mine", label: "My tasks" },
@@ -22,21 +23,17 @@ function tabHref(id: TaskListView, search: string) {
   return query ? `/my-tasks?${query}` : "/my-tasks";
 }
 
-export function TaskTabs({ view, search = "" }: { view: TaskListView; search?: string }) {
+export function TaskTabs({ view, search = "", children }: { view: TaskListView; search?: string; children: ReactNode }) {
   return (
-    <nav aria-label="Task lists" className="mb-6 overflow-x-auto">
-      <ul className="flex min-w-max gap-1">
-        {TABS.map((tab) => {
-          const active = tab.id === view;
-          return (
-            <li key={tab.id}>
-              <Link href={tabHref(tab.id, search)} aria-current={active ? "page" : undefined} className={`inline-flex min-h-10 items-center rounded-xl px-3 text-sm font-medium ${active ? "bg-brand-pale text-ink" : "text-ink-soft hover:bg-brand-pale/70 hover:text-ink"}`}>
-                {tab.label}
-              </Link>
-            </li>
-          );
-        })}
-      </ul>
-    </nav>
+    <InnerNavFrame
+      label="Task lists"
+      nav={
+        <InnerNavGroup title="Tasks">
+          {TABS.map((tab) => <InnerNavLink key={tab.id} href={tabHref(tab.id, search)} current={tab.id === view}>{tab.label}</InnerNavLink>)}
+        </InnerNavGroup>
+      }
+    >
+      {children}
+    </InnerNavFrame>
   );
 }

@@ -33,13 +33,12 @@ export default async function EnquiryPage({ params }: { params: Promise<{ id: st
   }));
   const preference = [submission.preferredDate ? formatDate(submission.preferredDate) : null, submission.preferredTimeWindow].filter(Boolean).join(" · ");
   return (
-    <>
+    <EnquiryTabs>
       <PageHeader
         eyebrow={<Link href="/enquiries" className="hover:text-action">Enquiries</Link>}
         title={submission.submitterName}
         description={<span className="flex flex-wrap items-center gap-2"><Badge tone={STATUS_TONE[submission.status]}>{STATUS_LABEL[submission.status]}</Badge>{submission.isSynthetic && <Badge tone="warn">Demonstration data</Badge>}</span>}
       />
-      <EnquiryTabs />
       <Card className="p-5">
         <p className="mb-4 text-sm text-muted">{submission.clinicName} · {formName(submission.formKey)} · {formatDateTime(submission.submittedAt)} · {submission.reference}</p>
         <KeyValue items={[
@@ -53,6 +52,6 @@ export default async function EnquiryPage({ params }: { params: Promise<{ id: st
         ]} />
         <p className="mt-4 text-xs text-muted">A preferred time is a request, not a booked appointment. Closed does not mean an appointment took place.</p>
       </Card>
-    </>
+    </EnquiryTabs>
   );
 }

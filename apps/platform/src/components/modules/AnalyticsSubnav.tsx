@@ -1,8 +1,9 @@
 "use client";
 
-import Link from "next/link";
 import { usePathname } from "next/navigation";
+import type { ReactNode } from "react";
 import { analyticsSearch } from "@/lib/period-options";
+import { InnerNavFrame, InnerNavGroup, InnerNavLink } from "@/components/shell/InnerNav";
 
 const LINKS = [
   { href: "/analytics", label: "Overview", exact: true },
@@ -10,23 +11,22 @@ const LINKS = [
   { href: "/analytics/behavior", label: "Behaviour", exact: false },
 ] as const;
 
-export function AnalyticsSubnav({ clientId, websiteId, range, from, to }: { clientId: string; websiteId?: string | null; range: string; from?: string; to?: string }) {
+export function AnalyticsSubnav({ clientId, websiteId, range, from, to, children }: { clientId: string; websiteId?: string | null; range: string; from?: string; to?: string; children: ReactNode }) {
   const pathname = usePathname();
   const query = `?${analyticsSearch(clientId, range, from, to, websiteId ?? undefined)}`;
   return (
-    <nav aria-label="Analytics sections" className="mb-6 overflow-x-auto">
-      <ul className="flex min-w-max gap-1">
-        {LINKS.map((link) => {
-          const active = link.exact ? pathname === link.href : pathname.startsWith(link.href);
-          return (
-            <li key={link.href}>
-              <Link href={`${link.href}${query}`} aria-current={active ? "page" : undefined} className={`inline-flex min-h-10 items-center rounded-xl px-3 text-sm font-medium ${active ? "bg-brand-pale text-ink" : "text-ink-soft hover:bg-brand-pale/70 hover:text-ink"}`}>
-                {link.label}
-              </Link>
-            </li>
-          );
-        })}
-      </ul>
-    </nav>
+    <InnerNavFrame
+      label="Analytics sections"
+      nav={
+        <InnerNavGroup title="Analytics">
+          {LINKS.map((link) => {
+            const active = link.exact ? pathname === link.href : pathname.startsWith(link.href);
+            return <InnerNavLink key={link.href} href={`${link.href}${query}`} current={active}>{link.label}</InnerNavLink>;
+          })}
+        </InnerNavGroup>
+      }
+    >
+      {children}
+    </InnerNavFrame>
   );
 }

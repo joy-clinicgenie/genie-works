@@ -1,34 +1,53 @@
 "use client";
 
-import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useEffect, useState, type ReactNode } from "react";
+import { InnerNavAnchor, InnerNavFrame, InnerNavGroup, InnerNavLink } from "@/components/shell/InnerNav";
 
-const TABS = [
-  ["", "Overview"],
+const SECTIONS = [
+  ["#profile", "Profile"],
+  ["#workspace", "Workspace"],
+  ["#references", "Account references"],
+] as const;
+
+const PAGES = [
   ["/approvals", "Approvals"],
   ["/reports", "Reports"],
   ["/timeline", "Timeline"],
-  ["/profile", "Profile"],
+  ["/profile", "Edit profile"],
 ] as const;
 
-export function ClientTabs({ clientId }: { clientId: string }) {
+export function ClientTabs({ clientId, children }: { clientId: string; children: ReactNode }) {
   const pathname = usePathname();
   const base = `/clients/${clientId}`;
+  const onOverview = pathname === base;
+  const [hash, setHash] = useState("");
+  useEffect(() => {
+    const read = () => setHash(window.location.hash);
+    read();
+    window.addEventListener("hashchange", read);
+    return () => window.removeEventListener("hashchange", read);
+  }, [pathname]);
+  const section = hash === "#workspace" || hash === "#references" ? hash : "#profile";
   return (
-    <nav aria-label="Client sections" className="mb-6 -mx-4 overflow-x-auto px-4">
-      <ul className="flex min-w-max gap-1">
-        {TABS.map(([suffix, name]) => {
-          const href = `${base}${suffix}`;
-          const active = suffix === "" ? pathname === base : pathname.startsWith(href);
-          return (
-            <li key={suffix}>
-              <Link href={href} aria-current={active ? "page" : undefined} className={`inline-flex min-h-10 items-center rounded-xl px-3 text-sm font-medium ${active ? "bg-brand-pale text-ink" : "text-ink-soft hover:bg-brand-pale/70 hover:text-ink"}`}>
-                {name}
-              </Link>
-            </li>
-          );
-        })}
-      </ul>
-    </nav>
+    <InnerNavFrame
+      label="Client sections"
+      nav={
+        <>
+          <InnerNavGroup title="This client">
+            {SECTIONS.map(([suffix, name]) => (
+              <InnerNavAnchor key={suffix} href={`${base}${suffix}`} current={onOverview && section === suffix} onClick={() => setHash(suffix)}>{name}</InnerNavAnchor>
+            ))}
+          </InnerNavGroup>
+          <InnerNavGroup title="Records">
+            {PAGES.map(([suffix, name]) => (
+              <InnerNavLink key={suffix} href={`${base}${suffix}`} current={pathname.startsWith(`${base}${suffix}`)}>{name}</InnerNavLink>
+            ))}
+          </InnerNavGroup>
+        </>
+      }
+    >
+      {children}
+    </InnerNavFrame>
   );
 }

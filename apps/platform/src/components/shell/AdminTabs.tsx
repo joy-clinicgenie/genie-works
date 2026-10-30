@@ -1,22 +1,26 @@
 "use client";
 
-import Link from "next/link";
 import { usePathname } from "next/navigation";
+import type { ReactNode } from "react";
+import { InnerNavFrame, InnerNavGroup, InnerNavLink } from "@/components/shell/InnerNav";
 
 const TABS = [["/admin", "Status"], ["/admin/users", "Users and roles"], ["/admin/audit", "Audit history"], ["/admin/backups", "Backups and recovery"]] as const;
 
-export function AdminTabs() {
+export function AdminTabs({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   return (
-    <nav aria-label="Admin sections" className="mb-6 overflow-x-auto">
-      <ul className="flex min-w-max gap-1">
-        {TABS.map(([href, name]) => {
-          const active = href === "/admin" ? pathname === "/admin" : pathname.startsWith(href);
-          return (
-            <li key={href}><Link href={href} aria-current={active ? "page" : undefined} className={`inline-flex min-h-10 items-center rounded-xl px-3 text-sm font-medium ${active ? "bg-brand-pale text-ink" : "text-ink-soft hover:bg-brand-pale/70 hover:text-ink"}`}>{name}</Link></li>
-          );
-        })}
-      </ul>
-    </nav>
+    <InnerNavFrame
+      label="Admin sections"
+      nav={
+        <InnerNavGroup title="Admin">
+          {TABS.map(([href, name]) => {
+            const active = href === "/admin" ? pathname === "/admin" : pathname.startsWith(href);
+            return <InnerNavLink key={href} href={href} current={active}>{name}</InnerNavLink>;
+          })}
+        </InnerNavGroup>
+      }
+    >
+      {children}
+    </InnerNavFrame>
   );
 }

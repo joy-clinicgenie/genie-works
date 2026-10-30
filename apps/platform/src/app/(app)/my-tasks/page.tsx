@@ -125,9 +125,8 @@ export default async function MyTasksPage({ searchParams }: { searchParams: Prom
   const openHref = listHref(view, filters, { compose: true });
   const selected = data.selected;
   return (
-    <>
+    <TaskTabs view={view} search={filters.toString()}>
       <PageHeader title="My tasks" description="Track your tasks, priorities and deadlines." action={access.user.platform_role !== "read_only" ? <LinkButton href={openHref}><Plus className="size-4" aria-hidden="true" />Add task</LinkButton> : undefined} />
-      <TaskTabs view={view} search={filters.toString()} />
       <FilterBar action="/my-tasks" clearHref={clearHref} formKey={filters.toString()}>
         {view !== "mine" && <input type="hidden" name="view" value={view} />}
         {taskId && <input type="hidden" name="task" value={taskId} />}
@@ -171,6 +170,6 @@ export default async function MyTasksPage({ searchParams }: { searchParams: Prom
           }}
         />
       )}
-    </>
+    </TaskTabs>
   );
 }

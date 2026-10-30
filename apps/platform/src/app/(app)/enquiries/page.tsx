@@ -26,9 +26,8 @@ export default async function EnquiriesPage({ searchParams }: { searchParams: Pr
     listSubmissionForms(scope),
   ]);
   return (
-    <>
+    <EnquiryTabs>
       <PageHeader title="Enquiries" description="Requests received from clinic websites. This list reads those records. It does not keep a second copy." />
-      <EnquiryTabs />
       {denied && <div className="mb-4"><Notice tone="bad" title="Not available">You do not have access to that clinic.</Notice></div>}
       {!data.connected && (
         <EmptyState title="No enquiries are available">The clinic website database is not connected. Submitted requests stay there until it is.</EmptyState>
@@ -79,6 +78,6 @@ export default async function EnquiriesPage({ searchParams }: { searchParams: Pr
           </Card>
         </>
       )}
-    </>
+    </EnquiryTabs>
   );
 }

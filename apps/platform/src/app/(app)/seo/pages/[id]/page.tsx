@@ -6,7 +6,8 @@ import { staffTx } from "@/lib/db";
 import { PageHeader, Card, CardHeader, KeyValue } from "@/components/ui/Card";
 import { Badge, CONTENT_TONE, FLAG_TONE, label } from "@/components/ui/Badge";
 import { SeoChangeForm, SeoPageForm, VerifyChangeForm } from "@/components/modules/SeoForms";
-import { SeoSubnav } from "@/components/modules/SeoSubnav";
+import { SeoSectionLinks } from "@/components/modules/SeoSubnav";
+import { InnerNavAnchor, InnerNavFrame, InnerNavGroup } from "@/components/shell/InnerNav";
 import { Unavailable } from "@/components/modules/seo/SeoFrame";
 import { archivePageAction } from "@/app/actions/seo";
 import { Button } from "@/components/ui/Button";
@@ -37,13 +38,27 @@ export default async function SeoPageDetail({ params, searchParams }: { params: 
   const redirectHref = seoHref("/seo/redirects", { client: page.client_id, website: page.website_id ?? undefined, demo: false }, { tab: "redirects", new: "1", from: page.page_path });
   const title = setting?.title || page.page_title || page.page_path;
   const description = setting?.description || "No meta description is saved for this path.";
+  const sections = [
+    ["appearance", "Search appearance"],
+    ["url", "URL and indexing"],
+    ["content", "Content checks"],
+    ["social", "Social sharing"],
+    ["schema", "Structured data"],
+    ["history", "History"],
+  ] as const;
   return (
-    <>
+    <InnerNavFrame
+      label="SEO"
+      nav={
+        <>
+          <SeoSectionLinks pathname="/seo/pages" ctx={ctx} />
+          <InnerNavGroup title="On this page">
+            {sections.map(([id, name]) => <InnerNavAnchor key={id} href={`#${id}`}>{name}</InnerNavAnchor>)}
+          </InnerNavGroup>
+        </>
+      }
+    >
       <PageHeader eyebrow={<Link href={seoHref("/seo/pages", ctx, { tab: "pages" })} className="hover:underline">{page.client_name}</Link>} title={page.page_path} description={<span className="flex flex-wrap gap-2 items-center"><Badge tone={CONTENT_TONE[page.content_status]}>{label(page.content_status)}</Badge>{page.mapping_flag !== "none" && <Badge tone={FLAG_TONE[page.mapping_flag]}>{label(page.mapping_flag)}</Badge>}{page.archived_at && <Badge>Archived</Badge>}</span>} />
-      <SeoSubnav pathname="/seo/pages" ctx={ctx} />
-      <div className="mb-4 flex flex-wrap gap-2">
-        {(["appearance", "url", "content", "social", "schema", "history"] as const).map((section) => <a key={section} href={`#${section}`} className="rounded-full bg-surface-muted px-3 py-1 text-sm">{section === "appearance" ? "Search appearance" : section === "url" ? "URL & indexing" : section === "content" ? "Content checks" : section === "social" ? "Social sharing" : section === "schema" ? "Structured data" : "History"}</a>)}
-      </div>
       <div className="grid gap-6 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
         <div className="space-y-6">
           <Card id="appearance" className="p-5">
@@ -119,6 +134,6 @@ export default async function SeoPageDetail({ params, searchParams }: { params: 
           )}
         </div>
       </div>
-    </>
+    </InnerNavFrame>
   );
 }

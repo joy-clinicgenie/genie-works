@@ -33,9 +33,8 @@ export default async function NotificationStatusPage() {
   const data = await listNotifications(submissionClinicScope(access));
   const canRetry = canRetryNotifications(access);
   return (
-    <>
+    <EnquiryTabs>
       <PageHeader title="Enquiries" description="Delivery state of clinic notifications. Names, addresses and messages are not shown here. A retry sends the existing notification again." />
-      <EnquiryTabs />
       {!data.connected && (
         <EmptyState title="Notification status is not available">The clinic website database is not connected. Nothing was changed.</EmptyState>
       )}
@@ -77,6 +76,6 @@ export default async function NotificationStatusPage() {
           </Table>
         </Card>
       )}
-    </>
+    </EnquiryTabs>
   );
 }

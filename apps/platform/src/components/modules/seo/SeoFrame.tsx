@@ -2,7 +2,8 @@ import type { ReactNode } from "react";
 import { Badge } from "@/components/ui/Badge";
 import { PageHeader } from "@/components/ui/Card";
 import { EmptyState, Notice } from "@/components/ui/Notice";
-import { SeoSubnav, SeoTabs } from "@/components/modules/SeoSubnav";
+import { SeoPageLinks, SeoSectionLinks } from "@/components/modules/SeoSubnav";
+import { InnerNavFrame } from "@/components/shell/InnerNav";
 import { SeoContextForm } from "@/components/modules/seo/SeoContextForm";
 import { environmentLabel, seoHref, type SeoContext } from "@/lib/seo-workspace";
 
@@ -51,7 +52,15 @@ export function SeoFrame({
   const selected = ctx.selected;
   const blocked = ctx.demoConflict || (!ctx.demo && requireWebsite && !selected);
   return (
-    <>
+    <InnerNavFrame
+      label="SEO"
+      nav={
+        <>
+          <SeoSectionLinks pathname={pathname} ctx={ctx} />
+          {tabs && currentTab ? <SeoPageLinks pathname={pathname} ctx={ctx} tabs={tabs} current={currentTab} extra={tabExtra} title={title} /> : null}
+        </>
+      }
+    >
       <PageHeader
         eyebrow={selected ? `${selected.clientName} · ${environmentLabel(selected.environment)}` : ctx.demo ? "Demonstration" : "No website selected"}
         title={title}
@@ -74,8 +83,6 @@ export function SeoFrame({
           <SeoContextForm pathname={pathname} tab={currentTab} clients={ctx.clients} sites={ctx.sites} client={ctx.client} website={ctx.website} />
         </details>
       )}
-      <SeoSubnav pathname={pathname} ctx={ctx} />
-      {tabs && currentTab && <SeoTabs pathname={pathname} ctx={ctx} tabs={tabs} current={currentTab} extra={tabExtra} />}
       {ctx.demoConflict ? (
         <EmptyState title="Demonstration is separate from a clinic">
           Remove the selected clinic to view labelled demonstration data, or leave demonstration mode to work on the website.
@@ -84,6 +91,6 @@ export function SeoFrame({
       ) : blocked ? (
         <EmptyState title={ctx.sites.length === 0 ? "No active website is available" : ctx.client && ctx.sites.every((site) => site.clientId !== ctx.client) ? "This clinic has no active website" : "Choose a website"}>SEO data stays empty until a clinic and website are selected. No default clinic is assumed.</EmptyState>
       ) : children}
-    </>
+    </InnerNavFrame>
   );
 }

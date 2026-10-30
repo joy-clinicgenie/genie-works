@@ -3,7 +3,8 @@ import { canEditClient, listActiveStaff, listClients, listWebsites } from "@clin
 import { requireAccess } from "@/lib/session";
 import { staffTx } from "@/lib/db";
 import { PageHeader, Card } from "@/components/ui/Card";
-import { SeoSubnav } from "@/components/modules/SeoSubnav";
+import { SeoSectionLinks } from "@/components/modules/SeoSubnav";
+import { InnerNavFrame } from "@/components/shell/InnerNav";
 import { loadSeoContext } from "@/lib/seo-workspace";
 import { SeoPageForm } from "@/components/modules/SeoForms";
 import { Field, Select } from "@/components/ui/Field";
@@ -26,9 +27,8 @@ export default async function NewSeoPage({ searchParams }: { searchParams: Promi
   const chosen = data.clients.find((c) => c.id === client);
   const ctx = await loadSeoContext(access, { client });
   return (
-    <>
+    <InnerNavFrame label="SEO" nav={<SeoSectionLinks pathname="/seo/pages" ctx={ctx} />}>
       <PageHeader title="Map a page" description="Record the page, its target search and content status." />
-      <SeoSubnav pathname="/seo/pages" ctx={ctx} />
       <Card className="p-6 max-w-3xl">
         {!chosen ? (
           <form method="get" className="space-y-4">
@@ -47,6 +47,6 @@ export default async function NewSeoPage({ searchParams }: { searchParams: Promi
           </>
         )}
       </Card>
-    </>
+    </InnerNavFrame>
   );
 }

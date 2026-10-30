@@ -71,7 +71,9 @@ export default async function ArticlePage({ params }: { params: Promise<{ id: st
   const versionLabel = article.version_number ? `Version ${article.version_number}` : "Saved version";
 
   return (
-    <>
+    <ArticleTabs
+      lead={
+        <>
       <PageHeader
         eyebrow={<Link href={`/blog?client=${article.client_id}&website=${article.website_id}`} className="text-action hover:underline">Blog</Link>}
         title={article.title.trim() || "Untitled article"}
@@ -102,29 +104,26 @@ export default async function ArticlePage({ params }: { params: Promise<{ id: st
       {article.status === "published" && !article.working_status && <div className="mb-4"><Notice tone="neutral">Create a revision before editing. The published page stays as it is until that revision is approved and published.</Notice></div>}
       {stale && <div className="mb-4"><Notice tone="warn" title="Resubmission required">An earlier approval does not cover this version.</Notice></div>}
       {article.live_version_id && liveUrl && <p className="mb-4 text-sm">Live URL: <a href={liveUrl} className="text-action underline" target="_blank" rel="noreferrer">{liveUrl}</a> · Published {stamp(article.first_published_at)}</p>}
-      <ArticleTabs
-        editor={
-          <div className="space-y-6">
-            <Card className="p-5">
-              <ArticleForm
-                action={updateArticleAction}
-                websites={data.websites}
-                people={data.staff}
-                reviewers={reviewers}
-                media={data.media}
-                lockedClientId={article.client_id}
-                lockedWebsiteId={article.website_id}
-                readOnly={!canEdit}
-                feedback={latestReturn?.note}
-                article={article}
-              />
-            </Card>
-            {canEdit && (
-              <Card className="p-5">
-                <CardHeader title="Upload an image" description="Images stay private until a published revision uses them." />
-                <ImageUpload articleId={article.id} />
-              </Card>
-            )}
+        </>
+      }
+      editor={
+          <div className="-mx-4 overflow-visible border-y border-line bg-surface lg:-mx-8">
+            <ArticleForm
+              action={updateArticleAction}
+              websites={data.websites}
+              people={data.staff}
+              reviewers={reviewers}
+              media={data.media}
+              lockedClientId={article.client_id}
+              lockedWebsiteId={article.website_id}
+              readOnly={!canEdit}
+              feedback={latestReturn?.note}
+              article={article}
+              backHref={`/blog?client=${article.client_id}&website=${article.website_id}`}
+              context={`${article.client_name} · ${article.website_name}`}
+              previewHref={article.current_version_id ? `/blog/${article.id}/preview?version=${article.current_version_id}` : undefined}
+              upload={canEdit ? <ImageUpload articleId={article.id} /> : undefined}
+            />
           </div>
         }
         review={
@@ -175,7 +174,6 @@ export default async function ArticlePage({ params }: { params: Promise<{ id: st
             </Card>
           </div>
         }
-      />
-    </>
+    />
   );
 }

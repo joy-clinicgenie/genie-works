@@ -1,10 +1,10 @@
 import {
   additivePeriod,
+  dailySessionSeries,
   dailySessionsForWeekday,
   listConnections,
   percentChange,
   publishedReport,
-  submissionEventRatio,
   type PublishedReport,
 } from "@clinic-genie/db";
 import type { Queryable } from "@clinic-genie/db";
@@ -27,8 +27,13 @@ export interface LiveBundle {
   contacts: LiveValue;
   forms: LiveValue;
   enquiries: { current: number | null; previous: number | null };
+  sessionsPrevious: number | null;
+  usersPrevious: number | null;
   weekdays: Array<{ weekday: string; average: number | null; covered: number }>;
+  dailyCurrent: Array<{ date: string; value: number | null }>;
+  dailyPrevious: Array<{ date: string; value: number | null }>;
   sources: PublishedReport | null;
+  sourcesPrevious: PublishedReport | null;
   landing: PublishedReport | null;
   devices: PublishedReport | null;
   countries: PublishedReport | null;
@@ -67,8 +72,13 @@ export async function loadLiveBundle(db: Queryable, view: SiteView): Promise<Liv
     contacts: empty(chosen ? "Not tracked" : "Not connected", chosen ? "unavailable" : "not_connected"),
     forms: empty(chosen ? "Not tracked" : "Not connected", chosen ? "unavailable" : "not_connected"),
     enquiries: enquiryPair(view),
+    sessionsPrevious: null,
+    usersPrevious: null,
     weekdays: [],
+    dailyCurrent: [],
+    dailyPrevious: [],
     sources: null,
+    sourcesPrevious: null,
     landing: null,
     devices: null,
     countries: null,
@@ -96,9 +106,11 @@ export async function loadLiveBundle(db: Queryable, view: SiteView): Promise<Liv
     : empty(chosen.provider === "wix" ? "Daily unique visitors are not added together." : "An exact-period user total has not been stored.");
   const previous = view.previous;
   let comparison: string | null = null;
+  let sessionsPrevious: number | null = null;
   if (previous) {
     const prior = await additivePeriod(db, { clientId: view.clientId, websiteId: view.websiteId, templateKey: dailyKey, metric: sessionMetric, start: previous.start, end: previous.end });
-    const change = percentChange(sessions.state === "available" ? sessions.value : null, prior.state === "available" ? prior.value : null);
+    sessionsPrevious = prior.state === "available" ? prior.value : null;
+    const change = percentChange(sessions.state === "available" ? sessions.value : null, sessionsPrevious);
     comparison = change.kind === "percent"
       ? `${change.value > 0 ? "+" : ""}${change.value}% vs previous period`
       : change.kind === "no_change"
@@ -107,15 +119,25 @@ export async function loadLiveBundle(db: Queryable, view: SiteView): Promise<Liv
           ? "New activity vs an empty previous period"
           : "Period comparison is unavailable until both ranges are complete.";
   }
-  const exact = (templateKey: string) => publishedReport(db, { clientId: view.clientId, websiteId: view.websiteId!, templateKey, start, end });
+  const exact = (templateKey: string, rangeStart = start, rangeEnd = end) => publishedReport(db, { clientId: view.clientId, websiteId: view.websiteId!, templateKey, start: rangeStart, end: rangeEnd });
+  const priorUsers = previous && chosen.provider === "ga4"
+    ? await exact("ga4.traffic_range", previous.start, previous.end)
+    : null;
+  const priorUsersMetric = priorUsers?.rows[0]?.metrics.find((metric) => metric.key === "totalUsers" && metric.state === "available");
+  const seriesInput = { clientId: view.clientId, websiteId: view.websiteId, templateKey: dailyKey, metric: sessionMetric };
   return {
     ...blank,
     sessions,
     users,
+    sessionsPrevious,
+    usersPrevious: priorUsersMetric?.value ?? null,
     contacts,
     forms,
     weekdays: await dailySessionsForWeekday(db, { clientId: view.clientId, websiteId: view.websiteId, templateKey: dailyKey, start, end }),
+    dailyCurrent: await dailySessionSeries(db, { ...seriesInput, start, end }),
+    dailyPrevious: previous ? await dailySessionSeries(db, { ...seriesInput, start: previous.start, end: previous.end }) : [],
     sources: chosen.provider === "ga4" ? await exact("ga4.acquisition") : null,
+    sourcesPrevious: previous && chosen.provider === "ga4" ? await exact("ga4.acquisition", previous.start, previous.end) : null,
     landing: chosen.provider === "ga4" ? await exact("ga4.landing") : null,
     devices: chosen.provider === "ga4" ? await exact("ga4.device") : null,
     countries: chosen.provider === "ga4" ? await exact("ga4.country") : null,
@@ -129,19 +151,4 @@ export async function loadLiveBundle(db: Queryable, view: SiteView): Promise<Liv
 function enquiryPair(view: SiteView) {
   const pair = pairMetric(view.snapshots, { current: view.current, previous: view.previous }, "enquiries", "clinic_records", "all");
   return { current: pair.current, previous: pair.previous };
-}
-
-export function reportRows(report: PublishedReport | null, metric: string | string[]): Array<{ label: string; value: number | null; state: string }> {
-  if (!report) return [];
-  const keys = Array.isArray(metric) ? metric : [metric];
-  const chosen = keys.find((key) => report.rows.some((row) => row.metrics.some((item) => item.key === key && item.state === "available"))) ?? keys[0]!;
-  return report.rows.map((row) => {
-    const found = row.metrics.find((item) => item.key === chosen);
-    return { label: row.dimensionKey || "Property", value: found?.value ?? null, state: found?.state ?? "unavailable" };
-  });
-}
-
-export function formRatio(forms: LiveValue): { label: string; text: string } {
-  const ratio = submissionEventRatio(forms.value, null);
-  return { label: ratio.label, text: "Start events are unavailable, so this is not a completion rate." };
 }

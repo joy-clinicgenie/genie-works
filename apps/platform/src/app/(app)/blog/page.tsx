@@ -8,6 +8,7 @@ import { Badge, type Tone } from "@/components/ui/Badge";
 import { Table, Td, Th } from "@/components/ui/Table";
 import { EmptyState, Notice } from "@/components/ui/Notice";
 import { FilterBar, FilterInput, FilterSelect } from "@/components/ui/Filters";
+import { InnerNavFrame, InnerNavGroup, InnerNavLink } from "@/components/shell/InnerNav";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Blog" };
@@ -88,7 +89,23 @@ export default async function BlogPage({ searchParams }: { searchParams: Promise
   const publicBlog = website?.url ? `${website.url.replace(/\/$/, "")}/blog` : null;
 
   return (
-    <>
+    <InnerNavFrame
+      label="Article status"
+      nav={
+        <InnerNavGroup title="Status">
+          {FILTERS.map((item) => {
+            const count = data.list?.counts[item] ?? 0;
+            const active = item === "all" ? !status : status === item;
+            const name = item === "all" ? "All" : STATUS_LABEL[item];
+            return (
+              <InnerNavLink key={item} href={queryHref({ ...base, status: item === "all" ? undefined : item })} current={active}>
+                <span className="flex w-full items-center justify-between gap-2"><span>{name}</span><span className="text-xs tabular-nums text-muted">{count}</span></span>
+              </InnerNavLink>
+            );
+          })}
+        </InnerNavGroup>
+      }
+    >
       <PageHeader title="Blog" description="Draft, review and publish articles for native clinic websites. Article performance is not part of this version." action={canCreate ? <LinkButton href={newHref}>+ New article</LinkButton> : undefined} />
       {data.selection.denied && <div className="mb-4"><Notice tone="neutral">That client is not available.</Notice></div>}
       {data.selection.websiteReplaced && <div className="mb-4"><Notice tone="neutral">That website is not part of the selected client.</Notice></div>}
@@ -107,18 +124,6 @@ export default async function BlogPage({ searchParams }: { searchParams: Promise
             <p className="text-sm text-muted">{website.client_name} · {website.name}</p>
             {publicBlog && <a href={publicBlog} className="text-sm text-action underline" target="_blank" rel="noreferrer">Public blog</a>}
           </div>
-          <nav aria-label="Article status" className="mb-4 flex max-w-full gap-2 overflow-x-auto">
-            {FILTERS.map((item) => {
-              const count = data.list?.counts[item] ?? 0;
-              const active = item === "all" ? !status : status === item;
-              const label = item === "all" ? "All" : STATUS_LABEL[item];
-              return (
-                <Link key={item} href={queryHref({ ...base, status: item === "all" ? undefined : item })} aria-current={active ? "page" : undefined} className={`inline-flex min-h-11 shrink-0 items-center gap-2 rounded-full px-4 text-sm ${active ? "bg-action text-white" : "border border-line"}`}>
-                  {label} <span>{count}</span>
-                </Link>
-              );
-            })}
-          </nav>
           {data.list && data.list.total === 0 && !filtered && <EmptyState title="No articles yet" action={canCreate ? <LinkButton href={newHref}>Create first article</LinkButton> : undefined}>Articles you create for this website will appear here.</EmptyState>}
           {data.list && data.list.total === 0 && filtered && <EmptyState title="No articles found" action={<LinkButton href={queryHref({ client: base.client, website: base.website })} variant="secondary">Clear filters</LinkButton>}>Try another title, author or status.</EmptyState>}
           {data.list && data.list.articles.length > 0 && (
@@ -167,6 +172,6 @@ export default async function BlogPage({ searchParams }: { searchParams: Promise
           )}
         </>
       )}
-    </>
+    </InnerNavFrame>
   );
 }

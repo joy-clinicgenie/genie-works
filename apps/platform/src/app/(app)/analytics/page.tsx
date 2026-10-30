@@ -1,8 +1,6 @@
 import { AnalyticsShell, loadAnalytics, NoWebsites, UnavailableClient } from "@/components/modules/AnalyticsShell";
-import { HomeDashboard } from "@/components/modules/HomeDashboard";
-import { AnalyticsDetail } from "@/components/modules/AnalyticsDetail";
-import { LiveOverview } from "@/components/modules/LiveReports";
-import { analyticsLiveReports } from "@/lib/analytics-flag";
+import { AnalyticsOverview, analyticsHrefs } from "@/components/modules/AnalyticsPanels";
+import { loadAnalyticsBoard } from "@/lib/load-analytics-board";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Analytics" };
@@ -12,16 +10,11 @@ export default async function AnalyticsPage({ searchParams }: { searchParams: Pr
   const { denied, view, rangeId, from, to, reportLinks } = await loadAnalytics(params.client, params.range, params.from, params.to, params.website);
   if (denied) return <UnavailableClient />;
   if (!view || !reportLinks) return <NoWebsites />;
+  const board = await loadAnalyticsBoard(view);
+  const hrefs = analyticsHrefs(view.clientId, view.clientSlug, view.websiteId);
   return (
     <AnalyticsShell view={view} range={rangeId} from={from} to={to}>
-      {analyticsLiveReports() ? <LiveOverview view={view} /> : (
-        <>
-          <div className="mb-6">
-            <HomeDashboard view={view} embedded reportLinks={reportLinks} />
-          </div>
-          <AnalyticsDetail view={view} />
-        </>
-      )}
+      <AnalyticsOverview board={board} links={reportLinks} leadsHref={hrefs.leadsHref} seoHref={hrefs.seoHref} />
     </AnalyticsShell>
   );
 }

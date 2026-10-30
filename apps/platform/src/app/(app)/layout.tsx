@@ -1,7 +1,7 @@
 import { LogOut } from "lucide-react";
 import { signOut } from "@/lib/auth";
 import { requireAccess } from "@/lib/session";
-import { canManageRegistry, canManageUsers, listClients } from "@clinic-genie/db";
+import { canEditClient, canManageRegistry, canManageUsers, listBlogWebsites, listClients } from "@clinic-genie/db";
 import { staffTx } from "@/lib/db";
 import { Shell, type NavItem } from "@/components/shell/Shell";
 import { Badge } from "@/components/ui/Badge";
@@ -31,9 +31,13 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     await signOut({ redirectTo: "/sign-in" });
   }
 
-  const clients = await staffTx(access, (db) => listClients(db));
+  const { clients, websites } = await staffTx(access, async (db) => ({
+    clients: await listClients(db),
+    websites: await listBlogWebsites(db),
+  }));
   const adds = [
-    ...(canManageRegistry(access) ? [{ href: "/clients/new", label: "New client" }] : []),
+    ...(websites.some((site) => canEditClient(access, site.client_id)) ? [{ href: "/blog/new", label: "Add blog" }] : []),
+    ...(canManageRegistry(access) ? [{ href: "/clients/new", label: "Add client" }] : []),
   ];
   const name = access.user.display_name.trim();
   const role = access.user.platform_role.replaceAll("_", " ").replace(/\b\w/g, (letter) => letter.toUpperCase());

@@ -30,7 +30,7 @@ export function NoWebsites() {
 
 export function AnalyticsShell({ view, range, from, to, title = "Analytics", children }: { view: SiteView; range: PeriodRangeId; from?: string; to?: string; title?: string; children: ReactNode }) {
   return (
-    <>
+    <AnalyticsSubnav clientId={view.clientId} websiteId={view.websiteId} range={range} from={from} to={to}>
       {view.websiteCleared && <div className="mb-4"><Notice tone="neutral">The website in the link does not belong to this client, so it was left out.</Notice></div>}
       <SiteHeader
         title={title}
@@ -49,8 +49,7 @@ export function AnalyticsShell({ view, range, from, to, title = "Analytics", chi
         websiteId={view.websiteId}
         comparedLabel={view.previous ? formatCompared(view.previous) : undefined}
       />
-      <AnalyticsSubnav clientId={view.clientId} websiteId={view.websiteId} range={range} from={from} to={to} />
       {children}
-    </>
+    </AnalyticsSubnav>
   );
 }

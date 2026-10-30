@@ -8,6 +8,7 @@ export interface SiteView {
   clientName: string;
   clientReference: string | null;
   clientSpecialty: string | null;
+  clientSlug: string;
   enquiryOwnerName: string | null;
   notificationOwnerName: string | null;
   websiteUrl: string | null;
@@ -49,6 +50,7 @@ export async function loadSiteView(access: AccessProfile, requestedId?: string, 
       clientName: chosen.name,
       clientReference: chosen.reference_number,
       clientSpecialty: chosen.specialty,
+      clientSlug: chosen.slug,
       enquiryOwnerName: chosen.enquiry_owner_name,
       notificationOwnerName: chosen.notification_owner_name,
       websiteUrl: site?.url ?? null,
