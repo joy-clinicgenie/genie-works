@@ -117,4 +117,55 @@ describe("synthetic enquiry fixture", () => {
     const checked = await checkEnquiryFixture(fixtureUrl);
     expect(checked.enquiries).toBe(6);
   });
+
+  it("persists follow-up transitions and lets one concurrent update win", async () => {
+    await resetEnquiryFixture(fixtureUrl);
+    const left = new pg.Pool({ connectionString: fixtureUrl, max: 1 });
+    const right = new pg.Pool({ connectionString: fixtureUrl, max: 1 });
+    const enquiryId = "11111111-1111-4111-8111-111111111101";
+    const failedEnquiryId = "11111111-1111-4111-8111-111111111102";
+    const pendingId = "22222222-2222-4222-8222-222222222204";
+    try {
+      const before = await left.query<{ status: string; message: string }>("select status, message from enquiries where id = $1", [enquiryId]);
+      expect(before.rows[0]?.status).toBe("new");
+      expect(await setEnquiryFollowUp(left, { id: enquiryId, fromStatus: "new", toStatus: "acknowledged", scope: null })).toMatchObject({ id: enquiryId });
+      expect(await setEnquiryFollowUp(left, { id: enquiryId, fromStatus: "acknowledged", toStatus: "closed", scope: null })).toMatchObject({ id: enquiryId });
+      expect(await setEnquiryFollowUp(left, { id: enquiryId, fromStatus: "closed", toStatus: "new", scope: null })).toMatchObject({ id: enquiryId });
+      const reopened = await left.query<{ status: string; message: string }>("select status, message from enquiries where id = $1", [enquiryId]);
+      expect(reopened.rows[0]).toEqual({ status: "new", message: before.rows[0]?.message });
+
+      const [first, second] = await Promise.all([
+        setEnquiryFollowUp(left, { id: enquiryId, fromStatus: "new", toStatus: "acknowledged", scope: null }),
+        setEnquiryFollowUp(right, { id: enquiryId, fromStatus: "new", toStatus: "closed", scope: null }),
+      ]);
+      expect([first, second].filter((row) => row !== null)).toHaveLength(1);
+      const raced = await left.query<{ status: string; message: string }>("select status, message from enquiries where id = $1", [enquiryId]);
+      expect(["acknowledged", "closed"]).toContain(raced.rows[0]?.status);
+      expect(raced.rows[0]?.message).toBe(before.rows[0]?.message);
+      expect(await setEnquiryFollowUp(left, { id: enquiryId, fromStatus: "new", toStatus: "acknowledged", scope: null })).toBeNull();
+
+      const stored = await left.query<{ id: string; status: string; message: string }>("select id, status, message from enquiries where id = $1", [failedEnquiryId]);
+      const sentBefore = await left.query("select status, attempts, provider_message_id, sent_at from notification_outbox where id = $1", [RETRY_FAILURE_OUTBOX_ID]);
+      expect(sentBefore.rows[0]?.status).toBe("sent");
+      const [retryA, retryB] = await Promise.all([
+        requeueNotification(fixtureUrl, RETRY_SUCCESS_OUTBOX_ID, null),
+        requeueNotification(fixtureUrl, RETRY_SUCCESS_OUTBOX_ID, null),
+      ]);
+      expect([retryA, retryB].filter((row) => row !== null)).toHaveLength(1);
+      expect(await requeueNotification(fixtureUrl, RETRY_FAILURE_OUTBOX_ID, null)).toBeNull();
+      const sentAfter = await left.query("select status, attempts, provider_message_id, sent_at from notification_outbox where id = $1", [RETRY_FAILURE_OUTBOX_ID]);
+      expect(sentAfter.rows).toEqual(sentBefore.rows);
+      const stillThere = await left.query<{ id: string; status: string; message: string }>("select id, status, message from enquiries where id = $1", [failedEnquiryId]);
+      expect(stillThere.rows).toEqual(stored.rows);
+      expect((await left.query<{ count: number }>("select count(*)::int as count from enquiries")).rows[0]?.count).toBe(6);
+      expect((await left.query<{ status: string }>("select status from notification_outbox where id = $1", [RETRY_SUCCESS_OUTBOX_ID])).rows[0]?.status).toBe("pending");
+
+      await left.query("update notification_outbox set leased_until = now() + interval '5 minutes' where id = $1 and status = 'pending'", [pendingId]);
+      const leased = await left.query<{ leased: boolean }>("select leased_until > now() as leased from notification_outbox where id = $1", [pendingId]);
+      expect(leased.rows[0]?.leased).toBe(true);
+    } finally {
+      await left.end();
+      await right.end();
+    }
+  });
 });

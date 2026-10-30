@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { canEditClient, getClientBySlug, recordAudit, recordEnquiryStatusEvent } from "@clinic-genie/db";
 import { requireAccess } from "@/lib/session";
 import { staffTx } from "@/lib/db";
-import { canRetryNotifications, getFormSubmission, retryNotification, submissionClinicScope, submissionEditScope, submissionStatus, updateEnquiryStatus } from "@/lib/form-submissions";
+import { canRetryNotifications, enquiryConnection, enquiryUnavailableCopy, getFormSubmission, retryNotification, submissionClinicScope, submissionEditScope, submissionStatus, updateEnquiryStatus } from "@/lib/form-submissions";
 import { optional, str, toActionError, type ActionState } from "@/lib/actions";
 
 export async function retryNotificationAction(_prev: ActionState, form: FormData): Promise<ActionState> {
@@ -14,7 +14,7 @@ export async function retryNotificationAction(_prev: ActionState, form: FormData
   const scope = submissionClinicScope(access);
   try {
     const result = await retryNotification(scope, id);
-    if (result === "unavailable") return { ok: false, error: "The clinic website database is not connected. Nothing was changed." };
+    if (result === "unavailable") return { ok: false, error: await sourceError() };
     if (!result) return { ok: false, error: "That notification cannot be retried." };
     await staffTx(access, async (db) => {
       const client = await getClientBySlug(db, result.clinicId);
@@ -35,7 +35,7 @@ export async function retryNotificationAction(_prev: ActionState, form: FormData
   } catch (err) {
     return toActionError(err);
   }
-  return { ok: true, message: "The notification is waiting to be sent again. No new enquiry was created." };
+  return { ok: true, message: "Retry requested. The enquiry is unchanged, and this is not provider acceptance." };
 }
 
 export async function updateEnquiryStatusAction(_prev: ActionState, form: FormData): Promise<ActionState> {
@@ -50,7 +50,7 @@ export async function updateEnquiryStatusAction(_prev: ActionState, form: FormDa
   const editScope = submissionEditScope(access);
   if (editScope && editScope.length === 0) return { ok: false, error: "You do not have permission to change follow-up status." };
   const current = await getFormSubmission(submissionClinicScope(access), id);
-  if (current === "unavailable") return { ok: false, error: "The clinic website database is not connected. Nothing was changed." };
+  if (current === "unavailable") return { ok: false, error: await sourceError() };
   if (!current) return { ok: false, error: "That enquiry is not available." };
   if (current.status !== fromStatus) return { ok: false, error: "The status changed before this was saved. Reload the enquiry.", field: "status" };
   const client = await staffTx(access, (db) => getClientBySlug(db, current.clinicId));
@@ -58,7 +58,7 @@ export async function updateEnquiryStatusAction(_prev: ActionState, form: FormDa
   if (editScope && !editScope.includes(current.clinicId)) return { ok: false, error: "You do not have permission to change follow-up status." };
   if (fromStatus !== toStatus) {
     const updated = await updateEnquiryStatus(editScope, id, fromStatus, toStatus);
-    if (updated === "unavailable") return { ok: false, error: "The clinic website database is not connected. Nothing was changed." };
+    if (updated === "unavailable") return { ok: false, error: await sourceError() };
     if (!updated) return { ok: false, error: "The status changed before this was saved. Reload the enquiry.", field: "status" };
   }
   try {
@@ -90,4 +90,9 @@ export async function updateEnquiryStatusAction(_prev: ActionState, form: FormDa
   revalidatePath(`/enquiries/${id}`);
   revalidatePath("/enquiries");
   return { ok: true, message: fromStatus === toStatus ? "Note saved. The follow-up status is unchanged." : "Follow-up status saved." };
+}
+
+async function sourceError(): Promise<string> {
+  const connection = await enquiryConnection();
+  return enquiryUnavailableCopy(connection, "The clinic website database is not connected. Nothing was changed.");
 }

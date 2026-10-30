@@ -4,6 +4,7 @@ import { requireAccess } from "@/lib/session";
 import { staffTx } from "@/lib/db";
 import {
   canSearchEnquiryPerson,
+  enquiryConnection,
   enquiryCsv,
   enquiryWindow,
   listEnquiryBoard,
@@ -39,7 +40,11 @@ export async function GET(request: Request) {
     contact,
   };
   const board = await listEnquiryBoard(scope, filters, window);
-  if (!board.connected) return new NextResponse("The clinic website database is not connected.", { status: 503 });
+  if (!board.connected) {
+    const connection = await enquiryConnection();
+    const message = connection.refused ? "The enquiry database target was refused." : "The clinic website database is not connected.";
+    return new NextResponse(message, { status: 503 });
+  }
   const websites = await staffTx(access, (db) => listFormWebsites(db, null));
   const websiteNames = new Map(websites.flatMap((site) => site.enquiry_key ? [[site.enquiry_key, site.name] as const] : []));
   const rows = board.items.filter((item) => !item.isSynthetic);

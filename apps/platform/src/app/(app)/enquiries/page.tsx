@@ -16,6 +16,8 @@ import {
   ENQUIRY_PAGE_SIZE,
   STATUS_LABEL,
   canSearchEnquiryPerson,
+  enquiryConnection,
+  enquiryUnavailableCopy,
   enquiryWindow,
   formName,
   listEnquiryBoard,
@@ -86,6 +88,7 @@ export default async function EnquiriesPage({ searchParams }: { searchParams: Pr
   const formOptions = new Map(KNOWN_FORMS.map((item) => [item.key, item.name]));
   for (const item of forms) formOptions.set(item.key, item.name);
   const preserved = { clinic, website, form, status, notification, q: reference, person, from: window.from, to: window.to };
+  const source = board.connected ? null : await enquiryConnection();
   const lastPage = Math.max(1, Math.ceil(board.total / ENQUIRY_PAGE_SIZE));
   return (
     <EnquiryTabs>
@@ -95,7 +98,7 @@ export default async function EnquiriesPage({ searchParams }: { searchParams: Pr
       />
       {denied && <div className="mb-4"><Notice tone="bad" title="Not available">You do not have access to that clinic.</Notice></div>}
       {personRequested && !personAllowed && <div className="mb-4"><Notice tone="neutral">Search by name, email or telephone is limited to staff who can edit the client. Reference search is available.</Notice></div>}
-      {!board.connected && <EmptyState title="No enquiries are available">The clinic website database is not connected. Submitted requests stay there until it is.</EmptyState>}
+      {!board.connected && <EmptyState title="No enquiries are available">{enquiryUnavailableCopy(source ?? { configured: false, refused: false }, "The clinic website database is not connected. Submitted requests stay there until it is.")}</EmptyState>}
       {board.connected && (
         <>
           <EnquiryOverview board={board} window={window} websiteNames={websiteNames} />

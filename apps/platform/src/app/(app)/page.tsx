@@ -62,10 +62,12 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
   const notices: string[] = [];
   if (!registry) notices.push("The client registry is unavailable. Other sections remain available.");
   if (!enquiries.connected) {
-    const connection = await enquiryConnection().catch(() => ({ configured: false, reachable: false }));
-    notices.push(connection.configured
-      ? "The enquiry database is unavailable. Other sections remain available."
-      : "The enquiry database is not connected. Other sections remain available.");
+    const connection = await enquiryConnection().catch(() => ({ configured: false, reachable: false, refused: false }));
+    notices.push(connection.refused
+      ? "The enquiry database target was refused. Other sections remain available."
+      : connection.configured
+        ? "The enquiry database is unavailable. Other sections remain available."
+        : "The enquiry database is not connected. Other sections remain available.");
   } else if (!notifications.connected) {
     notices.push("Notification status is unavailable. Enquiry counts are still shown.");
   }

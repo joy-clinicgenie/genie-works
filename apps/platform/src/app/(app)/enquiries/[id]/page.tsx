@@ -9,7 +9,7 @@ import { EmptyState } from "@/components/ui/Notice";
 import { EnquiryTabs } from "@/components/modules/EnquiryTabs";
 import { EnquiryFollowUp } from "@/components/modules/EnquiryFollowUp";
 import { EnquiryNotification } from "@/components/modules/EnquiryNotification";
-import { STATUS_LABEL, canRetryNotifications, formName, getFormSubmission, sourceLabel, submissionClinicScope, type SubmissionStatus } from "@/lib/form-submissions";
+import { STATUS_LABEL, canRetryNotifications, enquiryConnection, enquiryUnavailableCopy, formName, getFormSubmission, sourceLabel, submissionClinicScope, type SubmissionStatus } from "@/lib/form-submissions";
 
 export const dynamic = "force-dynamic";
 
@@ -20,7 +20,8 @@ export default async function EnquiryPage({ params }: { params: Promise<{ id: st
   const { id } = await params;
   const submission = await getFormSubmission(submissionClinicScope(access), id);
   if (submission === "unavailable") {
-    return <EmptyState title="This enquiry could not be loaded">The clinic website database is not connected. Nothing was changed.</EmptyState>;
+    const source = await enquiryConnection();
+    return <EmptyState title="This enquiry could not be loaded">{enquiryUnavailableCopy(source, "The clinic website database is not connected. Nothing was changed.")}</EmptyState>;
   }
   if (!submission) notFound();
   const { client, events, retries } = await staffTx(access, async (db) => ({

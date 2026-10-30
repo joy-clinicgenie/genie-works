@@ -13,8 +13,11 @@ import { clientLabel } from "@/lib/client-label";
 import {
   ENQUIRY_PAGE_SIZE,
   canRetryNotifications,
+  enquiryConnection,
+  enquiryUnavailableCopy,
   enquiryWindow,
   listNotifications,
+  notificationBoundary,
   notificationFailure,
   notificationFilter,
   submissionClinicScope,
@@ -31,14 +34,6 @@ const STATUS_TONE: Record<NotificationStatus, Tone> = {
   failed: "bad",
   exhausted: "bad",
   unconfigured: "neutral",
-};
-
-const STATUS_LABEL: Record<NotificationStatus, string> = {
-  pending: "Pending",
-  sent: "Sent",
-  failed: "Failed",
-  exhausted: "Failed",
-  unconfigured: "Not configured",
 };
 
 function queryHref(values: Record<string, string | undefined>, page?: number): string {
@@ -89,16 +84,17 @@ export default async function NotificationStatusPage({ searchParams }: { searchP
     }
   }
   const preserved = { clinic, website, notification: status, from: window.from, to: window.to };
+  const source = data.connected ? null : await enquiryConnection();
   const lastPage = data.connected ? Math.max(1, Math.ceil(data.total / ENQUIRY_PAGE_SIZE)) : 1;
   const columns = canRetry ? 10 : 9;
   return (
     <EnquiryTabs>
       <PageHeader
         title="Notification status"
-        description="Each row is a clinic email for an enquiry that is already stored. Pending means the email is waiting to be sent. Sent means the provider accepted the message, not that the mailbox confirmed delivery. Failed and Not configured are delivery outcomes. A retry sends the existing notification again and does not create another enquiry."
+        description="Each row is a clinic notification for an enquiry that is already stored. Retry requested means a staff retry is waiting. Processing means the source-system sender has the row. Sent means the provider accepted the message. Inbox delivery is not confirmed. Failed and Not configured are not provider acceptance. A retry does not create another enquiry. Genie Works does not send the email."
       />
       {denied && <div className="mb-4"><Notice tone="bad" title="Not available">You do not have access to that clinic.</Notice></div>}
-      {!data.connected && <EmptyState title="Notification status is not available">The clinic website database is not connected. Nothing was changed.</EmptyState>}
+      {!data.connected && <EmptyState title="Notification status is not available">{enquiryUnavailableCopy(source ?? { configured: false, refused: false }, "The clinic website database is not connected. Nothing was changed.")}</EmptyState>}
       {data.connected && (
         <>
           <FilterBar clearHref="/enquiries/notifications">
@@ -129,6 +125,7 @@ export default async function NotificationStatusPage({ searchParams }: { searchP
                 {data.items.map((item) => {
                   const manual = retriesByOutbox.get(item.id) ?? [];
                   const failure = notificationFailure(item.errorCode);
+                  const boundary = notificationBoundary({ status: item.status, leasedUntil: item.leasedUntil, manualRetry: manual.length > 0 });
                   return (
                     <tr key={item.id}>
                       <Td>
@@ -138,7 +135,7 @@ export default async function NotificationStatusPage({ searchParams }: { searchP
                       <Td><Link href={`/enquiries/${item.enquiryId}`} className="font-medium text-action hover:underline">{item.reference}</Link></Td>
                       <Td className="whitespace-nowrap">{formatDateTime(item.submittedAt)}</Td>
                       <Td>
-                        <Badge tone={STATUS_TONE[item.status]}>{STATUS_LABEL[item.status]}</Badge>
+                        <Badge tone={STATUS_TONE[item.status]}>{boundary.label}</Badge>
                         {failure && item.errorCode && <div className="mt-1 text-xs text-muted">{failure} {item.errorCode}</div>}
                       </Td>
                       <Td>{item.attempts}</Td>

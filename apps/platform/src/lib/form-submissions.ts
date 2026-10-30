@@ -1,6 +1,6 @@
 import { randomBytes } from "node:crypto";
 import pg from "pg";
-import { canManageRegistry, enquiryStatusCountQuery, formatDateTime, setEnquiryFollowUp, todaySgt, websiteFormConfigPresent, type AccessProfile } from "@clinic-genie/db";
+import { assertEnquiryFixtureUrl, canManageRegistry, enquiryStatusCountQuery, formatDateTime, setEnquiryFollowUp, todaySgt, websiteFormConfigPresent, type AccessProfile } from "@clinic-genie/db";
 import { customWindow, periodRange } from "@/lib/period-range";
 
 const STATUSES = ["new", "acknowledged", "closed"] as const;
@@ -191,6 +191,64 @@ export function notificationLabel(status: NotificationStatus | null): string {
   return "No notification recorded";
 }
 
+export type NotificationBoundary = "none" | "waiting" | "retry_requested" | "processing" | "accepted" | "failed" | "unconfigured";
+
+/**
+ * Names the notification boundary that is actually stored.
+ * A lease is the source sender's claim. Provider acceptance is `sent`.
+ * Inbox delivery is never stored and is never labelled Delivered.
+ */
+export function notificationBoundary(input: {
+  status: NotificationStatus | null;
+  leasedUntil?: Date | string | null;
+  manualRetry?: boolean;
+  now?: Date;
+}): { boundary: NotificationBoundary; label: string; detail: string } {
+  const now = input.now ?? new Date();
+  const status = input.status;
+  if (!status) {
+    return { boundary: "none", label: "No notification recorded", detail: "No clinic notification is stored for this enquiry." };
+  }
+  if (status === "sent") {
+    return {
+      boundary: "accepted",
+      label: "Sent",
+      detail: "Sent means the provider accepted the message. Delivery to the mailbox is not confirmed.",
+    };
+  }
+  if (status === "failed" || status === "exhausted") {
+    return { boundary: "failed", label: "Failed", detail: "The enquiry remains stored. Provider acceptance is not recorded." };
+  }
+  if (status === "unconfigured") {
+    return { boundary: "unconfigured", label: "Not configured", detail: "No clinic mailbox is configured. This is not provider acceptance." };
+  }
+  const leased = input.leasedUntil ? new Date(input.leasedUntil) : null;
+  if (leased && !Number.isNaN(leased.getTime()) && leased.getTime() > now.getTime()) {
+    return {
+      boundary: "processing",
+      label: "Processing",
+      detail: "The source-system sender has this notification. Provider acceptance is not recorded. This is not inbox delivery.",
+    };
+  }
+  if (input.manualRetry) {
+    return {
+      boundary: "retry_requested",
+      label: "Retry requested",
+      detail: "A staff retry is waiting for the source-system sender. Provider acceptance is not recorded.",
+    };
+  }
+  return {
+    boundary: "waiting",
+    label: "Pending",
+    detail: "Waiting for the source-system sender. This is not provider acceptance or inbox delivery.",
+  };
+}
+
+export function enquiryUnavailableCopy(connection: { configured: boolean; refused: boolean }, fallback: string): string {
+  if (connection.refused) return "The enquiry database target was refused before any read or write. Nothing was changed.";
+  return fallback;
+}
+
 const FAILURE_EXPLANATIONS: Record<string, string> = {
   sink_rejected: "The mail sink rejected the message.",
   mailbox_unconfigured: "No clinic mailbox is configured.",
@@ -261,26 +319,56 @@ function enquiryWhere(
   return { sql: clauses.join(" and "), params };
 }
 
-const globalForEnquiry = globalThis as unknown as { enquiryPool?: pg.Pool };
+const globalForEnquiry = globalThis as unknown as { enquiryPool?: pg.Pool; enquiryPoolKey?: string };
 
-export async function enquiryConnection(): Promise<{ configured: boolean; reachable: boolean }> {
+function closeEnquiryPool(): void {
+  const pool = globalForEnquiry.enquiryPool;
+  globalForEnquiry.enquiryPool = undefined;
+  globalForEnquiry.enquiryPoolKey = undefined;
+  if (pool) void pool.end().catch(() => undefined);
+}
+
+/** Empty means not configured. Any other target must be the local enquiry fixture before a connection is opened. */
+export async function enquiryConnection(): Promise<{ configured: boolean; reachable: boolean; refused: boolean }> {
+  const url = process.env.ENQUIRY_DATABASE_URL?.trim();
+  if (!url) {
+    closeEnquiryPool();
+    return { configured: false, reachable: false, refused: false };
+  }
+  try {
+    assertEnquiryFixtureUrl(url);
+  } catch {
+    closeEnquiryPool();
+    return { configured: true, reachable: false, refused: true };
+  }
   const pool = enquiryPool();
-  if (!pool) return { configured: false, reachable: false };
+  if (!pool) return { configured: true, reachable: false, refused: true };
   try {
     await pool.query("select 1");
-    return { configured: true, reachable: true };
+    return { configured: true, reachable: true, refused: false };
   } catch {
-    return { configured: true, reachable: false };
+    return { configured: true, reachable: false, refused: false };
   }
 }
 
 function enquiryPool(): pg.Pool | null {
-  const url = process.env.ENQUIRY_DATABASE_URL?.trim();
-  if (!url) return null;
-  if (!globalForEnquiry.enquiryPool) {
-    globalForEnquiry.enquiryPool = new pg.Pool({ connectionString: url, max: 2, connectionTimeoutMillis: 2000 });
+  const url = process.env.ENQUIRY_DATABASE_URL?.trim() ?? "";
+  if (!url) {
+    closeEnquiryPool();
+    return null;
   }
-  return globalForEnquiry.enquiryPool;
+  try {
+    assertEnquiryFixtureUrl(url);
+  } catch {
+    closeEnquiryPool();
+    return null;
+  }
+  if (globalForEnquiry.enquiryPool && globalForEnquiry.enquiryPoolKey === url) return globalForEnquiry.enquiryPool;
+  closeEnquiryPool();
+  const pool = new pg.Pool({ connectionString: url, max: 2, connectionTimeoutMillis: 2000 });
+  globalForEnquiry.enquiryPool = pool;
+  globalForEnquiry.enquiryPoolKey = url;
+  return pool;
 }
 
 async function readEnquiry<T>(query: string, params: unknown[]): Promise<T[] | null> {
@@ -583,6 +671,7 @@ export interface ClinicNotification {
   attempts: number;
   lastAttemptAt: Date | null;
   nextAttemptAt: Date | null;
+  leasedUntil: Date | null;
   errorCode: string | null;
   senderAttempts: SenderAttempt[];
 }
@@ -600,6 +689,7 @@ export interface NotificationRow {
   errorCode: string | null;
   lastAttemptAt: Date | null;
   nextAttemptAt: Date | null;
+  leasedUntil: Date | null;
   latestOrigin: "Manual" | "Automatic" | null;
   updatedAt: Date;
 }
@@ -627,6 +717,7 @@ interface NotificationQueryRow {
   last_error_code: string | null;
   last_attempt_at: Date | null;
   next_attempt_at: Date | null;
+  leased_until: Date | null;
   updated_at: Date;
   triggered_by?: string | null;
 }
@@ -638,9 +729,10 @@ async function readClinicNotification(enquiryId: string): Promise<ClinicNotifica
     attempts: number;
     last_attempt_at: Date | null;
     next_attempt_at: Date | null;
+    leased_until: Date | null;
     last_error_code: string | null;
   }>(
-    `select id, status, attempts, coalesce(last_attempt_at, sent_at) as last_attempt_at, next_attempt_at, last_error_code
+    `select id, status, attempts, coalesce(last_attempt_at, sent_at) as last_attempt_at, next_attempt_at, leased_until, last_error_code
      from notification_outbox
      where enquiry_id = $1 and event_type = 'clinic_notification'
      order by updated_at desc
@@ -662,6 +754,7 @@ async function readClinicNotification(enquiryId: string): Promise<ClinicNotifica
     attempts: Number(row.attempts),
     lastAttemptAt: row.last_attempt_at,
     nextAttemptAt: row.next_attempt_at,
+    leasedUntil: row.leased_until,
     errorCode: row.last_error_code,
     senderAttempts: (attempts ?? []).flatMap((attempt) => {
       const origin = attemptOrigin(attempt.triggered_by);
@@ -711,6 +804,7 @@ function toNotificationRow(row: NotificationQueryRow): NotificationRow {
     errorCode: row.last_error_code,
     lastAttemptAt: row.last_attempt_at,
     nextAttemptAt: row.next_attempt_at,
+    leasedUntil: row.leased_until,
     latestOrigin: attemptOrigin(row.triggered_by),
     updatedAt: row.updated_at,
   };
@@ -727,7 +821,7 @@ export async function listNotifications(scope: string[] | null, filters: Notific
   const offset = where.params.length + 2;
   const select = `o.id, o.enquiry_id, o.clinic_id, c.display_name as clinic_name, e.website_key, e.public_reference,
      e.created_at as submitted_at, o.status, o.attempts, o.last_error_code,
-     coalesce(o.last_attempt_at, o.sent_at) as last_attempt_at, o.next_attempt_at, o.updated_at`;
+     coalesce(o.last_attempt_at, o.sent_at) as last_attempt_at, o.next_attempt_at, o.leased_until, o.updated_at`;
   const from = `from notification_outbox o
      join clinics c on c.id = o.clinic_id
      join enquiries e on e.id = o.enquiry_id`;
@@ -790,7 +884,7 @@ export async function listNotifications(scope: string[] | null, filters: Notific
   };
 }
 
-/** Puts an existing failed notification back to pending. Does not create an enquiry. */
+/** Puts a failed or exhausted notification back to pending. A sent row is left unchanged. Does not create an enquiry. */
 export async function retryNotification(scope: string[] | null, id: string): Promise<{ id: string; clinicId: string; enquiryId: string } | null | "unavailable"> {
   if (!/^[0-9a-f-]{36}$/.test(id)) return null;
   const pool = enquiryPool();
@@ -839,8 +933,8 @@ export async function createTestSubmission(clinicId: string): Promise<{ id: stri
 }
 
 function csvCell(value: string): string {
-  const safe = /^[=+\-@]/.test(value) ? `'${value}` : value;
-  if (/[",\n]/.test(safe)) return `"${safe.replace(/"/g, '""')}"`;
+  const safe = /^[\t\r=+\-@]/.test(value) ? `'${value}` : value;
+  if (/[",\n\r]/.test(safe)) return `"${safe.replace(/"/g, '""')}"`;
   return safe;
 }
 

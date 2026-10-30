@@ -1,7 +1,25 @@
-import { describe, expect, it } from "vitest";
-import { canExport, type AccessProfile } from "@clinic-genie/db";
+import { afterAll, describe, expect, it, vi } from "vitest";
+import pg from "pg";
+import { assertEnquiryFixtureUrl, canExport, type AccessProfile } from "@clinic-genie/db";
+import { enquiryFixtureUrlFromAdmin } from "../../../../packages/db/src/testing/targets";
+import { resetEnquiryFixture } from "../../../../packages/db/src/testing/enquiry-fixture";
 import { formPageHref } from "./form-catalogue";
-import { attemptOrigin, enquiryChange, enquiryCsv, enquiryPage, enquiryWindow, notificationFailure, notificationLabel, sourceLabel, type SubmissionListItem } from "./form-submissions";
+import {
+  attemptOrigin,
+  enquiryChange,
+  enquiryConnection,
+  enquiryCsv,
+  enquiryPage,
+  enquiryWindow,
+  getFormSubmission,
+  listEnquiryBoard,
+  notificationBoundary,
+  notificationFailure,
+  notificationLabel,
+  sourceLabel,
+  submissionStatusCounts,
+  type SubmissionListItem,
+} from "./form-submissions";
 
 describe("enquiry comparison and export", () => {
   it("shows a numerical change and no percentage when the previous period is zero", () => {
@@ -31,6 +49,16 @@ describe("enquiry comparison and export", () => {
   it("labels provider acceptance as Sent and leaves unknown sources uncaptured", () => {
     expect(notificationLabel("sent")).toBe("Sent");
     expect(notificationLabel("sent")).not.toContain("Delivered");
+    const now = new Date("2026-10-30T12:00:00.000Z");
+    const accepted = notificationBoundary({ status: "sent", now });
+    expect(accepted).toMatchObject({ boundary: "accepted", label: "Sent" });
+    expect(accepted.detail).toContain("provider accepted");
+    expect(accepted.detail).not.toContain("Delivered");
+    expect(notificationBoundary({ status: "pending", manualRetry: true, now })).toMatchObject({ boundary: "retry_requested", label: "Retry requested" });
+    expect(notificationBoundary({ status: "pending", leasedUntil: "2026-10-30T12:05:00.000Z", manualRetry: true, now })).toMatchObject({ boundary: "processing", label: "Processing" });
+    expect(notificationBoundary({ status: "pending", leasedUntil: "2026-10-30T11:00:00.000Z", now })).toMatchObject({ boundary: "waiting", label: "Pending" });
+    expect(notificationBoundary({ status: "failed", now }).detail).not.toContain("Delivered");
+    expect(notificationBoundary({ status: null, now }).boundary).toBe("none");
     expect(notificationFailure("sink_rejected")).toBe("The mail sink rejected the message.");
     expect(notificationFailure("mailbox_unconfigured")).toBe("No clinic mailbox is configured.");
     expect(notificationFailure("smtp_timeout")).toBe("No explanation is recorded for this code.");
@@ -70,6 +98,28 @@ describe("enquiry comparison and export", () => {
     expect(detailed).not.toContain("clinical note");
   });
 
+  it("prefixes spreadsheet formulas and quotes carriage returns", () => {
+    const row = sample("=1+1", false);
+    row.clinicName = "+cmd,quoted";
+    row.websiteKey = "-1";
+    row.formKey = "appointment-enquiry";
+    row.submitterName = "\t=HYPERLINK(\"http://example.invalid\")";
+    row.email = "@sum";
+    row.contactNumber = "\r000";
+    const csv = enquiryCsv([row], new Map(), { contact: true });
+    expect(csv).toContain("'=1+1");
+    expect(csv).toContain("\"'+cmd,quoted\"");
+    expect(csv).toContain("'-1");
+    expect(csv).toContain("\"'\t=HYPERLINK(\"\"http://example.invalid\"\")\"");
+    expect(csv).toContain("'@sum");
+    expect(csv).toContain("\"'\r000\"");
+    expect(csv).not.toContain("Message");
+    expect(csv).not.toMatch(/(^|,)=/);
+    expect(csv).not.toMatch(/(^|,)\+/);
+    expect(csv).not.toMatch(/(^|,)-/);
+    expect(csv).not.toMatch(/(^|,)@/);
+  });
+
   it("limits export to admins and managers", () => {
     expect(canExport(profile("admin"))).toBe(true);
     expect(canExport(profile("manager"))).toBe(true);
@@ -81,6 +131,106 @@ describe("enquiry comparison and export", () => {
   it("builds a website form address from the site URL and path", () => {
     expect(formPageHref("https://harbourview-dental.example.invalid", "/request-appointment")).toBe("https://harbourview-dental.example.invalid/request-appointment");
     expect(formPageHref(null, "/contact")).toBeNull();
+  });
+});
+
+describe("isolated enquiry fixture", () => {
+  const previousUrl = process.env.ENQUIRY_DATABASE_URL;
+
+  afterAll(async () => {
+    if (previousUrl === undefined) delete process.env.ENQUIRY_DATABASE_URL;
+    else process.env.ENQUIRY_DATABASE_URL = previousUrl;
+    await enquiryConnection();
+    const admin = process.env.DATABASE_ADMIN_URL;
+    if (!admin) return;
+    const fixture = enquiryFixtureUrlFromAdmin(admin);
+    try {
+      assertEnquiryFixtureUrl(fixture);
+      await resetEnquiryFixture(fixture);
+    } catch {
+      // A non-local admin URL never reaches the fixture.
+    }
+  });
+
+  it("refuses the platform database and the sibling clinic port before opening a connection", async () => {
+    const created = vi.spyOn(pg, "Pool");
+    const previous = process.env.ENQUIRY_DATABASE_URL;
+    try {
+      process.env.ENQUIRY_DATABASE_URL = "postgresql://local@127.0.0.1:54339/clinic_genie";
+      expect(await enquiryConnection()).toEqual({ configured: true, reachable: false, refused: true });
+      expect((await listEnquiryBoard(null, {})).connected).toBe(false);
+      process.env.ENQUIRY_DATABASE_URL = "postgresql://local@127.0.0.1:54329/clinic_genie_enquiry_test";
+      expect(await enquiryConnection()).toEqual({ configured: true, reachable: false, refused: true });
+      expect(created).not.toHaveBeenCalled();
+    } finally {
+      created.mockRestore();
+      if (previous === undefined) delete process.env.ENQUIRY_DATABASE_URL;
+      else process.env.ENQUIRY_DATABASE_URL = previous;
+    }
+  });
+
+  it("keeps demonstration rows out of production totals and exports", async () => {
+    const admin = process.env.DATABASE_ADMIN_URL;
+    if (!admin) throw new Error("DATABASE_ADMIN_URL is required for the enquiry fixture.");
+    const fixture = enquiryFixtureUrlFromAdmin(admin);
+    const target = assertEnquiryFixtureUrl(fixture);
+    expect(target.database).toBe("clinic_genie_enquiry_test");
+    expect(target.host).toBe("127.0.0.1");
+    process.env.ENQUIRY_DATABASE_URL = fixture;
+    await resetEnquiryFixture(fixture);
+    const october = enquiryWindow("2026-10-01", "2026-10-30", "2026-10-30");
+    const board = await listEnquiryBoard(null, {}, october);
+    expect(board.connected).toBe(true);
+    expect(board.total).toBe(5);
+    expect(board.currentTotal).toBe(0);
+    expect(board.previousTotal).toBe(0);
+    expect(board.breakdowns.client).toEqual([]);
+    expect(board.breakdowns.website).toEqual([]);
+    expect(board.breakdowns.form).toEqual([]);
+    expect(board.breakdowns.source).toEqual([]);
+    expect(board.items.every((item) => item.isSynthetic)).toBe(true);
+    expect(board.items.map((item) => item.reference).sort()).toEqual([
+      "TEST-HV-ACK-002",
+      "TEST-HV-NEW-001",
+      "TEST-MS-ACK-005",
+      "TEST-MS-NEW-004",
+      "TEST-NG-NEW-006",
+    ]);
+    const bySource = board.items.reduce<Record<string, number>>((counts, item) => {
+      counts[item.attributionSource] = (counts[item.attributionSource] ?? 0) + 1;
+      return counts;
+    }, {});
+    expect(bySource).toEqual({ campaign: 1, direct: 2, organic: 2 });
+
+    expect((await listEnquiryBoard(null, { clinicId: "harbourview-dental" }, october)).total).toBe(2);
+    expect((await listEnquiryBoard(null, { websiteKey: "meridian-skin-staging" }, october)).items.map((item) => item.reference)).toEqual(["TEST-MS-ACK-005"]);
+    expect((await listEnquiryBoard(null, { formKey: "contact" }, october)).total).toBe(2);
+    expect((await listEnquiryBoard(null, { status: "new" }, october)).total).toBe(3);
+    expect((await listEnquiryBoard(["northgate-physio"], {}, october)).total).toBe(1);
+    expect((await listEnquiryBoard(["northgate-physio"], { clinicId: "harbourview-dental" }, october)).total).toBe(0);
+
+    const empty = await listEnquiryBoard(null, {}, enquiryWindow("2020-01-01", "2020-01-31", "2026-10-30"));
+    expect(empty.connected).toBe(true);
+    expect(empty.total).toBe(0);
+    expect(empty.currentTotal).toBe(0);
+    expect(empty.previousTotal).toBe(0);
+
+    const counts = await submissionStatusCounts(null, { from: "2026-10-01", to: "2026-10-30" });
+    expect(counts).toEqual({ connected: true, counts: { new: 0, acknowledged: 0, closed: 0 } });
+
+    const failed = await getFormSubmission(null, "11111111-1111-4111-8111-111111111102");
+    expect(failed).not.toBe("unavailable");
+    if (!failed || failed === "unavailable") throw new Error("The failed-notification enquiry was not stored.");
+    expect(failed.status).toBe("acknowledged");
+    expect(failed.notification?.status).toBe("failed");
+    expect(failed.message).toContain("Synthetic test enquiry");
+
+    const exported = await listEnquiryBoard(null, { page: "all", productionOnly: true, contact: true }, october);
+    expect(exported.total).toBe(0);
+    const csv = enquiryCsv(exported.items, new Map(), { contact: true });
+    expect(csv).toBe("Received,Reference,Client,Website,Form,Name,Telephone,Email,Follow-up status,Notification");
+    expect(csv).not.toContain("Synthetic test enquiry");
+    expect(csv).not.toContain("example.invalid");
   });
 });
 

@@ -65,8 +65,11 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
       : Promise.resolve(null),
   ]);
   const google = Boolean(process.env.AUTH_GOOGLE_ID && process.env.AUTH_GOOGLE_SECRET);
-  const formsStatus = !forms.configured ? "Not connected" : forms.reachable ? "Reachable" : "Unreachable";
+  const formsStatus = !forms.configured ? "Not connected" : forms.refused ? "Refused" : forms.reachable ? "Reachable" : "Unreachable";
   const formsTone: Tone = !forms.configured ? "neutral" : forms.reachable ? "good" : "warn";
+  const formsDetail = forms.refused
+    ? "The enquiry target was refused before any read or write. Enquiry messages stay in their source database."
+    : "Read from the clinic website database. A submission is not copied into Genie Works. Demonstration submissions stay out of production totals. A contact click is not an enquiry.";
   const latest = admin?.events[0];
   const restore = admin?.status.lastRestoreTest;
   const activeStaff = admin?.staff.filter((person) => person.active).length ?? 0;
@@ -108,7 +111,7 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
             name="Enquiry records"
             status={formsStatus}
             tone={formsTone}
-            detail="Read from the clinic website database. A submission is not copied into Genie Works, and a contact click is not an enquiry."
+            detail={formsDetail}
           />
           <Connection
             name="Google Workspace"

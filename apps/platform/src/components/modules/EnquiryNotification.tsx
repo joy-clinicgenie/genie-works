@@ -1,7 +1,7 @@
 import { formatDateTime } from "@clinic-genie/db";
 import { Badge, type Tone } from "@/components/ui/Badge";
 import { RetryNotification } from "@/components/modules/RetryNotification";
-import { notificationFailure, notificationLabel, type ClinicNotification, type NotificationStatus } from "@/lib/form-submissions";
+import { notificationBoundary, notificationFailure, type ClinicNotification, type NotificationStatus } from "@/lib/form-submissions";
 
 const TONE: Record<NotificationStatus, Tone> = {
   pending: "warn",
@@ -30,8 +30,12 @@ export function EnquiryNotification({
   manualRetries: Array<{ id: string; at: Date; actor: string }>;
   canRetry: boolean;
 }) {
-  const label = notificationLabel(notification?.status ?? status);
   const tone = notification?.status ?? status;
+  const boundary = notificationBoundary({
+    status: tone,
+    leasedUntil: notification?.leasedUntil,
+    manualRetry: manualRetries.length > 0,
+  });
   const failure = notificationFailure(notification?.errorCode);
   const nextRetry = notification?.nextAttemptAt ? formatDateTime(notification.nextAttemptAt) : "None scheduled";
   const lastAttempt = notification?.lastAttemptAt ? formatDateTime(notification.lastAttemptAt) : "Not recorded";
@@ -46,7 +50,7 @@ export function EnquiryNotification({
         </div>
         <div>
           <dt className="text-xs font-semibold uppercase tracking-wide text-muted">Clinic notification</dt>
-          <dd className="mt-0.5">{tone ? <Badge tone={TONE[tone]}>{label}</Badge> : label}</dd>
+          <dd className="mt-0.5">{tone ? <Badge tone={TONE[tone]}>{boundary.label}</Badge> : boundary.label}</dd>
         </div>
         <div>
           <dt className="text-xs font-semibold uppercase tracking-wide text-muted">Attempts</dt>
@@ -61,7 +65,7 @@ export function EnquiryNotification({
           <dd className="mt-0.5">{nextRetry}</dd>
         </div>
       </dl>
-      {tone === "sent" && <p className="mt-3 text-xs text-muted">Sent means the provider accepted the message. Delivery to the mailbox is not confirmed.</p>}
+      <p className="mt-3 text-xs text-muted">{boundary.detail}</p>
       {failure && notification?.errorCode && (
         <p className="mt-3 text-sm">{failure} <span className="text-muted">{notification.errorCode}</span></p>
       )}
