@@ -1,6 +1,8 @@
 node_modules/
 .next/
 .next-audit/
+.next-batch*/
+e2e-batch08/.run/
 out/
 dist/
 coverage/

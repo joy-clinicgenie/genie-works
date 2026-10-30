@@ -1,0 +1,99 @@
+import pg from "pg";
+import { expect, test } from "@playwright/test";
+import { DEV_ORIGIN, openAs } from "./support.ts";
+import { ENQUIRY_DB, adminUrl } from "./targets.ts";
+
+const meridianNew = "11111111-1111-4111-8111-111111111104";
+
+test("production mode refuses the enquiry fixture before a read", async ({ browser }) => {
+  const { page, close } = await openAs(browser, "admin@example.invalid");
+  try {
+    await page.goto("/enquiries");
+    await expect(page.getByText("The enquiry database target was refused before any read or write.")).toBeVisible();
+    await expect(page.getByText("TEST-HV-NEW-001")).toHaveCount(0);
+    const exported = await page.request.get("/enquiries/export");
+    expect(exported.status()).toBe(503);
+    expect(await exported.text()).toContain("refused");
+  } finally {
+    await close();
+  }
+});
+
+async function resetFixtureRows(): Promise<void> {
+  const fixture = new pg.Client({ connectionString: adminUrl(ENQUIRY_DB) });
+  await fixture.connect();
+  try {
+    await fixture.query("update enquiries set status = 'new' where public_reference = 'TEST-MS-NEW-004'");
+    await fixture.query("update notification_outbox set status = 'failed', leased_until = null, updated_at = now() where id = $1", ["22222222-2222-4222-8222-222222222202"]);
+  } finally {
+    await fixture.end();
+  }
+}
+
+test("fixture enquiry status, retry and export stay inside the local fixture", async ({ browser }) => {
+  const ready = await fetch(`${DEV_ORIGIN}/sign-in`);
+  expect(ready.status).toBe(200);
+  await resetFixtureRows();
+
+  const specialist = await openAs(browser, "specialist-a@example.invalid");
+  try {
+    await specialist.page.goto(`${DEV_ORIGIN}/enquiries?q=TEST-MS-NEW-004`);
+    await expect(specialist.page.getByText("TEST-MS-NEW-004")).toBeVisible();
+    await specialist.page.goto(`${DEV_ORIGIN}/enquiries/${meridianNew}`);
+    await expect(specialist.page).toHaveURL(new RegExp(`/enquiries/${meridianNew}$`));
+    await specialist.page.getByLabel("Follow-up status").selectOption("acknowledged");
+    await specialist.page.getByRole("button", { name: "Save follow-up" }).click();
+    await expect(specialist.page.getByText("Follow-up status saved.")).toBeVisible();
+    await specialist.page.reload();
+    await expect(specialist.page.getByLabel("Follow-up status")).toHaveValue("acknowledged");
+  } finally {
+    await specialist.close();
+  }
+
+  const reviewer = await openAs(browser, "reviewer@example.invalid");
+  try {
+    await reviewer.page.goto(`${DEV_ORIGIN}/enquiries/11111111-1111-4111-8111-111111111102`);
+    await expect(reviewer.page.getByText("Changing follow-up status needs edit access for the client.")).toBeVisible();
+    await expect(reviewer.page.getByRole("button", { name: "Save follow-up" })).toHaveCount(0);
+  } finally {
+    await reviewer.close();
+  }
+
+  const other = await openAs(browser, "specialist-b@example.invalid");
+  try {
+    const hidden = await other.page.request.get(`${DEV_ORIGIN}/enquiries/${meridianNew}`);
+    expect(hidden.status()).toBe(404);
+    await other.page.goto(`${DEV_ORIGIN}/enquiries/notifications?notification=failed`);
+    await expect(other.page.getByText("TEST-HV-ACK-002")).toHaveCount(0);
+  } finally {
+    await other.close();
+  }
+
+  const admin = await openAs(browser, "admin@example.invalid");
+  try {
+    await admin.page.goto(`${DEV_ORIGIN}/enquiries/notifications?notification=failed`);
+    const row = admin.page.locator("tr").filter({ hasText: "TEST-HV-ACK-002" });
+    await row.getByRole("button", { name: "Retry" }).click();
+    await expect(admin.page.locator("tr").filter({ hasText: "TEST-HV-ACK-002" })).toHaveCount(0);
+    await admin.page.goto(`${DEV_ORIGIN}/enquiries/notifications?notification=pending`);
+    await expect(admin.page.getByRole("row", { name: /TEST-HV-ACK-002/ })).toContainText("Retry requested");
+    const exported = await admin.page.request.get(`${DEV_ORIGIN}/enquiries/export`);
+    expect(exported.status()).toBe(200);
+    expect(exported.headers()["content-type"] ?? "").toContain("text/csv");
+    const csv = await exported.text();
+    expect(csv).not.toContain("TEST-HV-NEW-001");
+    expect(csv).not.toContain("harbour.person@example.invalid");
+  } finally {
+    await admin.close();
+  }
+
+  const reader = await openAs(browser, "readonly@example.invalid");
+  try {
+    await reader.page.goto(`${DEV_ORIGIN}/enquiries/notifications?notification=failed`);
+    await expect(reader.page.getByRole("button", { name: "Retry" })).toHaveCount(0);
+    const exported = await reader.page.request.get(`${DEV_ORIGIN}/enquiries/export`, { maxRedirects: 0 });
+    expect(exported.status()).toBe(403);
+  } finally {
+    await reader.close();
+  }
+});

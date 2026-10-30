@@ -3,7 +3,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useEffect, useSyncExternalStore, useState, type ReactNode } from "react";
+import { useEffect, useRef, useSyncExternalStore, useState, type ReactNode } from "react";
 import { ChevronLeft, ChevronRight, Menu, PanelLeft, X, LayoutDashboard, Building2, Inbox, ClipboardList, Search, BarChart3, LineChart, Settings, Shield } from "lucide-react";
 import { BackButton, BackSlotProvider } from "./BackButton";
 import { TopBar, type TopLink } from "./TopBar";
@@ -101,12 +101,25 @@ function writeNavCookie(value: "open" | "closed") {
 
 export function Shell({ workspace, modules, platform, header, account, staffName, clients, adds, navCollapsed = false, children }: { workspace: NavItem[]; modules: NavItem[]; platform: NavItem[]; header: ReactNode; account: ReactNode; staffName: string; clients: TopLink[]; adds: TopLink[]; navCollapsed?: boolean; children: ReactNode }) {
   const [open, setOpen] = useState(false);
+  const menuRef = useRef<HTMLElement>(null);
+  const menuButtonRef = useRef<HTMLButtonElement>(null);
   const collapsed = useSyncExternalStore(subscribeNav, cookieCollapsed, () => navCollapsed);
   useEffect(() => {
     if (document.cookie.includes(`${NAV_KEY}=`)) return;
     const stored = localStorage.getItem(NAV_KEY);
     if (stored === "closed" || stored === "open") writeNavCookie(stored);
   }, []);
+  useEffect(() => {
+    if (!open) return;
+    menuRef.current?.querySelector<HTMLElement>("a[href]")?.focus();
+    function onKey(event: KeyboardEvent) {
+      if (event.key !== "Escape") return;
+      setOpen(false);
+      menuButtonRef.current?.focus();
+    }
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [open]);
   const pathname = usePathname();
   const [lastPath, setLastPath] = useState(pathname);
   if (pathname !== lastPath) {
@@ -146,7 +159,7 @@ export function Shell({ workspace, modules, platform, header, account, staffName
       {open && (
         <div className="lg:hidden fixed inset-0 z-40">
           <button className="absolute inset-0 bg-ink/40" aria-label="Close menu" onClick={() => setOpen(false)} />
-          <aside className="absolute inset-y-0 left-0 flex w-72 max-w-[85vw] flex-col bg-surface shadow-pop" aria-label="Main menu">
+          <aside ref={menuRef} className="absolute inset-y-0 left-0 flex w-72 max-w-[85vw] flex-col bg-surface shadow-pop" aria-label="Main menu">
             {brand(28, () => setOpen(false))}
             <div className="min-h-0 flex-1 overflow-y-auto">
               <Navigation workspace={workspace} modules={modules} platform={platform} pathname={pathname} collapsed={false} />
@@ -157,7 +170,7 @@ export function Shell({ workspace, modules, platform, header, account, staffName
       )}
       <div className="flex min-h-dvh flex-col min-w-0">
         <header className="sticky top-0 z-30 flex w-full flex-wrap items-center gap-2 border-b border-line-strong bg-surface px-3 py-2 lg:min-h-16 lg:flex-nowrap lg:gap-3 lg:px-8 lg:py-3">
-          <button type="button" className="inline-flex size-11 shrink-0 items-center justify-center rounded-xl hover:bg-brand-pale focus-visible:outline focus-visible:outline-[3px] focus-visible:outline-offset-2 focus-visible:outline-action lg:hidden" aria-label="Open menu" aria-expanded={open} onClick={() => setOpen(true)}>
+          <button ref={menuButtonRef} type="button" className="inline-flex size-11 shrink-0 items-center justify-center rounded-xl hover:bg-brand-pale focus-visible:outline focus-visible:outline-[3px] focus-visible:outline-offset-2 focus-visible:outline-action lg:hidden" aria-label="Open menu" aria-expanded={open} onClick={() => setOpen(true)}>
             <Menu className="size-5" aria-hidden="true" />
           </button>
           <TopBar staffName={staffName} pages={[...workspace, ...modules, ...platform]} clients={clients} adds={adds} environment={header} />

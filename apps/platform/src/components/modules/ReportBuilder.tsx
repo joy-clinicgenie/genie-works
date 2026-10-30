@@ -160,6 +160,7 @@ export function ReportBuilder({
                 <legend className="mb-1 flex items-center gap-2 text-sm font-semibold">
                   <input
                     type="checkbox"
+                    aria-label={`${group.label} sections`}
                     className="size-4 accent-action"
                     checked={checked === keys.length}
                     ref={(node) => { if (node) node.indeterminate = checked > 0 && checked < keys.length; }}
