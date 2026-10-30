@@ -16,10 +16,17 @@ const TABLES: Record<RelatedRecordType, { table: string; titleColumn: string }> 
   report_snapshot: { table: "report_snapshots", titleColumn: "metric" },
   website: { table: "websites", titleColumn: "name" },
   account_reference: { table: "account_references", titleColumn: "label" },
+  blog_article: { table: "blog_articles", titleColumn: "title" },
 };
 
 export function isRelatedType(v: string): v is RelatedRecordType {
   return v in TABLES;
+}
+
+/** A link is stored only when both sides are present. A type with no record stays blank. */
+export function relatedPair(type: string | null | undefined, id: string | null | undefined): { type: string | null; id: string | null } {
+  if (!type || !id) return { type: null, id: null };
+  return { type, id };
 }
 
 /** Confirms a related record exists and belongs to the same client. Returns its display title. */

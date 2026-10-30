@@ -15,8 +15,14 @@ export function Badge({ tone = "neutral", children, className = "" }: { tone?: T
   return <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold whitespace-nowrap ${tones[tone]} ${className}`}>{children}</span>;
 }
 
+const NAMES: Record<string, string> = {
+  medical_claim: "HCSA claim",
+  medical_review: "HCSA",
+  medical_review_decided: "HCSA decided",
+};
+
 export function label(value: string): string {
-  return value.replace(/_/g, " ").replace(/^\w/, (c) => c.toUpperCase());
+  return NAMES[value] ?? value.replace(/_/g, " ").replace(/^\w/, (c) => c.toUpperCase());
 }
 
 export const TASK_STATUS_TONE: Record<string, Tone> = { open: "info", in_progress: "info", waiting: "warn", completed: "good", cancelled: "neutral" };

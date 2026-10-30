@@ -9,7 +9,7 @@ import { join, resolve } from "node:path";
 import { loadRootEnv } from "../src/env";
 
 loadRootEnv();
-const port = Number(process.env.EMBEDDED_PG_PORT || 54329);
+const port = Number(process.env.EMBEDDED_PG_PORT || 54339);
 const root = resolve(process.cwd().includes("packages/db") ? join(process.cwd(), "..", "..") : process.cwd());
 const databaseDir = resolve(root, process.env.EMBEDDED_PG_DIR || ".data/postgres");
 const dbName = "clinic_genie";

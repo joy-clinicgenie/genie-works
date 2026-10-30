@@ -1,10 +1,24 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
+import { cookies } from "next/headers";
 import { authProviders, signIn } from "@/lib/auth";
 import { getAccess } from "@/lib/session";
+import { SignInErrorProbe } from "@/components/modules/SignInErrorProbe";
 import { Button } from "@/components/ui/Button";
 import { Field, Input } from "@/components/ui/Field";
 import { Notice } from "@/components/ui/Notice";
+
+function dbHostKind(): "missing" | "local" | "remote" {
+  const raw = process.env.DATABASE_URL;
+  if (!raw) return "missing";
+  try {
+    const host = new URL(raw.replace(/^postgresql:/, "http:")).hostname;
+    if (host === "localhost" || host === "127.0.0.1" || host === "::1") return "local";
+    return "remote";
+  } catch {
+    return "missing";
+  }
+}
 
 export const metadata = { title: "Sign in" };
 
@@ -12,12 +26,19 @@ export default async function SignInPage({ searchParams }: { searchParams: Promi
   const access = await getAccess();
   if (access) redirect("/");
   const { error, sent } = await searchParams;
+  const cause = (await cookies()).get("gw_dbg")?.value;
+  let authUrlHost = "";
+  try {
+    authUrlHost = process.env.AUTH_URL ? new URL(process.env.AUTH_URL).host : "";
+  } catch {
+    authUrlHost = "invalid";
+  }
 
   async function sendLink(formData: FormData) {
     "use server";
     const email = String(formData.get("email") ?? "").trim().toLowerCase();
     await signIn("dev-link", { email, redirect: false, redirectTo: "/" });
-    redirect("/sign-in?sent=1");
+    redirect("/dev/magic-links");
   }
   async function google() {
     "use server";
@@ -27,14 +48,15 @@ export default async function SignInPage({ searchParams }: { searchParams: Promi
   return (
     <main className="min-h-dvh flex items-center justify-center px-4 py-12">
       <div className="card w-full max-w-md p-8">
-        <div className="flex items-center gap-3 mb-6">
+        <div className="mb-6 flex items-center gap-3">
           <img src="/brandmark.svg" alt="" width={36} height={36} />
-          <div>
-            <h1 className="text-xl font-semibold">Clinic Genie</h1>
-            <p className="text-sm text-muted">Staff sign in</p>
+          <div className="leading-tight">
+            <h1 className="text-xl font-semibold tracking-tight">Genie Works</h1>
+            <p className="text-[11px] italic text-muted">Internal Platform for Genies</p>
           </div>
         </div>
         {error && <Notice tone="bad" title="Sign in was not completed">{error === "AccessDenied" ? "This email is not an active staff account." : "Please try again or contact an administrator."}</Notice>}
+        <SignInErrorProbe error={error} cause={cause} dbHostKind={dbHostKind()} authUrlHost={authUrlHost} />
         {sent && <Notice tone="good" title="Sign-in link recorded">In development the link is not emailed. Open <Link href="/dev/magic-links" className="underline">the development links page</Link> to use it.</Notice>}
         {authProviders.devLinks && (
           <form action={sendLink} className="space-y-4 mt-4">

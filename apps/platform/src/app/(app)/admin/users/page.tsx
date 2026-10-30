@@ -13,12 +13,13 @@ export default async function AdminUsersPage() {
   const access = await requireAccess();
   const data = await staffTx(access, async (db) => {
     const staff = await listStaff(db);
-    const memberships = Object.fromEntries(await Promise.all(staff.map(async (s) => [s.id, await listMembershipsForUser(db, s.id)] as const)));
+    const memberships: Record<string, Awaited<ReturnType<typeof listMembershipsForUser>>> = {};
+    for (const person of staff) memberships[person.id] = await listMembershipsForUser(db, person.id);
     return { staff, memberships };
   });
   return (
     <>
-      <Notice tone="neutral" title="Role matrix (proposed, DECISIONS.md D6)">Admin and manager see every client. Specialist edits records for clients they are members of. Reviewer decides approvals and medical reviews for their clients. Read-only can only view. Client access is granted on each client&apos;s Profile tab.</Notice>
+      <Notice tone="neutral" title="Role matrix (proposed, DECISIONS.md D6)">Admin and manager see every client. Specialist edits records for clients they are members of. Reviewer decides approvals and HCSA reviews for their clients. Read-only can only view. Client access is granted on each client&apos;s Profile tab.</Notice>
       <Card className="mt-4">
         <CardHeader title="Staff" />
         <ul className="divide-y divide-line">

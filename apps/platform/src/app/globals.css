@@ -32,11 +32,11 @@
   --color-neutral: #4e6368;
   --color-neutral-bg: #eef3f4;
 
-  --radius-sm: 6px;
-  --radius-md: 10px;
-  --radius-lg: 14px;
+  --radius-sm: 10px;
+  --radius-md: 16px;
+  --radius-lg: 24px;
 
-  --shadow-card: 0 1px 2px rgba(23, 60, 64, 0.05), 0 1px 1px rgba(23, 60, 64, 0.03);
+  --shadow-card: 0 10px 30px rgba(23, 60, 64, 0.06);
   --shadow-pop: 0 8px 24px rgba(23, 60, 64, 0.12);
 }
 
@@ -77,9 +77,30 @@ body {
   font-variant-numeric: tabular-nums;
 }
 
+.article-line {
+  min-height: 1.75rem;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.article-line:focus,
+.article-line:focus-visible,
+.article-title:focus,
+.article-title:focus-visible,
+.article-plain:focus,
+.article-plain:focus-visible {
+  outline: none;
+  outline-offset: 0;
+}
+
+.article-line[data-empty="true"]::before {
+  content: attr(data-placeholder);
+  color: var(--color-muted);
+  pointer-events: none;
+}
+
 @utility card {
   background: var(--color-surface);
-  border: 1px solid var(--color-line);
-  border-radius: var(--radius-md);
+  border-radius: 1.5rem;
   box-shadow: var(--shadow-card);
 }

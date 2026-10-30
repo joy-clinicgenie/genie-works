@@ -1,5 +1,5 @@
 import type { PeriodComparison, SnapshotRow } from "@clinic-genie/db";
-import { formatDate } from "@clinic-genie/db";
+import { formatPeriod } from "@clinic-genie/db";
 import { Badge, label } from "@/components/ui/Badge";
 import { Table, Td, Th } from "@/components/ui/Table";
 
@@ -9,14 +9,14 @@ function fmt(v: number | null, unit: string): string {
 }
 
 export function ComparisonTable({ comparison }: { comparison: PeriodComparison }) {
-  const recorded = comparison.metrics.filter((m) => m.status !== "not_recorded");
+  const recorded = comparison.metrics.filter((m) => m.metric !== "patients" && m.status !== "not_recorded");
   return (
     <Table caption="Period comparison">
       <thead>
         <tr>
           <Th>Metric</Th>
-          <Th align="right">{formatDate(comparison.previous.start)} to {formatDate(comparison.previous.end)}</Th>
-          <Th align="right">{formatDate(comparison.current.start)} to {formatDate(comparison.current.end)}</Th>
+          <Th align="right">{formatPeriod(comparison.previous.start, comparison.previous.end, " to ")}</Th>
+          <Th align="right">{formatPeriod(comparison.current.start, comparison.current.end, " to ")}</Th>
           <Th align="right">Change</Th>
           <Th align="right">Change %</Th>
         </tr>
@@ -47,11 +47,11 @@ export function SnapshotTable({ snapshots }: { snapshots: SnapshotRow[] }) {
     <Table caption="Recorded snapshots">
       <thead><tr><Th>Period</Th><Th>Source</Th><Th>Channel</Th><Th>Metric</Th><Th align="right">Value</Th><Th>Entered</Th><Th>Note</Th></tr></thead>
       <tbody>
-        {snapshots.map((s) => {
+        {snapshots.filter((s) => s.metric !== "patients").map((s) => {
           const metric = s.metric.replace(/_/g, " ");
           return (
             <tr key={s.id} className={s.superseded_by_id ? "opacity-60" : ""}>
-              <Td className="whitespace-nowrap">{formatDate(s.period_start)} to {formatDate(s.period_end)}</Td>
+              <Td className="whitespace-nowrap">{formatPeriod(s.period_start, s.period_end, " to ")}</Td>
               <Td>{label(s.source)}</Td>
               <Td>{label(s.channel)}</Td>
               <Td>{metric.charAt(0).toUpperCase() + metric.slice(1)}</Td>

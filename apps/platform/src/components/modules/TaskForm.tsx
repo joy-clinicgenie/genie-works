@@ -40,7 +40,7 @@ export function TaskForm({ values, owners, relatedPicker, mode }: { values: Task
             ))}
           </Select>
         </Field>
-        <Field label="Priority" htmlFor="priority" required hint="High and Critical need a due date.">
+        <Field label="Priority" htmlFor="priority" required>
           <Select id="priority" name="priority" defaultValue={values.priority ?? "medium"}>
             {TASK_PRIORITIES.map((p) => (
               <option key={p} value={p}>{label(p)}</option>

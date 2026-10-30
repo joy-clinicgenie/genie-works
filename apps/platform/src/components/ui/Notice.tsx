@@ -11,7 +11,7 @@ const tones: Record<Tone, string> = {
 
 export function Notice({ tone = "info", title, children }: { tone?: Tone; title?: ReactNode; children: ReactNode }) {
   return (
-    <div role={tone === "bad" ? "alert" : "status"} className={`rounded-md border px-4 py-3 text-sm ${tones[tone]}`}>
+    <div role={tone === "bad" ? "alert" : "status"} className={`rounded-2xl px-4 py-3 text-sm ${tones[tone]}`}>
       {title && <div className="font-semibold">{title}</div>}
       <div className={title ? "mt-0.5" : ""}>{children}</div>
     </div>

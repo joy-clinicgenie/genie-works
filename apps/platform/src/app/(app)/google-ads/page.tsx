@@ -6,6 +6,7 @@ import { LinkButton } from "@/components/ui/Button";
 import { FilterBar, FilterSelect } from "@/components/ui/Filters";
 import { AdsChangeTable, AuditTable } from "@/components/modules/AdsList";
 import { Notice } from "@/components/ui/Notice";
+import { clientLabel } from "@/lib/client-label";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Google Ads" };
@@ -25,7 +26,7 @@ export default async function GoogleAdsPage({ searchParams }: { searchParams: Pr
       <Notice tone="neutral">This module records work done in Google Ads. It never changes a live account.</Notice>
       <div className="mt-4">
         <FilterBar>
-          <FilterSelect name="client" label="Client" value={client} options={data.clients.map((c) => ({ value: c.id, label: c.name }))} />
+          <FilterSelect name="client" label="Client" value={client} options={data.clients.map((c) => ({ value: c.id, label: clientLabel(c) }))} />
           <FilterSelect name="status" label="Audit status" value={status} options={[{ value: "open", label: "Open" }, { value: "closed", label: "Closed" }]} />
         </FilterBar>
       </div>

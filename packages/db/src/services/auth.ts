@@ -59,6 +59,8 @@ export const canEditClient = (p: AccessProfile, clientId: string): boolean =>
 /** Record approval decisions and medical reviews for a client. */
 export const canReviewClient = (p: AccessProfile, clientId: string): boolean =>
   isGlobal(p) || (p.user.platform_role === "reviewer" && hasMembership(p, clientId));
+/** Provisional D14 publish and export gate: admin and manager, for every website of a client they can access. */
+export const canPublishClient = (p: AccessProfile, clientId: string): boolean => isGlobal(p) && canAccessClient(p, clientId);
 /** Manage the client registry (create, archive, websites, references). */
 export const canManageRegistry = (p: AccessProfile): boolean => isGlobal(p);
 /** Manage staff, roles and memberships, and view platform-wide audit and backups. */

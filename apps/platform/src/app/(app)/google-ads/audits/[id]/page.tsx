@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { canEditClient, formatDate, getAdsAudit, listAccountReferences } from "@clinic-genie/db";
+import { canEditClient, formatDate, formatPeriod, getAdsAudit, listAccountReferences } from "@clinic-genie/db";
 import { requireAccess } from "@/lib/session";
 import { staffTx } from "@/lib/db";
 import { PageHeader, Card, CardHeader, KeyValue } from "@/components/ui/Card";
@@ -27,7 +27,7 @@ export default async function AuditPage({ params, searchParams }: { params: Prom
   const open = audit.status === "open";
   return (
     <>
-      <PageHeader eyebrow={<Link href={`/clients/${audit.client_id}/google-ads`} className="hover:underline">{audit.client_name}</Link>} title={audit.title} description={<span className="flex gap-2 items-center"><Badge tone={open ? "info" : "neutral"}>{label(audit.status)}</Badge><span className="text-muted">Review period {formatDate(audit.period_start)} to {formatDate(audit.period_end)}</span></span>}
+      <PageHeader eyebrow={<Link href={`/clients/${audit.client_id}/google-ads`} className="hover:underline">{audit.client_name}</Link>} title={audit.title} description={<span className="flex gap-2 items-center"><Badge tone={open ? "info" : "neutral"}>{label(audit.status)}</Badge><span className="text-muted">Review period {formatPeriod(audit.period_start, audit.period_end, " to ")}</span></span>}
         action={canEdit && open ? <><LinkButton href={`/google-ads/changes/new?client=${audit.client_id}&audit=${audit.id}`} variant="secondary">Record a change</LinkButton><form action={closeAuditAction}><input type="hidden" name="auditId" value={id} /><Button type="submit" variant="ghost">Close audit</Button></form></> : undefined} />
       <div className="grid gap-6 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
         <div className="space-y-6">

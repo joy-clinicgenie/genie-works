@@ -15,3 +15,5 @@ backups/*.dump
 npm-debug.log*
 backups/*.json
 apps/platform/AGENTS.md
+playwright-report/
+test-results/

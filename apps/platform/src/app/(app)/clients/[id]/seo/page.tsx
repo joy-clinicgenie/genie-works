@@ -13,7 +13,7 @@ export default async function ClientSeoPage({ params }: { params: Promise<{ id: 
   const pages = await staffTx(access, (db) => listSeoPages(db, { clientId: id }));
   return (
     <>
-      {canEditClient(access, id) && <div className="mb-4 flex justify-end"><LinkButton href={`/seo/new?client=${id}`}>Map a page</LinkButton></div>}
+      <div className="mb-4 flex justify-end gap-2">{canEditClient(access, id) && <LinkButton href={`/seo/new?client=${id}`}>Map a page</LinkButton>}<LinkButton href={`/seo/pages?tab=pages&client=${id}`} variant="secondary">Open SEO pages</LinkButton></div>
       <Card><SeoPageTable pages={pages} today={todaySgt()} showClient={false} /></Card>
     </>
   );

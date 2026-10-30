@@ -14,7 +14,7 @@ export default async function NewClientPage() {
   const staff = await staffTx(access, (db) => listActiveStaff(db));
   return (
     <>
-      <PageHeader title="New client" description="Creates the client record. Websites, account references and staff access are added on the profile." />
+      <PageHeader title="Add client" description="Creates the clinic record. Contacts, account references and assigned staff are added on the profile." />
       <Card className="p-6 max-w-3xl">
         <ClientForm mode="create" staff={staff} values={{}} />
       </Card>

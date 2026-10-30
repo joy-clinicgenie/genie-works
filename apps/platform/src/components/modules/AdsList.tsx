@@ -1,6 +1,6 @@
 import Link from "next/link";
 import type { AdsAuditRow, AdsChangeRow } from "@clinic-genie/db";
-import { formatDate } from "@clinic-genie/db";
+import { formatDate, formatPeriod } from "@clinic-genie/db";
 import { Badge, label } from "@/components/ui/Badge";
 import { Table, Td, Th } from "@/components/ui/Table";
 
@@ -13,7 +13,7 @@ export function AuditTable({ audits, showClient = true }: { audits: AdsAuditRow[
           <tr key={a.id} className="hover:bg-surface-muted/60">
             <Td><Link href={`/google-ads/audits/${a.id}`} className="font-medium text-action hover:underline">{a.title}</Link><div className="text-xs text-muted">{a.scope}</div></Td>
             {showClient && <Td><Link href={`/clients/${a.client_id}`} className="hover:underline">{a.client_name}</Link></Td>}
-            <Td className="whitespace-nowrap">{formatDate(a.period_start)} to {formatDate(a.period_end)}</Td>
+            <Td className="whitespace-nowrap">{formatPeriod(a.period_start, a.period_end, " to ")}</Td>
             <Td>{a.auditor_name}</Td>
             <Td align="right">{a.finding_count} <span className="text-muted">({a.open_finding_count} open)</span></Td>
             <Td><Badge tone={a.status === "open" ? "info" : "neutral"}>{label(a.status)}</Badge></Td>

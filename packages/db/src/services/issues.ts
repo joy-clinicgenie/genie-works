@@ -1,7 +1,7 @@
 import type { IssueStatus } from "@clinic-genie/contracts";
 import type { Queryable } from "../client";
 import { recordAudit } from "./audit";
-import { resolveRelated } from "./related";
+import { relatedPair, resolveRelated } from "./related";
 import { recordTimeline } from "./timeline";
 
 export interface IssueRow {
@@ -95,13 +95,14 @@ export interface IssueInput {
 
 export async function openIssue(db: Queryable, clientId: string, input: IssueInput, actorUserId: string): Promise<string> {
   if (!input.title.trim()) throw new IssueRuleError("Title is required.");
-  if (input.relatedType && input.relatedId) {
-    const found = await resolveRelated(db, clientId, input.relatedType, input.relatedId);
+  const related = relatedPair(input.relatedType, input.relatedId);
+  if (related.type && related.id) {
+    const found = await resolveRelated(db, clientId, related.type, related.id);
     if (!found) throw new IssueRuleError("The related record does not belong to this client.");
   }
   const { rows } = await db.query<{ id: string }>(
     "insert into issues (client_id, title, description, severity, owner_user_id, opened_by, related_type, related_id) values ($1, $2, $3, $4, $5, $6, $7, $8) returning id",
-    [clientId, input.title.trim(), input.description, input.severity, input.ownerUserId, actorUserId, input.relatedType || null, input.relatedId || null],
+    [clientId, input.title.trim(), input.description, input.severity, input.ownerUserId, actorUserId, related.type, related.id],
   );
   const id = rows[0]!.id;
   await db.query("insert into issue_history (issue_id, client_id, from_status, to_status, actor_user_id, note) values ($1, $2, null, 'open', $3, 'Issue opened')", [id, clientId, actorUserId]);
@@ -116,11 +117,12 @@ export async function updateIssueDetails(db: Queryable, id: string, input: Issue
   if (!cur) throw new IssueRuleError("Issue not found.");
   if (cur.status === "verified_closed") throw new IssueRuleError("Verified closed issues cannot be edited. Reopen first.");
   if (!input.title.trim()) throw new IssueRuleError("Title is required.");
-  if (input.relatedType && input.relatedId) {
-    const found = await resolveRelated(db, cur.client_id, input.relatedType, input.relatedId);
+  const related = relatedPair(input.relatedType, input.relatedId);
+  if (related.type && related.id) {
+    const found = await resolveRelated(db, cur.client_id, related.type, related.id);
     if (!found) throw new IssueRuleError("The related record does not belong to this client.");
   }
-  await db.query("update issues set title = $2, description = $3, severity = $4, owner_user_id = $5, related_type = $6, related_id = $7, updated_at = now() where id = $1", [id, input.title.trim(), input.description, input.severity, input.ownerUserId, input.relatedType || null, input.relatedId || null]);
+  await db.query("update issues set title = $2, description = $3, severity = $4, owner_user_id = $5, related_type = $6, related_id = $7, updated_at = now() where id = $1", [id, input.title.trim(), input.description, input.severity, input.ownerUserId, related.type, related.id]);
   await recordAudit(db, { actorType: "staff", actorUserId, action: "issue.update", targetType: "issue", targetId: id, clientId: cur.client_id, outcome: "success" });
 }
 

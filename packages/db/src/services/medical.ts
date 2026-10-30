@@ -164,7 +164,7 @@ export async function decideReview(db: Queryable, reviewId: string, input: { dec
   const claimStatus = input.decision === "approved" ? "approved" : input.decision === "rejected" ? "rejected" : "draft";
   await db.query("update medical_claims set status = $2, updated_at = now() where id = $1", [r.claim_id, claimStatus]);
   await recordAudit(db, { actorType: "staff", actorUserId, action: "medical_review.decide", targetType: "medical_review", targetId: reviewId, clientId: r.client_id, outcome: "success", metadata: { decision: input.decision } });
-  await recordTimeline(db, { clientId: r.client_id, eventType: "medical_review_decided", title: `Medical review ${input.decision.replace("_", " ")}: ${claim.rows[0]!.claim_summary}`, summary: input.note.trim(), relatedType: "medical_claim", relatedId: r.claim_id, actorUserId, dedupeKey: `medical_review_decided:${reviewId}` });
+  await recordTimeline(db, { clientId: r.client_id, eventType: "medical_review_decided", title: `HCSA ${input.decision.replace("_", " ")}: ${claim.rows[0]!.claim_summary}`, summary: input.note.trim(), relatedType: "medical_claim", relatedId: r.claim_id, actorUserId, dedupeKey: `medical_review_decided:${reviewId}` });
 }
 
 export async function addSource(db: Queryable, claimId: string, input: { title: string; citation: string | null; url: string | null; sourceType: string; reviewId: string | null }, actorUserId: string): Promise<string> {

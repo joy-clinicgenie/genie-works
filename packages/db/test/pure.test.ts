@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { buildQueue, classifyTask, compareQueued } from "../src/services/queue";
 import { compareValues } from "../src/services/reports";
 import { addDays, daysBetween, todaySgt } from "../src/services/dates";
+import { assertSeoRedirectAcyclic, normalizeSeoPath, SeoSoftLaunchRuleError } from "../src/services/seo-soft-launch";
 import { csvCellSafe } from "./csv-helper";
 import type { TaskRow } from "../src/services/tasks";
 
@@ -9,8 +10,8 @@ function task(over: Partial<TaskRow>): TaskRow {
   return {
     id: over.id ?? "00000000-0000-0000-0000-000000000001",
     client_id: "c", client_name: "C", client_slug: "c", title: "t", description: null, owner_user_id: "u", owner_name: "U",
-    priority: "medium", status: "open", due_date: null, waiting_on: null, follow_up_date: null, related_type: null, related_id: null, related_title: null,
-    created_by: "u", created_at: new Date("2026-10-01T00:00:00Z"), updated_at: new Date(), completed_at: null, cancelled_at: null, ...over,
+    priority: "medium", status: "open", due_date: null, waiting_on: null, follow_up_date: null, related_type: null, related_id: null, related_title: null, reference_url: null,
+    created_by: "u", created_by_name: "U", created_at: new Date("2026-10-01T00:00:00Z"), updated_at: new Date(), completed_at: null, cancelled_at: null, ...over,
   };
 }
 
@@ -70,5 +71,28 @@ describe("csv safety", () => {
   it("escapes formula-leading cells", () => {
     expect(csvCellSafe("=SUM(A1)")).toBe("'=SUM(A1)");
     expect(csvCellSafe("plain")).toBe("plain");
+  });
+
+  describe("SEO redirects", () => {
+    it("accepts local paths and rejects external, ambiguous, or internal paths", () => {
+      expect(normalizeSeoPath("/old-page")).toBe("/old-page");
+      expect(normalizeSeoPath("/")).toBe("/");
+      expect(() => normalizeSeoPath("https://example.com/page")).toThrow(SeoSoftLaunchRuleError);
+      expect(() => normalizeSeoPath("//example.com/page")).toThrow(SeoSoftLaunchRuleError);
+      expect(() => normalizeSeoPath("/old?page=1")).toThrow(SeoSoftLaunchRuleError);
+      expect(() => normalizeSeoPath("/api/secret")).toThrow(SeoSoftLaunchRuleError);
+      expect(() => normalizeSeoPath("/sitemap.xml")).toThrow(SeoSoftLaunchRuleError);
+    });
+
+    it("allows direct redirects and detects self, indirect, and edited-rule loops", () => {
+      const existing = [
+        { id: "one", source_path: "/old", destination_path: "/new" },
+        { id: "two", source_path: "/legacy", destination_path: "/old" },
+      ];
+      expect(() => assertSeoRedirectAcyclic(existing, "/another", "/new")).not.toThrow();
+      expect(() => assertSeoRedirectAcyclic(existing, "/new", "/legacy")).toThrow(/loop/i);
+      expect(() => assertSeoRedirectAcyclic(existing, "/new", "/new")).toThrow(/itself/i);
+      expect(() => assertSeoRedirectAcyclic(existing, "/old", "/legacy", "one")).toThrow(/loop/i);
+    });
   });
 });

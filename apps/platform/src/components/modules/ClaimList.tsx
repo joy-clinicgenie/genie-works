@@ -6,7 +6,7 @@ import { Table, Td, Th } from "@/components/ui/Table";
 
 export function ClaimTable({ claims, showClient = true }: { claims: ClaimRow[]; showClient?: boolean }) {
   return (
-    <Table caption="Medical claims">
+    <Table caption="HCSA claims">
       <thead><tr><Th>Claim</Th>{showClient && <Th>Client</Th>}<Th>Status</Th><Th>Wording</Th><Th align="right">Sources</Th><Th align="right">Open reviews</Th><Th>Updated</Th></tr></thead>
       <tbody>
         {claims.map((c) => (

@@ -14,7 +14,13 @@
     "restore-test": "tsx scripts/restore-test.ts",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "test": "vitest run",
-    "seed-load": "tsx scripts/seed-load.ts"
+    "seed-load": "tsx scripts/seed-load.ts",
+    "analytics:work": "tsx scripts/analytics-work.ts",
+    "enquiry:check": "tsx scripts/enquiry-fixture.ts check",
+    "enquiry:seed": "tsx scripts/enquiry-fixture.ts seed",
+    "enquiry:reset": "tsx scripts/enquiry-fixture.ts reset",
+    "enquiry:link": "tsx scripts/enquiry-fixture.ts link",
+    "consumers:check": "tsx scripts/consumer-readiness.ts"
   },
   "dependencies": {
     "@clinic-genie/contracts": "*",

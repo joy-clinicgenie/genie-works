@@ -17,6 +17,22 @@ export function isAllowedType(mime: string): boolean {
   return ALLOWED_TYPES.has(mime);
 }
 
+const BLOG_IMAGE_TYPES = new Set(["image/png", "image/jpeg", "image/webp"]);
+
+export function isBlogImage(mime: string): boolean {
+  return BLOG_IMAGE_TYPES.has(mime);
+}
+
+export async function storeBlogImage(clientId: string, bytes: Buffer, originalName: string): Promise<{ storageKey: string; sha256: string }> {
+  const sha256 = createHash("sha256").update(bytes).digest("hex");
+  const safeExt = (originalName.split(".").pop() ?? "img").toLowerCase().replace(/[^a-z0-9]/g, "").slice(0, 8) || "img";
+  const storageKey = `blog/${clientId}/${sha256.slice(0, 16)}-${Date.now()}.${safeExt}`;
+  const path = join(root(), storageKey);
+  await mkdir(join(root(), "blog", clientId), { recursive: true });
+  await writeFile(path, bytes, { flag: "wx" });
+  return { storageKey, sha256 };
+}
+
 export async function storeEvidenceFile(clientId: string, bytes: Buffer, originalName: string): Promise<{ storageKey: string; sha256: string }> {
   const sha256 = createHash("sha256").update(bytes).digest("hex");
   const safeExt = (originalName.split(".").pop() ?? "bin").toLowerCase().replace(/[^a-z0-9]/g, "").slice(0, 8) || "bin";

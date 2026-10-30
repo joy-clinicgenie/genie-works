@@ -12,6 +12,7 @@ export interface SnapshotRow {
   source: string;
   channel: string;
   metric: ReportMetricKey;
+  dimension: string;
   period_start: string;
   period_end: string;
   value: number | null;
@@ -88,7 +89,7 @@ export async function addSnapshot(db: Queryable, clientId: string, input: Snapsh
   const metric = REPORT_METRICS.find((m) => m.key === input.metric);
   if (!metric) throw new ReportRuleError("Unknown metric.");
   const existing = await db.query<{ id: string }>(
-    "select id from report_snapshots where client_id = $1 and source = $2 and channel = $3 and metric = $4 and period_start = $5 and period_end = $6 and superseded_by_id is null",
+    "select id from report_snapshots where client_id = $1 and source = $2 and channel = $3 and metric = $4 and dimension = '' and period_start = $5 and period_end = $6 and superseded_by_id is null",
     [clientId, input.source, input.channel, input.metric, input.periodStart, input.periodEnd],
   );
   const prior = existing.rows[0]?.id ?? null;
@@ -134,7 +135,7 @@ export interface PeriodComparison {
 export async function comparePeriods(db: Queryable, clientId: string, args: { source: string; channel: string; current: Period; previous: Period }): Promise<PeriodComparison> {
   const { rows } = await db.query<{ metric: ReportMetricKey; period_start: string; period_end: string; value: number | null }>(
     `select metric, period_start, period_end, value from report_snapshots
-     where client_id = $1 and source = $2 and channel = $3 and superseded_by_id is null
+     where client_id = $1 and source = $2 and channel = $3 and dimension = '' and superseded_by_id is null
        and ((period_start = $4 and period_end = $5) or (period_start = $6 and period_end = $7))`,
     [clientId, args.source, args.channel, args.current.start, args.current.end, args.previous.start, args.previous.end],
   );

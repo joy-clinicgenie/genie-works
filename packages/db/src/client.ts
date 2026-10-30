@@ -93,3 +93,13 @@ export async function applyContext(client: pg.PoolClient, ctx: DbContext): Promi
 }
 
 export const SERVICE: DbContext = { kind: "service" };
+
+/**
+ * Auth.js talks to the application role directly. Each statement runs as the
+ * service context so the identity tables stay closed to staff and anonymous sessions.
+ */
+export function authAdapterClient(pool = getPool()): pg.Pool {
+  return {
+    query: async (text: string, params?: unknown[]) => withContext(SERVICE, (db) => db.query(text, params), pool),
+  } as pg.Pool;
+}

@@ -9,10 +9,9 @@ export default async function AdminLayout({ children }: { children: React.ReactN
   const access = await requireAccess();
   if (!canManageUsers(access)) redirect("/");
   return (
-    <>
+    <AdminTabs>
       <PageHeader title="Admin" description={<>Users, roles, client access, security audit history and recovery records. See <Link href="/clients" className="underline">Clients</Link> to grant client access.</>} />
-      <AdminTabs />
       {children}
-    </>
+    </AdminTabs>
   );
 }

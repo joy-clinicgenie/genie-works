@@ -13,10 +13,9 @@ afterAll(async () => {
 });
 
 describe("tasks (A-09, A-10)", () => {
-  it("high and critical tasks require a due date; waiting requires waiting-on and follow-up date", async () => {
+  it("waiting requires waiting-on and a follow-up date", async () => {
     const specA = await staffByEmail("specialist-a@example.invalid");
     const harbour = await clientBySlug("harbourview-dental");
-    await expect(asContext(staffCtx(specA), (db) => createTask(db, { clientId: harbour, title: "No date", description: null, ownerUserId: specA.id, priority: "high", dueDate: null, relatedType: null, relatedId: null }, specA.id))).rejects.toBeInstanceOf(TaskRuleError);
     await asContext(staffCtx(specA), async (db) => {
       const id = await createTask(db, { clientId: harbour, title: "Rule test", description: null, ownerUserId: specA.id, priority: "medium", dueDate: null, relatedType: null, relatedId: null }, specA.id);
       await expect(transitionTask(db, id, { status: "waiting", note: null, waitingOn: "", followUpDate: null }, specA.id)).rejects.toBeInstanceOf(TaskRuleError);

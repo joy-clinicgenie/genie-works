@@ -42,6 +42,11 @@ export const REPORT_METRICS = [
   { key: "impressions", label: "Impressions", unit: "count" },
   { key: "clicks", label: "Clicks", unit: "count" },
   { key: "sessions", label: "Sessions", unit: "count" },
+  { key: "unique_visitors", label: "Unique visitors", unit: "count" },
+  { key: "page_views", label: "Page views", unit: "count" },
+  { key: "post_views", label: "Post views", unit: "count" },
+  { key: "contact_clicks", label: "Contact clicks", unit: "count" },
+  { key: "form_submissions", label: "Form submissions", unit: "count" },
   { key: "enquiries", label: "Enquiries", unit: "count" },
   { key: "confirmed_appointments", label: "Confirmed appointments", unit: "count" },
   { key: "patients", label: "Patient count", unit: "count" },
@@ -50,6 +55,16 @@ export const REPORT_METRICS = [
 ] as const;
 export type ReportMetricKey = (typeof REPORT_METRICS)[number]["key"];
 
+export const REPORT_SECTION_KEYS = ["traffic", "engagement", "enquiries", "search", "campaigns"] as const;
+export type ReportSectionKey = (typeof REPORT_SECTION_KEYS)[number];
+export const REPORT_SECTIONS: Array<{ key: ReportSectionKey; label: string; source: string; metrics: ReportMetricKey[] }> = [
+  { key: "traffic", label: "Traffic", source: "ga4_export", metrics: ["sessions", "unique_visitors", "page_views"] },
+  { key: "engagement", label: "Engagement", source: "manual", metrics: ["page_views", "post_views", "contact_clicks"] },
+  { key: "enquiries", label: "Enquiries and conversions", source: "clinic_records", metrics: ["enquiries", "form_submissions", "confirmed_appointments"] },
+  { key: "search", label: "Search", source: "search_console_export", metrics: ["impressions", "clicks"] },
+  { key: "campaigns", label: "Campaigns", source: "google_ads_export", metrics: ["clicks", "cost", "conversions_reported"] },
+];
+
 export const TIMELINE_EVENT_TYPES = [
   "task_created", "task_completed", "task_cancelled",
   "approval_submitted", "approval_decided", "approval_superseded",
@@ -57,10 +72,16 @@ export const TIMELINE_EVENT_TYPES = [
   "ads_audit_opened", "ads_audit_closed", "ads_change_recorded", "ads_change_verified",
   "issue_opened", "issue_resolved", "issue_verified", "issue_reopened",
   "medical_review_decided", "claim_wording_changed",
-  "report_snapshot_added", "report_observation_added",
+  "report_snapshot_added", "report_observation_added", "report_saved",
   "client_created", "client_archived",
+  "article_published", "article_unpublished",
+  "article_submitted", "article_approved", "article_returned",
 ] as const;
 export type TimelineEventType = (typeof TIMELINE_EVENT_TYPES)[number];
 
-export const RELATED_RECORD_TYPES = ["task", "approval", "seo_page", "seo_change", "ads_audit", "ads_finding", "ads_change", "issue", "evidence", "medical_claim", "medical_review", "report_snapshot", "website", "account_reference"] as const;
+export const BLOG_STATUSES = ["draft", "in_review", "approved", "published", "archived"] as const;
+export type BlogStatus = (typeof BLOG_STATUSES)[number];
+export const BLOG_LAYOUT = "clinic-article-v1" as const;
+
+export const RELATED_RECORD_TYPES = ["task", "approval", "seo_page", "seo_change", "ads_audit", "ads_finding", "ads_change", "issue", "evidence", "medical_claim", "medical_review", "report_snapshot", "website", "account_reference", "blog_article"] as const;
 export type RelatedRecordType = (typeof RELATED_RECORD_TYPES)[number];

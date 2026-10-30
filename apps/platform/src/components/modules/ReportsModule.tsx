@@ -1,8 +1,9 @@
-import { canEditClient, comparePeriods, formatDate, formatDateTime, listPeriods, listReportNotes, listSnapshots, type AccessProfile, type PoolClient } from "@clinic-genie/db";
+import { canEditClient, comparePeriods, formatDateTime, formatPeriod, listPeriods, listReportNotes, listSnapshots, type AccessProfile, type PoolClient } from "@clinic-genie/db";
 import { REPORT_CHANNELS, REPORT_SOURCES } from "@clinic-genie/contracts";
 import { Card, CardHeader } from "@/components/ui/Card";
 import { FilterBar, FilterSelect } from "@/components/ui/Filters";
 import { ComparisonTable, SnapshotTable } from "@/components/modules/ReportViews";
+import { ReportCatalogue } from "@/components/modules/ReportCatalogue";
 import { ObservationForm, SnapshotForm } from "@/components/modules/ReportForms";
 import { Notice } from "@/components/ui/Notice";
 import { label } from "@/components/ui/Badge";
@@ -27,9 +28,10 @@ export async function ReportsModule({ db, access, clientId, params, action }: { 
   const snapshots = await listSnapshots(db, { clientId, includeSuperseded: params.history === "1" });
   const notes = await listReportNotes(db, { clientId });
   const canEdit = canEditClient(access, clientId);
-  const periodOptions = periods.map((p) => ({ value: `${p.start}_${p.end}`, label: `${formatDate(p.start)} to ${formatDate(p.end)}` }));
+  const periodOptions = periods.map((p) => ({ value: `${p.start}_${p.end}`, label: formatPeriod(p.start, p.end, " to ") }));
   return (
     <>
+      <ReportCatalogue />
       <FilterBar action={action}>
         <input type="hidden" name="client" value={clientId} />
         <FilterSelect name="source" label="Source" value={source} allLabel="Clinic records" options={REPORT_SOURCES.filter((s) => s !== "clinic_records").map((s) => ({ value: s, label: label(s) }))} />
@@ -38,7 +40,7 @@ export async function ReportsModule({ db, access, clientId, params, action }: { 
         <FilterSelect name="previous" label="Compare with" value={previous ? `${previous.start}_${previous.end}` : undefined} allLabel="Previous recorded" options={periodOptions} />
       </FilterBar>
       <Card>
-        <CardHeader title="Period comparison" description={`${label(source)}, ${label(channel)}. Clicks, enquiries, confirmed appointments and patients are separate metrics and never combined.`} />
+        <CardHeader title="Period comparison" description={`${label(source)}, ${label(channel)}. Clicks, enquiries and confirmed appointments are separate metrics and never combined.`} />
         <div className="px-5 pb-5">
           {!comparison ? <Notice tone="neutral">Record figures for at least two periods with the same source and channel to compare them.</Notice> : (
             <>
@@ -55,7 +57,7 @@ export async function ReportsModule({ db, access, clientId, params, action }: { 
             {notes.length === 0 && <li className="px-5 py-3 text-sm text-muted">No observations yet.</li>}
             {notes.map((n) => (
               <li key={n.id} className="px-5 py-3 text-sm">
-                <div className="text-xs text-muted">{formatDate(n.period_start)} to {formatDate(n.period_end)} · {n.author_name}, {formatDateTime(n.created_at)}</div>
+                <div className="text-xs text-muted">{formatPeriod(n.period_start, n.period_end, " to ")} · {n.author_name}, {formatDateTime(n.created_at)}</div>
                 <p className="mt-1 whitespace-pre-wrap"><span className="font-semibold">Observed:</span> {n.observation}</p>
                 {n.possible_explanations && <p className="mt-1 whitespace-pre-wrap text-ink-soft"><span className="font-semibold">Possible explanations:</span> {n.possible_explanations}</p>}
               </li>

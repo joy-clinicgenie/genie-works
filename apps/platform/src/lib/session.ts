@@ -4,8 +4,11 @@ import {
   SERVICE,
   canAccessClient,
   canEditClient,
+  canExport,
+  canManageAssignments,
   canManageRegistry,
   canManageUsers,
+  canPublishClient,
   canReviewClient,
   getActiveStaffByEmail,
   resolveAccess,
@@ -19,11 +22,12 @@ export const getAccess = cache(async (): Promise<AccessProfile | null> => {
   const session = await auth();
   const email = session?.user?.email?.toLowerCase();
   if (!email) return null;
-  return withContext(SERVICE, async (db) => {
+  const profile = await withContext(SERVICE, async (db) => {
     const staff = await getActiveStaffByEmail(db, email);
     if (!staff) return null;
     return resolveAccess(db, staff.id);
   });
+  return profile;
 });
 
 export async function requireAccess(): Promise<AccessProfile> {
@@ -38,4 +42,13 @@ export async function requireClientAccess(clientId: string): Promise<AccessProfi
   return access;
 }
 
-export const permissions = { canAccessClient, canEditClient, canReviewClient, canManageRegistry, canManageUsers };
+export const permissions = {
+  canAccessClient,
+  canEditClient,
+  canReviewClient,
+  canPublishClient,
+  canExport,
+  canManageAssignments,
+  canManageRegistry,
+  canManageUsers,
+};

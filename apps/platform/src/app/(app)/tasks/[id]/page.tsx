@@ -19,13 +19,13 @@ export default async function TaskPage({ params, searchParams }: { params: Promi
     const task = await getTask(db, id);
     if (!task) return null;
     const owners = await listActiveStaff(db);
-    const picker = await RelatedPicker({ db, clientId: task.client_id, relatedType: relatedType ?? task.related_type, relatedId: task.related_id, refineHref: (t) => `/tasks/${id}?edit=1&relatedType=${t}` });
+    const picker = task.client_id ? await RelatedPicker({ db, clientId: task.client_id, relatedType: relatedType ?? task.related_type, relatedId: task.related_id, refineHref: (t) => `/tasks/${id}?edit=1&relatedType=${t}` }) : null;
     return { task, owners, picker };
   });
   if (!data) notFound();
   const { task, owners, picker } = data;
   const today = todaySgt();
-  const canEdit = canEditClient(access, task.client_id);
+  const canEdit = task.client_id ? canEditClient(access, task.client_id) : access.user.platform_role !== "read_only";
   const canAct = (canEdit || task.owner_user_id === access.user.id) && access.user.platform_role !== "read_only";
   const closed = task.status === "completed" || task.status === "cancelled";
   const related = relatedHref(task.related_type, task.related_id);
@@ -33,7 +33,7 @@ export default async function TaskPage({ params, searchParams }: { params: Promi
   return (
     <>
       <PageHeader
-        eyebrow={<Link href={`/clients/${task.client_id}`} className="hover:underline">{task.client_name}</Link>}
+        eyebrow={task.client_id ? <Link href={`/clients/${task.client_id}`} className="hover:underline">{task.client_name}</Link> : "Internal"}
         title={task.title}
         description={
           <span className="flex flex-wrap gap-2 items-center">
@@ -52,6 +52,7 @@ export default async function TaskPage({ params, searchParams }: { params: Promi
                 { label: "Due date", value: task.due_date ? formatDate(task.due_date) : null },
                 { label: "Waiting on", value: task.status === "waiting" ? task.waiting_on : null },
                 { label: "Follow-up date", value: task.status === "waiting" ? formatDate(task.follow_up_date) : null },
+                { label: "Reference link", value: task.reference_url ? <a href={task.reference_url} className="text-action hover:underline break-all" target="_blank" rel="noreferrer">{task.reference_url}</a> : null },
                 { label: "Related record", value: task.related_type ? (related ? <Link href={related} className="text-action hover:underline">{label(task.related_type)}: {task.related_title ?? task.related_id}</Link> : `${label(task.related_type)}: ${task.related_title}`) : null },
                 { label: "Created", value: formatDateTime(task.created_at) },
                 { label: "Completed", value: task.completed_at ? formatDateTime(task.completed_at) : null },
@@ -65,7 +66,7 @@ export default async function TaskPage({ params, searchParams }: { params: Promi
               <CardHeader title={edit ? "Edit task" : "Edit task"} action={!edit ? <Link href={`/tasks/${id}?edit=1`} className="text-sm text-action hover:underline">Open editor</Link> : <Link href={`/tasks/${id}`} className="text-sm text-action hover:underline">Close editor</Link>} />
               {edit && (
                 <div className="px-5 pb-5">
-                  <TaskForm mode="edit" values={{ taskId: task.id, clientId: task.client_id, title: task.title, description: task.description, ownerUserId: task.owner_user_id, priority: task.priority, dueDate: task.due_date }} owners={owners.filter((o) => o.platform_role !== "read_only")} relatedPicker={picker} />
+                  <TaskForm mode="edit" values={{ taskId: task.id, clientId: task.client_id ?? "", title: task.title, description: task.description, ownerUserId: task.owner_user_id, priority: task.priority, dueDate: task.due_date }} owners={owners.filter((o) => o.platform_role !== "read_only")} relatedPicker={picker} />
                 </div>
               )}
             </Card>

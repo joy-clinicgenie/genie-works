@@ -5,13 +5,14 @@
  */
 import type pg from "pg";
 import { addDays, todaySgt } from "./services/dates";
-import { createClient, createWebsite, createAccountReference, createStaff, grantMembership } from "./services/registry";
+import { archiveClient, createClient, createWebsite, createAccountReference, createClientContact, createStaff, grantMembership } from "./services/registry";
 import { createTask, transitionTask, addTaskNote } from "./services/tasks";
 import { createApproval, decideApproval } from "./services/approvals";
 import { createSeoPage, recordSeoChange, verifySeoChange } from "./services/seo";
 import { createAdsAudit, addAdsFinding, recordAdsChange, verifyAdsChange, closeAdsAudit } from "./services/ads";
 import { openIssue, transitionIssue, addEvidenceLink } from "./services/issues";
 import { createClaim, addSource, assignReview, decideReview, addWording } from "./services/medical";
+import { ensureYearAnalytics } from "./preview-year";
 import { addSnapshot, addReportNote } from "./services/reports";
 
 export interface SeedSummary {
@@ -30,6 +31,176 @@ export const DEMO_STAFF = [
   { email: "readonly@example.invalid", name: "Demo Read-only", role: "read_only" },
 ] as const;
 
+const PREVIEW_NOTE = "Synthetic demonstration figures for local preview. Not a live export.";
+
+type PreviewRow = { source: string; channel: string; metric: string; previous: number; current: number };
+
+const PREVIEW_CLINICS: Array<{ code: string; rows: PreviewRow[] }> = [
+  {
+    code: "CFAC",
+    rows: [
+      { source: "ga4_export", channel: "organic_search", metric: "sessions", previous: 612, current: 684 },
+      { source: "ga4_export", channel: "paid_search", metric: "sessions", previous: 248, current: 221 },
+      { source: "ga4_export", channel: "direct", metric: "sessions", previous: 190, current: 204 },
+      { source: "search_console_export", channel: "organic_search", metric: "impressions", previous: 14220, current: 15840 },
+      { source: "search_console_export", channel: "organic_search", metric: "clicks", previous: 488, current: 531 },
+      { source: "clinic_records", channel: "all", metric: "enquiries", previous: 11, current: 14 },
+      { source: "manual", channel: "all", metric: "unique_visitors", previous: 905, current: 972 },
+      { source: "manual", channel: "all", metric: "page_views", previous: 2140, current: 2388 },
+      { source: "manual", channel: "all", metric: "post_views", previous: 266, current: 241 },
+      { source: "manual", channel: "all", metric: "contact_clicks", previous: 36, current: 41 },
+      { source: "manual", channel: "all", metric: "form_submissions", previous: 9, current: 13 },
+    ],
+  },
+  {
+    code: "CEDAR",
+    rows: [
+      { source: "ga4_export", channel: "organic_search", metric: "sessions", previous: 880, current: 940 },
+      { source: "ga4_export", channel: "paid_search", metric: "sessions", previous: 120, current: 154 },
+      { source: "ga4_export", channel: "direct", metric: "sessions", previous: 360, current: 332 },
+      { source: "search_console_export", channel: "organic_search", metric: "impressions", previous: 22100, current: 20940 },
+      { source: "search_console_export", channel: "organic_search", metric: "clicks", previous: 802, current: 764 },
+      { source: "clinic_records", channel: "all", metric: "enquiries", previous: 18, current: 16 },
+      { source: "manual", channel: "all", metric: "unique_visitors", previous: 1104, current: 1088 },
+      { source: "manual", channel: "all", metric: "page_views", previous: 3610, current: 3490 },
+      { source: "manual", channel: "all", metric: "post_views", previous: 540, current: 612 },
+      { source: "manual", channel: "all", metric: "contact_clicks", previous: 48, current: 44 },
+      { source: "manual", channel: "all", metric: "form_submissions", previous: 17, current: 15 },
+    ],
+  },
+  {
+    code: "SUNRISE",
+    rows: [
+      { source: "ga4_export", channel: "organic_search", metric: "sessions", previous: 390, current: 468 },
+      { source: "ga4_export", channel: "paid_search", metric: "sessions", previous: 70, current: 82 },
+      { source: "ga4_export", channel: "direct", metric: "sessions", previous: 55, current: 61 },
+      { source: "search_console_export", channel: "organic_search", metric: "impressions", previous: 8640, current: 9920 },
+      { source: "search_console_export", channel: "organic_search", metric: "clicks", previous: 210, current: 248 },
+      { source: "clinic_records", channel: "all", metric: "enquiries", previous: 6, current: 8 },
+      { source: "manual", channel: "all", metric: "unique_visitors", previous: 372, current: 441 },
+      { source: "manual", channel: "all", metric: "page_views", previous: 1288, current: 1510 },
+      { source: "manual", channel: "all", metric: "post_views", previous: 74, current: 96 },
+      { source: "manual", channel: "all", metric: "contact_clicks", previous: 15, current: 22 },
+      { source: "manual", channel: "all", metric: "form_submissions", previous: 4, current: 7 },
+    ],
+  },
+];
+
+/** New/returning visitors and device sessions. Each group sums to that clinic's visitor or session total. */
+const TRAFFIC_SPLITS: Array<{ code: string; rows: PreviewRow[] }> = [
+  {
+    code: "CFAC",
+    rows: [
+      { source: "manual", channel: "all", metric: "new_visitors", previous: 760, current: 826 },
+      { source: "manual", channel: "all", metric: "returning_visitors", previous: 145, current: 146 },
+      { source: "manual", channel: "mobile", metric: "device_sessions", previous: 735, current: 776 },
+      { source: "manual", channel: "desktop", metric: "device_sessions", previous: 294, current: 311 },
+      { source: "manual", channel: "tablet", metric: "device_sessions", previous: 21, current: 22 },
+    ],
+  },
+  {
+    code: "CEDAR",
+    rows: [
+      { source: "manual", channel: "all", metric: "new_visitors", previous: 928, current: 914 },
+      { source: "manual", channel: "all", metric: "returning_visitors", previous: 176, current: 174 },
+      { source: "manual", channel: "mobile", metric: "device_sessions", previous: 925, current: 970 },
+      { source: "manual", channel: "desktop", metric: "device_sessions", previous: 394, current: 413 },
+      { source: "manual", channel: "tablet", metric: "device_sessions", previous: 41, current: 43 },
+    ],
+  },
+  {
+    code: "SUNRISE",
+    rows: [
+      { source: "manual", channel: "all", metric: "new_visitors", previous: 318, current: 379 },
+      { source: "manual", channel: "all", metric: "returning_visitors", previous: 54, current: 62 },
+      { source: "manual", channel: "mobile", metric: "device_sessions", previous: 360, current: 428 },
+      { source: "manual", channel: "desktop", metric: "device_sessions", previous: 140, current: 165 },
+      { source: "manual", channel: "tablet", metric: "device_sessions", previous: 15, current: 18 },
+    ],
+  },
+];
+
+/** Two matching 28-day periods for CFAC, CEDAR and SUNRISE. Skips a clinic that already has session rows. */
+async function ensurePreviewSnapshots(db: pg.PoolClient): Promise<string[]> {
+  const admin = await db.query<{ id: string }>("select id from staff_users where email = 'admin@example.invalid' and active limit 1");
+  const actor = admin.rows[0]?.id;
+  if (!actor) return [];
+  const today = todaySgt();
+  const periods = [
+    { start: addDays(today, -59), end: addDays(today, -30), key: "previous" as const },
+    { start: addDays(today, -29), end: today, key: "current" as const },
+  ];
+  const added: string[] = [];
+  for (const clinic of PREVIEW_CLINICS) {
+    const found = await db.query<{ id: string }>("select id from clients where short_code = $1 and status = 'active'", [clinic.code]);
+    const clientId = found.rows[0]?.id;
+    if (!clientId) continue;
+    const currentPeriod = periods[1]!;
+    const already = await db.query("select 1 from report_snapshots where client_id = $1 and source = 'ga4_export' and metric = 'sessions' and period_start = $2 and period_end = $3 and superseded_by_id is null limit 1", [clientId, currentPeriod.start, currentPeriod.end]);
+    if (already.rows.length) continue;
+    for (const row of clinic.rows) {
+      for (const period of periods) {
+        await db.query(
+          `insert into report_snapshots (client_id, source, channel, metric, period_start, period_end, value, unit, note, entered_by)
+           values ($1, $2, $3, $4, $5, $6, $7, 'count', $8, $9)`,
+          [clientId, row.source, row.channel, row.metric, period.start, period.end, row[period.key], PREVIEW_NOTE, actor],
+        );
+      }
+    }
+    added.push(clinic.code);
+  }
+  for (const clinic of TRAFFIC_SPLITS) {
+    const found = await db.query<{ id: string }>("select id from clients where short_code = $1 and status = 'active'", [clinic.code]);
+    const clientId = found.rows[0]?.id;
+    if (!clientId) continue;
+    const currentPeriod = periods[1]!;
+    const already = await db.query("select 1 from report_snapshots where client_id = $1 and metric = 'new_visitors' and period_start = $2 and period_end = $3 and superseded_by_id is null limit 1", [clientId, currentPeriod.start, currentPeriod.end]);
+    if (already.rows.length) continue;
+    for (const row of clinic.rows) {
+      for (const period of periods) {
+        await db.query(
+          `insert into report_snapshots (client_id, source, channel, metric, period_start, period_end, value, unit, note, entered_by)
+           values ($1, $2, $3, $4, $5, $6, $7, 'count', $8, $9)`,
+          [clientId, row.source, row.channel, row.metric, period.start, period.end, row[period.key], PREVIEW_NOTE, actor],
+        );
+      }
+    }
+    added.push(`${clinic.code} traffic`);
+  }
+  if (added.length) {
+    await db.query(
+      "insert into audit_events (actor_type, actor_user_id, action, target_type, outcome, metadata) values ('system', $1, 'seed.run', 'database', 'success', $2)",
+      [actor, JSON.stringify({ synthetic: true, previewSnapshots: added })],
+    );
+  }
+  return added;
+}
+
+/** Internal agency directory row. Idempotent. Not a clinic client. */
+async function ensureInternalAgencyClient(db: pg.PoolClient): Promise<void> {
+  const existing = await db.query("select 1 from clients where slug = 'clinic-genie' or reference_number = 'CG-000'");
+  if (existing.rows.length) return;
+  const admin = await db.query<{ id: string }>("select id from staff_users where email = 'admin@example.invalid' and active limit 1");
+  const actor = admin.rows[0]?.id;
+  if (!actor) return;
+  await createClient(db, {
+    slug: "clinic-genie",
+    name: "Clinic Genie",
+    ownerUserId: actor,
+    channels: ["website", "seo"],
+    isSynthetic: false,
+    notes: "Internal Clinic Genie record for agency work. Not a clinic client.",
+    referenceNumber: "CG-000",
+    shortCode: "CG",
+    specialty: "Internal agency",
+    legalName: "Clinic Genie",
+    publicName: "Clinic Genie",
+    enquiryOwnerUserId: actor,
+    notificationOwnerUserId: actor,
+    administrationOwnerUserId: actor,
+  }, actor);
+}
+
 export async function seedDemo(pool: pg.Pool, log: (l: string) => void = () => {}): Promise<SeedSummary> {
   const db = await pool.connect();
   try {
@@ -37,8 +208,15 @@ export async function seedDemo(pool: pg.Pool, log: (l: string) => void = () => {
     await db.query("select set_config('app.context', 'service', true)");
     const exists = await db.query("select 1 from clients where slug = 'harbourview-dental'");
     if (exists.rows.length) {
-      await db.query("rollback");
-      log("Demonstration data already present. Nothing changed.");
+      await ensureInternalAgencyClient(db);
+      const added = await ensurePreviewSnapshots(db);
+      const year = await ensureYearAnalytics(db);
+      await db.query("commit");
+      const notes = [
+        added.length ? `Preview figures added for ${added.join(", ")}.` : "",
+        year.length ? `One year of synthetic analytics added for ${year.join(", ")}.` : "",
+      ].filter(Boolean);
+      log(notes.length ? notes.join(" ") : "Demonstration data already present. Nothing changed.");
       return { seeded: false, staff: 0, clients: 0, tasks: 0 };
     }
     const today = todaySgt();
@@ -53,9 +231,10 @@ export async function seedDemo(pool: pg.Pool, log: (l: string) => void = () => {
     const admin = ids.admin!, manager = ids.manager!, specA = ids["specialist-a@example.invalid"]!, specB = ids["specialist-b@example.invalid"]!, reviewer = ids.reviewer!, readonly = ids.read_only!;
 
     // Clients
-    const harbour = await createClient(db, { slug: "harbourview-dental", name: "Harbourview Dental (fictional)", ownerUserId: specA, channels: ["website", "seo", "google_ads"], isSynthetic: true, notes: "Demonstration client. Two-chair general dental practice concept. All figures are synthetic." }, admin);
-    const meridian = await createClient(db, { slug: "meridian-skin", name: "Meridian Skin Clinic (fictional)", ownerUserId: specA, channels: ["website", "seo", "social"], isSynthetic: true, notes: "Demonstration client. Aesthetic dermatology concept with medical claims under review." }, admin);
-    const northgate = await createClient(db, { slug: "northgate-physio", name: "Northgate Physio (fictional)", ownerUserId: specB, channels: ["website", "google_ads"], isSynthetic: true, notes: "Demonstration client. Physiotherapy practice concept, onboarding stage." }, admin);
+    await ensureInternalAgencyClient(db);
+    const harbour = await createClient(db, { slug: "harbourview-dental", name: "Harbourview Dental (fictional)", ownerUserId: specA, channels: ["website", "seo", "google_ads"], isSynthetic: true, notes: "Demonstration client. Two-chair general dental practice concept. All figures are synthetic.", specialty: "General dentistry", legalName: "Harbourview Dental Pte. Ltd. (fictional)", publicName: "Harbourview Dental", address: "18 Harbour Road, Singapore (fictional)", contactEmail: "hello@harbourview-dental.example.invalid", contactPhone: "+65 6000 0001", enquiryOwnerUserId: specA, notificationOwnerUserId: specA, administrationOwnerUserId: specA }, admin);
+    const meridian = await createClient(db, { slug: "meridian-skin", name: "Meridian Skin Clinic (fictional)", ownerUserId: specA, channels: ["website", "seo", "social"], isSynthetic: true, notes: "Demonstration client. Aesthetic dermatology concept with medical claims under review.", specialty: "Dermatology", legalName: "Meridian Skin Pte. Ltd. (fictional)", publicName: "Meridian Skin Clinic", address: "42 Meridian Avenue, Singapore (fictional)", contactEmail: "hello@meridian-skin.example.invalid", contactPhone: "+65 6000 0002", enquiryOwnerUserId: specA, notificationOwnerUserId: specA, administrationOwnerUserId: specA }, admin);
+    const northgate = await createClient(db, { slug: "northgate-physio", name: "Northgate Physio (fictional)", ownerUserId: specB, channels: ["website", "google_ads"], isSynthetic: true, notes: "Demonstration client. Physiotherapy practice concept, onboarding stage.", specialty: "Physiotherapy", legalName: "Northgate Physio Pte. Ltd. (fictional)", publicName: "Northgate Physio", address: "7 Northgate Lane, Singapore (fictional)", contactEmail: "hello@northgate-physio.example.invalid", contactPhone: "+65 6000 0003", enquiryOwnerUserId: specB, notificationOwnerUserId: specB, administrationOwnerUserId: specB }, admin);
 
     for (const [user, clients] of [
       [admin, [harbour.id, meridian.id, northgate.id]],
@@ -73,12 +252,16 @@ export async function seedDemo(pool: pg.Pool, log: (l: string) => void = () => {
     const siteM = await createWebsite(db, { clientId: meridian.id, name: "Meridian Skin website", url: "https://meridian-skin.example.invalid", platform: "Next.js on Vercel", environment: "production", notes: "Placeholder URL." }, admin);
     await createWebsite(db, { clientId: meridian.id, name: "Meridian Skin staging", url: "https://staging.meridian-skin.example.invalid", platform: "Next.js on Vercel", environment: "staging", notes: "Password protected staging. Placeholder URL." }, admin);
     const siteN = await createWebsite(db, { clientId: northgate.id, name: "Northgate Physio website", url: "https://northgate-physio.example.invalid", platform: "Wix", environment: "production", notes: "Placeholder URL." }, admin);
-    const refAdsH = await createAccountReference(db, harbour.id, { kind: "google_ads", label: "Google Ads account", externalIdentifier: "PLACEHOLDER-ADS-ID", url: "https://ads.google.com/", vaultReference: "vault://clinic-genie/harbourview/google-ads", notes: "Identifier is a placeholder until the client supplies the real customer ID." }, admin);
-    await createAccountReference(db, harbour.id, { kind: "ga4", label: "GA4 property", externalIdentifier: "PLACEHOLDER-GA4", url: "https://analytics.google.com/", vaultReference: null, notes: null }, admin);
-    await createAccountReference(db, harbour.id, { kind: "search_console", label: "Search Console property", externalIdentifier: null, url: "https://search.google.com/search-console", vaultReference: null, notes: "Ownership verification pending." }, admin);
-    await createAccountReference(db, meridian.id, { kind: "ga4", label: "GA4 property", externalIdentifier: "PLACEHOLDER-GA4", url: "https://analytics.google.com/", vaultReference: null, notes: null }, admin);
-    await createAccountReference(db, meridian.id, { kind: "wix", label: "Wix site owner login", externalIdentifier: null, url: "https://manage.wix.com/", vaultReference: "vault://clinic-genie/meridian/wix", notes: "Credentials live in the vault, never here." }, admin);
-    const refAdsN = await createAccountReference(db, northgate.id, { kind: "google_ads", label: "Google Ads account", externalIdentifier: "PLACEHOLDER-ADS-ID", url: "https://ads.google.com/", vaultReference: "vault://clinic-genie/northgate/google-ads", notes: null }, admin);
+    await createClientContact(db, harbour.id, { name: "Alex Tan (fictional)", designation: "Clinic director", workEmail: "hello@harbourview-dental.example.invalid", workPhone: "+65 6000 0001", isPrimary: true }, admin);
+    await createClientContact(db, meridian.id, { name: "Priya Nair (fictional)", designation: "Practice manager", workEmail: "hello@meridian-skin.example.invalid", workPhone: "+65 6000 0002", isPrimary: true }, admin);
+    await createClientContact(db, northgate.id, { name: "Jordan Lim (fictional)", designation: "Clinic coordinator", workEmail: "hello@northgate-physio.example.invalid", workPhone: "+65 6000 0003", isPrimary: true }, admin);
+
+    const refAdsH = await createAccountReference(db, harbour.id, { kind: "google_ads", label: "Google Ads account", externalIdentifier: "PLACEHOLDER-ADS-ID", url: "https://ads.google.com/", vaultReference: "vault://clinic-genie/harbourview/google-ads", notes: "Identifier is a placeholder until the client supplies the real customer ID.", ownerUserId: specA }, admin);
+    await createAccountReference(db, harbour.id, { kind: "ga4", label: "GA4 property", externalIdentifier: "PLACEHOLDER-GA4", url: "https://analytics.google.com/", vaultReference: null, notes: null, ownerUserId: specA }, admin);
+    await createAccountReference(db, harbour.id, { kind: "search_console", label: "Search Console property", externalIdentifier: null, url: "https://search.google.com/search-console", vaultReference: null, notes: "Ownership verification pending.", ownerUserId: specA }, admin);
+    await createAccountReference(db, meridian.id, { kind: "ga4", label: "GA4 property", externalIdentifier: "PLACEHOLDER-GA4", url: "https://analytics.google.com/", vaultReference: null, notes: null, ownerUserId: specA }, admin);
+    await createAccountReference(db, meridian.id, { kind: "wix", label: "Wix site owner login", externalIdentifier: null, url: "https://manage.wix.com/", vaultReference: "vault://clinic-genie/meridian/wix", notes: "Credentials live in the vault, never here.", ownerUserId: specA }, admin);
+    const refAdsN = await createAccountReference(db, northgate.id, { kind: "google_ads", label: "Google Ads account", externalIdentifier: "PLACEHOLDER-ADS-ID", url: "https://ads.google.com/", vaultReference: "vault://clinic-genie/northgate/google-ads", notes: null, ownerUserId: specB }, admin);
 
     // Tasks: overdue, due today, waiting, upcoming, completed, cancelled
     let tasks = 0;
@@ -202,6 +385,11 @@ export async function seedDemo(pool: pg.Pool, log: (l: string) => void = () => {
       await addSnapshot(db, meridian.id, { source, channel, metric: metric as never, periodStart: p2.start, periodEnd: p2.end, value: v2, note: null }, specA);
     }
 
+    await archiveClient(db, harbour.id, admin);
+    await archiveClient(db, meridian.id, admin);
+    await archiveClient(db, northgate.id, admin);
+    await ensurePreviewSnapshots(db);
+    await ensureYearAnalytics(db);
     await db.query("insert into audit_events (actor_type, actor_user_id, action, target_type, outcome, metadata) values ('system', $1, 'seed.run', 'database', 'success', $2)", [admin, JSON.stringify({ synthetic: true, clients: 3, tasks })]);
     await db.query("commit");
     const summary = { seeded: true, staff: DEMO_STAFF.length, clients: 3, tasks };

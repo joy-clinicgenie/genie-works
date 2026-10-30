@@ -4,7 +4,7 @@ import { formatDate } from "@clinic-genie/db";
 import { Badge, CONTENT_TONE, FLAG_TONE, label } from "@/components/ui/Badge";
 import { Table, Td, Th } from "@/components/ui/Table";
 
-export function SeoPageTable({ pages, today, showClient = true }: { pages: SeoPageRow[]; today: string; showClient?: boolean }) {
+export function SeoPageTable({ pages, today, showClient = true, emptyMessage = "No pages mapped yet." }: { pages: SeoPageRow[]; today: string; showClient?: boolean; emptyMessage?: string }) {
   return (
     <Table caption="SEO page mapping">
       <thead>
@@ -35,7 +35,7 @@ export function SeoPageTable({ pages, today, showClient = true }: { pages: SeoPa
             <Td align="right">{p.change_count}</Td>
           </tr>
         ))}
-        {pages.length === 0 && <tr><td colSpan={8} className="px-3 py-6 text-center text-sm text-muted">No pages mapped yet.</td></tr>}
+        {pages.length === 0 && <tr><td colSpan={showClient ? 8 : 7} className="px-3 py-6 text-center text-sm text-muted">{emptyMessage}</td></tr>}
       </tbody>
     </Table>
   );

@@ -12,9 +12,9 @@ export function Table({ children, caption, className = "" }: { children: ReactNo
 }
 
 export function Th({ children, align = "left", className = "" }: { children?: ReactNode; align?: "left" | "right"; className?: string }) {
-  return <th scope="col" className={`sticky top-0 bg-surface-muted text-xs font-semibold uppercase tracking-wide text-muted px-3 py-2 border-b border-line text-${align} ${className}`}>{children}</th>;
+  return <th scope="col" className={`text-xs font-semibold uppercase tracking-[0.12em] text-muted px-5 py-3 border-b border-line/80 text-${align} ${className}`}>{children}</th>;
 }
 
 export function Td({ children, align = "left", className = "" }: { children?: ReactNode; align?: "left" | "right"; className?: string }) {
-  return <td className={`px-3 py-2.5 border-b border-line align-top text-${align} ${align === "right" ? "num" : ""} ${className}`}>{children}</td>;
+  return <td className={`px-5 py-3.5 border-b border-line/70 align-top text-${align} ${align === "right" ? "num" : ""} ${className}`}>{children}</td>;
 }

@@ -15,10 +15,9 @@ export default async function AdminStatusPage() {
   const restoreOk = s.lastRestoreTest?.outcome === "passed";
   return (
     <>
-      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4 mb-6">
+      <div className="grid grid-cols-2 gap-4 lg:grid-cols-3 mb-6">
         <Stat label="Active clients" value={s.activeClients} />
         <Stat label="Active staff" value={s.activeStaff} />
-        <Stat label="Open tasks" value={s.openTasks} hint={`${s.overdueTasks} overdue`} tone={s.overdueTasks ? "warn" : undefined} />
         <Stat label="Approvals awaiting decision" value={s.pendingApprovals} />
       </div>
       <div className="grid gap-6 xl:grid-cols-2">

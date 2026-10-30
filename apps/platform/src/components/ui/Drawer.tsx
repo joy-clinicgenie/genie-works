@@ -14,7 +14,7 @@ export function Drawer({ title, closeHref, children, eyebrow }: { title: ReactNo
           {eyebrow && <div className="text-xs font-semibold uppercase tracking-wide text-muted">{eyebrow}</div>}
           <h2 className="text-lg font-semibold leading-tight">{title}</h2>
         </div>
-        <Link href={closeHref} scroll={false} className="inline-flex size-11 items-center justify-center rounded-md hover:bg-surface-muted" aria-label="Close details">
+        <Link href={closeHref} scroll={false} className="inline-flex size-11 items-center justify-center rounded-xl hover:bg-brand-pale" aria-label="Close details">
           <X className="size-5" aria-hidden="true" />
         </Link>
       </div>

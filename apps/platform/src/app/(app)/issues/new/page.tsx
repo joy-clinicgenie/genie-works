@@ -7,6 +7,7 @@ import { IssueForm } from "@/components/modules/IssueForms";
 import { RelatedPicker } from "@/components/modules/RelatedPicker";
 import { Field, Select } from "@/components/ui/Field";
 import { Button } from "@/components/ui/Button";
+import { clientLabel } from "@/lib/client-label";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Open an issue" };
@@ -31,14 +32,14 @@ export default async function NewIssuePage({ searchParams }: { searchParams: Pro
             <Field label="Client" htmlFor="client" required>
               <Select id="client" name="client" defaultValue="" required>
                 <option value="" disabled>Choose a client</option>
-                {data.clients.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+                {data.clients.map((c) => <option key={c.id} value={c.id}>{clientLabel(c)}</option>)}
               </Select>
             </Field>
             <Button type="submit" variant="secondary">Continue</Button>
           </form>
         ) : (
           <>
-            <p className="text-sm mb-4">Client: <strong>{chosen.name}</strong> <a href="/issues/new" className="text-action underline ml-2">change</a></p>
+            <p className="text-sm mb-4">Client: <strong>{clientLabel(chosen)}</strong> <a href="/issues/new" className="text-action underline ml-2">change</a></p>
             <IssueForm mode="create" values={{ clientId: chosen.id, ownerUserId: access.user.id }} owners={data.owners} relatedPicker={data.picker} />
           </>
         )}

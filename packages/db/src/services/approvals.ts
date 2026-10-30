@@ -1,7 +1,7 @@
 import type { ApprovalStatus } from "@clinic-genie/contracts";
 import type { Queryable } from "../client";
 import { recordAudit } from "./audit";
-import { resolveRelated } from "./related";
+import { relatedPair, resolveRelated } from "./related";
 import { recordTimeline } from "./timeline";
 
 export interface ApprovalRow {
@@ -82,14 +82,15 @@ export interface ApprovalInput {
 
 export async function createApproval(db: Queryable, input: ApprovalInput, actorUserId: string, submit: boolean): Promise<string> {
   if (!input.title.trim()) throw new ApprovalRuleError("Title is required.");
-  if (input.relatedType && input.relatedId) {
-    const found = await resolveRelated(db, input.clientId, input.relatedType, input.relatedId);
+  const related = relatedPair(input.relatedType, input.relatedId);
+  if (related.type && related.id) {
+    const found = await resolveRelated(db, input.clientId, related.type, related.id);
     if (!found) throw new ApprovalRuleError("The related record does not belong to this client.");
   }
   const { rows } = await db.query<{ id: string }>(
     `insert into approvals (client_id, title, summary, request_type, related_type, related_id, requested_by, status, submitted_at)
      values ($1, $2, $3, $4, $5, $6, $7, $8, case when $8 = 'submitted' then now() else null end) returning id`,
-    [input.clientId, input.title.trim(), input.summary, input.requestType, input.relatedType || null, input.relatedId || null, actorUserId, submit ? "submitted" : "draft"],
+    [input.clientId, input.title.trim(), input.summary, input.requestType, related.type, related.id, actorUserId, submit ? "submitted" : "draft"],
   );
   const id = rows[0]!.id;
   await recordAudit(db, { actorType: "staff", actorUserId, action: submit ? "approval.submit" : "approval.draft", targetType: "approval", targetId: id, clientId: input.clientId, outcome: "success" });
@@ -103,11 +104,12 @@ export async function updateDraft(db: Queryable, id: string, input: Omit<Approva
   const current = await getApproval(db, id);
   if (!current) throw new ApprovalRuleError("Approval not found.");
   if (current.status !== "draft" && current.status !== "changes_requested") throw new ApprovalRuleError("Only drafts or requests with changes requested can be edited.");
-  if (input.relatedType && input.relatedId) {
-    const found = await resolveRelated(db, current.client_id, input.relatedType, input.relatedId);
+  const related = relatedPair(input.relatedType, input.relatedId);
+  if (related.type && related.id) {
+    const found = await resolveRelated(db, current.client_id, related.type, related.id);
     if (!found) throw new ApprovalRuleError("The related record does not belong to this client.");
   }
-  await db.query("update approvals set title = $2, summary = $3, request_type = $4, related_type = $5, related_id = $6, updated_at = now() where id = $1", [id, input.title.trim(), input.summary, input.requestType, input.relatedType || null, input.relatedId || null]);
+  await db.query("update approvals set title = $2, summary = $3, request_type = $4, related_type = $5, related_id = $6, updated_at = now() where id = $1", [id, input.title.trim(), input.summary, input.requestType, related.type, related.id]);
   await recordAudit(db, { actorType: "staff", actorUserId, action: "approval.update", targetType: "approval", targetId: id, clientId: current.client_id, outcome: "success" });
 }
 

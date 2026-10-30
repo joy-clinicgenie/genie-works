@@ -17,16 +17,27 @@
     "db:reset": "npm run reset -w @clinic-genie/db",
     "db:backup": "npm run backup -w @clinic-genie/db",
     "db:restore-test": "npm run restore-test -w @clinic-genie/db",
-    "dev": "npm run dev -w @clinic-genie/platform",
+    "dev": "node scripts/dev.mjs",
     "typecheck": "npm run typecheck --workspaces --if-present",
     "lint": "npm run lint --workspaces --if-present",
     "build": "npm run build --workspaces --if-present",
     "test": "npm run test --workspaces --if-present",
     "test:decisions": "node --test tests/*.test.mjs",
-    "db:seed-load": "npm run seed-load -w @clinic-genie/db"
+    "db:seed-load": "npm run seed-load -w @clinic-genie/db",
+    "analytics:work": "npm run analytics:work -w @clinic-genie/db",
+    "enquiry:check": "npm run enquiry:check -w @clinic-genie/db",
+    "enquiry:seed": "npm run enquiry:seed -w @clinic-genie/db",
+    "enquiry:reset": "npm run enquiry:reset -w @clinic-genie/db",
+    "enquiry:link": "npm run enquiry:link -w @clinic-genie/db",
+    "consumers:check": "npm run consumers:check -w @clinic-genie/db"
   },
   "devDependencies": {
+    "@playwright/test": "^1.64.1",
     "@types/node": "^22.0.0",
     "typescript": "~5.9.0"
+  },
+  "allowScripts": {
+    "@embedded-postgres/darwin-arm64@18.4.0-beta.17": true,
+    "esbuild@0.28.2": true
   }
 }

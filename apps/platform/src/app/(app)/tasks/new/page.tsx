@@ -7,6 +7,7 @@ import { TaskForm } from "@/components/modules/TaskForm";
 import { RelatedPicker } from "@/components/modules/RelatedPicker";
 import { Field, Select } from "@/components/ui/Field";
 import { Button } from "@/components/ui/Button";
+import { clientLabel } from "@/lib/client-label";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "New task" };
@@ -24,7 +25,7 @@ export default async function NewTaskPage({ searchParams }: { searchParams: Prom
   const chosen = data.clients.find((c) => c.id === client);
   return (
     <>
-      <PageHeader title="New task" description="One accountable owner, a priority and, for High or Critical, a due date." />
+      <PageHeader title="New task" description="One accountable owner and a priority. A due date is optional." />
       <Card className="p-6 max-w-3xl">
         {!chosen ? (
           <form method="get" className="space-y-4">
@@ -32,7 +33,7 @@ export default async function NewTaskPage({ searchParams }: { searchParams: Prom
               <Select id="client" name="client" defaultValue="" required>
                 <option value="" disabled>Choose a client</option>
                 {data.clients.map((c) => (
-                  <option key={c.id} value={c.id}>{c.name}</option>
+                  <option key={c.id} value={c.id}>{clientLabel(c)}</option>
                 ))}
               </Select>
             </Field>
@@ -40,7 +41,7 @@ export default async function NewTaskPage({ searchParams }: { searchParams: Prom
           </form>
         ) : (
           <>
-            <p className="text-sm mb-4">Client: <strong>{chosen.name}</strong> <a href="/tasks/new" className="text-action underline ml-2">change</a></p>
+            <p className="text-sm mb-4">Client: <strong>{clientLabel(chosen)}</strong> <a href="/tasks/new" className="text-action underline ml-2">change</a></p>
             <TaskForm mode="create" values={{ clientId: chosen.id, ownerUserId: access.user.id }} owners={data.owners.filter((o) => o.platform_role !== "read_only")} relatedPicker={data.picker} />
           </>
         )}

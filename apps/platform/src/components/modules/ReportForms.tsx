@@ -16,7 +16,7 @@ export function SnapshotForm({ clientId }: { clientId: string }) {
       <div className="grid gap-3 sm:grid-cols-2">
         <Field label="Source" htmlFor="source"><Select id="source" name="source" defaultValue="manual">{REPORT_SOURCES.map((s) => <option key={s} value={s}>{label(s)}</option>)}</Select></Field>
         <Field label="Channel" htmlFor="channel"><Select id="channel" name="channel" defaultValue="all">{REPORT_CHANNELS.map((c) => <option key={c} value={c}>{label(c)}</option>)}</Select></Field>
-        <Field label="Metric" htmlFor="metric" required error={err("metric")}><Select id="metric" name="metric" defaultValue="enquiries">{REPORT_METRICS.map((m) => <option key={m.key} value={m.key}>{m.label}</option>)}</Select></Field>
+        <Field label="Metric" htmlFor="metric" required error={err("metric")}><Select id="metric" name="metric" defaultValue="enquiries">{REPORT_METRICS.filter((m) => m.key !== "patients").map((m) => <option key={m.key} value={m.key}>{m.label}</option>)}</Select></Field>
         <Field label="Value" htmlFor="value" hint="Leave blank if the figure is unavailable. Never enter zero for missing data." error={err("value")}><Input id="value" name="value" type="number" step="0.01" min="0" /></Field>
         <Field label="Period from" htmlFor="periodStart" required><Input id="periodStart" name="periodStart" type="date" required /></Field>
         <Field label="to" htmlFor="periodEnd" required><Input id="periodEnd" name="periodEnd" type="date" required /></Field>
