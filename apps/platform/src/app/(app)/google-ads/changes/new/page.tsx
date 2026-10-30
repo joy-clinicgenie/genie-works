@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { redirect } from "next/navigation";
 import { canEditClient, getAdsAudit, listActiveStaff, listAdsAudits, listApprovals, listClients } from "@clinic-genie/db";
 import { requireAccess } from "@/lib/session";
@@ -44,7 +45,7 @@ export default async function NewAdsChangePage({ searchParams }: { searchParams:
           </form>
         ) : (
           <>
-            <p className="text-sm mb-4">Client: <strong>{clientLabel(chosen)}</strong> <a href="/google-ads/changes/new" className="text-action underline ml-2">change</a></p>
+            <p className="text-sm mb-4">Client: <strong>{clientLabel(chosen)}</strong> <Link href="/google-ads/changes/new" className="text-action underline ml-2">change</Link></p>
             <AdsChangeForm clientId={chosen.id} audits={data.audits} findings={data.findings} approvals={data.approvals} staff={data.staff} defaultAuditId={audit} defaultFindingId={finding} actorId={access.user.id} />
           </>
         )}

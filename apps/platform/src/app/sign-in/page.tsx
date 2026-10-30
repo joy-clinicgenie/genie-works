@@ -1,3 +1,4 @@
+import Image from "next/image";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { authProviders, signIn } from "@/lib/auth";
@@ -30,7 +31,7 @@ export default async function SignInPage({ searchParams }: { searchParams: Promi
     <main className="min-h-dvh flex items-center justify-center px-4 py-12">
       <div className="card w-full max-w-md p-8">
         <div className="mb-6 flex items-center gap-3">
-          <img src="/brandmark.svg" alt="" width={36} height={36} />
+          <Image src="/brandmark.svg" alt="" width={36} height={36} unoptimized />
           <div className="leading-tight">
             <h1 className="text-xl font-semibold tracking-tight">Genie Works</h1>
             <p className="text-[11px] italic text-muted">Internal Platform for Genies</p>

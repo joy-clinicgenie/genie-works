@@ -24,6 +24,13 @@ export async function ensureAppRole(pool: pg.Pool, password: string): Promise<vo
   }
 }
 
+/**
+ * Applies each `packages/db/migrations/*.sql` file once, in filename order.
+ * `schema_migrations` records the full filename, not the numeric prefix.
+ * `0034_client_public_profiles.sql` and `0034_leads_forms.sql` both stay applied.
+ * Do not rename or rewrite either file: a changed checksum is refused, and a
+ * new name would be treated as a migration that has not run.
+ */
 export async function runMigrations(pool: pg.Pool, log: (line: string) => void = () => {}): Promise<MigrationResult> {
   await pool.query(`create table if not exists schema_migrations (
     name text primary key,

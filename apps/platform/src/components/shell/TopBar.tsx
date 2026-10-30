@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useEffect, useId, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { Plus, Search } from "lucide-react";
 import { buttonClass } from "@/components/ui/Button";
 
@@ -17,11 +17,13 @@ export function TopBar({
   pages,
   clients,
   adds,
+  environment,
 }: {
   staffName: string;
   pages: TopLink[];
   clients: TopLink[];
   adds: TopLink[];
+  environment?: ReactNode;
 }) {
   const pathname = usePathname();
   const router = useRouter();
@@ -54,8 +56,6 @@ export function TopBar({
   const matches = needle
     ? [...pages, ...clients].filter((item) => `${item.label} ${item.keywords ?? ""}`.toLowerCase().includes(needle)).slice(0, 8)
     : [];
-  const Greeting = pathname === "/" ? "h1" : "p";
-
   function go(href: string) {
     setSearchOpen(false);
     setQuery("");
@@ -63,11 +63,11 @@ export function TopBar({
   }
 
   return (
-    <div className="flex min-w-0 flex-1 items-center gap-3">
-      <Greeting className="hidden shrink-0 text-lg font-semibold tracking-tight text-ink sm:block lg:text-[1.35rem]">
+    <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2 lg:flex-nowrap lg:gap-3">
+      <p className="hidden min-w-0 shrink text-lg font-semibold tracking-tight text-ink lg:block lg:text-[1.35rem]">
         Hey {staffName}, glad to have you back
-      </Greeting>
-      <div className="relative ml-auto w-full max-w-md min-w-[9rem]">
+      </p>
+      <div className="relative min-w-0 w-full max-w-full flex-1 basis-full sm:basis-52 lg:max-w-md lg:basis-0">
         <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted" aria-hidden="true" />
         <input
           ref={inputRef}
@@ -94,7 +94,7 @@ export function TopBar({
               inputRef.current?.blur();
             }
           }}
-          className="h-11 w-full rounded-xl bg-surface pr-12 pl-9 text-sm text-ink shadow-[0_0_0_1px_var(--color-line)] outline-none placeholder:text-muted focus:shadow-[0_0_0_2px_var(--color-action)]"
+          className="h-11 w-full min-w-0 rounded-xl bg-surface pr-12 pl-9 text-sm text-ink shadow-[0_0_0_1px_var(--color-line)] outline-none placeholder:text-muted focus:shadow-[0_0_0_2px_var(--color-action)] focus-visible:outline focus-visible:outline-[3px] focus-visible:outline-offset-2 focus-visible:outline-action"
         />
         <kbd className="pointer-events-none absolute right-3 top-1/2 hidden -translate-y-1/2 rounded-md bg-surface-muted px-1.5 py-0.5 text-[11px] font-medium text-muted sm:inline">K</kbd>
         {searchOpen && needle && (
@@ -110,12 +110,13 @@ export function TopBar({
           </ul>
         )}
       </div>
-      <Link href="/reports" className={`${buttonClass("secondary", "sm")} hidden whitespace-nowrap sm:inline-flex`}>Reports</Link>
-      {adds.length === 1 && <Link href={adds[0]!.href} aria-label="Add new" className={`${buttonClass("primary", "sm")} whitespace-nowrap`}><Plus className="size-4" aria-hidden="true" /><span className="hidden sm:inline">Add new</span></Link>}
+      <div className="flex max-w-full min-w-0 flex-wrap items-center gap-2">
+      <Link href="/reports" className={`${buttonClass("secondary", "sm")} whitespace-nowrap focus-visible:outline focus-visible:outline-[3px] focus-visible:outline-offset-2 focus-visible:outline-action`}>Reports</Link>
+      {adds.length === 1 && <Link href={adds[0]!.href} aria-label="Add new" className={`${buttonClass("primary", "sm")} whitespace-nowrap focus-visible:outline focus-visible:outline-[3px] focus-visible:outline-offset-2 focus-visible:outline-action`}><Plus className="size-4" aria-hidden="true" /><span>Add new</span></Link>}
       {adds.length > 1 && (
         <div className="relative">
-          <button type="button" className={`${buttonClass("primary", "sm")} whitespace-nowrap`} aria-label="Add new" aria-expanded={menuOpen} aria-haspopup="menu" onClick={() => setMenuOpen((open) => !open)}>
-            <Plus className="size-4" aria-hidden="true" /><span className="hidden sm:inline">Add new</span>
+          <button type="button" className={`${buttonClass("primary", "sm")} whitespace-nowrap focus-visible:outline focus-visible:outline-[3px] focus-visible:outline-offset-2 focus-visible:outline-action`} aria-label="Add new" aria-expanded={menuOpen} aria-haspopup="menu" onClick={() => setMenuOpen((open) => !open)}>
+            <Plus className="size-4" aria-hidden="true" /><span>Add new</span>
           </button>
           {menuOpen && (
             <ul role="menu" className="absolute right-0 top-[calc(100%+6px)] z-40 min-w-40 overflow-hidden rounded-2xl bg-surface py-1 shadow-pop">
@@ -128,6 +129,8 @@ export function TopBar({
           )}
         </div>
       )}
+      {environment ? <span className="lg:hidden">{environment}</span> : null}
+      </div>
     </div>
   );
 }

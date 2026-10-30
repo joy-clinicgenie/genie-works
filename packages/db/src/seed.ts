@@ -120,7 +120,21 @@ const TRAFFIC_SPLITS: Array<{ code: string; rows: PreviewRow[] }> = [
   },
 ];
 
-/** Two matching 28-day periods for CFAC, CEDAR and SUNRISE. Skips a clinic that already has session rows. */
+/** One current snapshot row. A repeat of the live unique key inserts nothing. */
+export async function insertPreviewSnapshot(
+  db: pg.PoolClient,
+  values: [string, string, string, string, string, string, number, string, string],
+): Promise<number> {
+  const result = await db.query(
+    `insert into report_snapshots (client_id, source, channel, metric, dimension, period_start, period_end, value, unit, note, entered_by)
+     values ($1, $2, $3, $4, '', $5, $6, $7, 'count', $8, $9)
+     on conflict do nothing`,
+    values,
+  );
+  return result.rowCount ?? 0;
+}
+
+/** Two matching 28-day periods for CFAC, CEDAR and SUNRISE. A clinic that already has the current session row is left unchanged. A row that already matches report_snapshots_current_idx is skipped. */
 async function ensurePreviewSnapshots(db: pg.PoolClient): Promise<string[]> {
   const admin = await db.query<{ id: string }>("select id from staff_users where email = 'admin@example.invalid' and active limit 1");
   const actor = admin.rows[0]?.id;
@@ -138,16 +152,13 @@ async function ensurePreviewSnapshots(db: pg.PoolClient): Promise<string[]> {
     const currentPeriod = periods[1]!;
     const already = await db.query("select 1 from report_snapshots where client_id = $1 and source = 'ga4_export' and metric = 'sessions' and period_start = $2 and period_end = $3 and superseded_by_id is null limit 1", [clientId, currentPeriod.start, currentPeriod.end]);
     if (already.rows.length) continue;
+    let inserted = 0;
     for (const row of clinic.rows) {
       for (const period of periods) {
-        await db.query(
-          `insert into report_snapshots (client_id, source, channel, metric, period_start, period_end, value, unit, note, entered_by)
-           values ($1, $2, $3, $4, $5, $6, $7, 'count', $8, $9)`,
-          [clientId, row.source, row.channel, row.metric, period.start, period.end, row[period.key], PREVIEW_NOTE, actor],
-        );
+        inserted += await insertPreviewSnapshot(db, [clientId, row.source, row.channel, row.metric, period.start, period.end, row[period.key], PREVIEW_NOTE, actor]);
       }
     }
-    added.push(clinic.code);
+    if (inserted) added.push(clinic.code);
   }
   for (const clinic of TRAFFIC_SPLITS) {
     const found = await db.query<{ id: string }>("select id from clients where short_code = $1 and status = 'active'", [clinic.code]);
@@ -156,16 +167,13 @@ async function ensurePreviewSnapshots(db: pg.PoolClient): Promise<string[]> {
     const currentPeriod = periods[1]!;
     const already = await db.query("select 1 from report_snapshots where client_id = $1 and metric = 'new_visitors' and period_start = $2 and period_end = $3 and superseded_by_id is null limit 1", [clientId, currentPeriod.start, currentPeriod.end]);
     if (already.rows.length) continue;
+    let inserted = 0;
     for (const row of clinic.rows) {
       for (const period of periods) {
-        await db.query(
-          `insert into report_snapshots (client_id, source, channel, metric, period_start, period_end, value, unit, note, entered_by)
-           values ($1, $2, $3, $4, $5, $6, $7, 'count', $8, $9)`,
-          [clientId, row.source, row.channel, row.metric, period.start, period.end, row[period.key], PREVIEW_NOTE, actor],
-        );
+        inserted += await insertPreviewSnapshot(db, [clientId, row.source, row.channel, row.metric, period.start, period.end, row[period.key], PREVIEW_NOTE, actor]);
       }
     }
-    added.push(`${clinic.code} traffic`);
+    if (inserted) added.push(`${clinic.code} traffic`);
   }
   if (added.length) {
     await db.query(

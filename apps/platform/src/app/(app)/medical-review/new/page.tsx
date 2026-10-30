@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { redirect } from "next/navigation";
 import { canEditClient, listClients } from "@clinic-genie/db";
 import { requireAccess } from "@/lib/session";
@@ -33,7 +34,7 @@ export default async function NewClaimPage({ searchParams }: { searchParams: Pro
           </form>
         ) : (
           <>
-            <p className="text-sm mb-4">Client: <strong>{clientLabel(chosen)}</strong> <a href="/medical-review/new" className="text-action underline ml-2">change</a></p>
+            <p className="text-sm mb-4">Client: <strong>{clientLabel(chosen)}</strong> <Link href="/medical-review/new" className="text-action underline ml-2">change</Link></p>
             <ClaimForm clientId={chosen.id} />
           </>
         )}

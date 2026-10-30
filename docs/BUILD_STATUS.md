@@ -1,33 +1,49 @@
 # Build status
 
-Updated: 19 October 2026, end of the first build session (Day 1 of the 20-day calendar).
+Updated: 30 October 2026, Asia/Singapore, after Batch 07. Latest approved decision is D21. No D22 is recorded.
 
 ## Current stage
-First working draft complete for the agency platform: foundation, permissions, all ten modules, seed, tests, backup and restore, browser verification at desktop and mobile. Ahead of the 23 October first-draft target.
 
-## Completed
-- Sources read and reconciled: `docs/SOURCE_INVENTORY.md` (includes the sibling `clinic-demo-a` pilot).
-- Decisions D1 to D10: `docs/DECISIONS.md`.
-- Workspace: `apps/platform` (Next.js 16, Tailwind 4, Auth.js), `packages/db` (PostgreSQL migrations 0001 to 0006 with row-level security, services, seed, backup and restore, Vitest), `packages/contracts`.
-- Modules: dashboard queue, my tasks, clients (profile, websites, account references, access), tasks, approvals, SEO, Google Ads, issues and evidence, medical review, reports, timeline, admin (status, users, audit, backups).
-- Checks: see `docs/ACCEPTANCE.md`. 21 automated tests pass, type check and build pass, lint has no errors, restore test passed, 44 routes render, unauthenticated access is refused.
-- Documentation: `README.md`, `docs/HANDOVER.md`, `docs/QUEUE_SCORING.md`.
+Genie Works V1 is a local nine-module staff application. The launch menu is Dashboard (Agency Overview), Clients, Website analytics, SEO performance, Blog, Leads and forms, Reports, Settings and Admin.
 
-## Unresolved decisions (need the user or a named approver)
-- Confirm D1 (this repository is the agency platform; the website and lead pilot stay in `clinic-demo-a`) and D6 (role matrix).
-- Managed PostgreSQL vendor and region; Google Workspace OAuth client; Vercel plan.
-- The absent `05_DASHBOARD_ACTION_QUEUE.md` and `02_INFORMATION_ARCHITECTURE.md` client tabs from the older pack: supply them if the proposed scoring or tabs should change.
-- Clinic owner, content approver, security reviewer, release approver remain unnamed.
+Migrations are the 36 files in `packages/db/migrations/`, numbered 0001 through 0035. Two applied files share 0034: `0034_client_public_profiles.sql` and `0034_leads_forms.sql`. Do not rename or rewrite them. The runner records the full filename and skips an unchanged file. The newest file is `0035_connection_secret_admin.sql`, which limits connection-secret writes to an administrator.
 
-## Known gaps and limitations
-- The DAY-01 decision-record test (uncommitted prior work on branch `cursor/day-01-scope-audit`) asserts an empty repository and now fails by design. Not modified because it is another session's uncommitted work.
-- Drawer-style quick view on lists is not built; detail pages are full pages. Lists keep filters in the URL.
-- No file was uploaded through the browser yet; the evidence upload path is covered by code review and the authorised download route by an HTTP check.
-- Full keyboard-only and screen-reader passes are still to do.
-- Working tree has uncommitted changes from another session (DAY-01 files) that this build leaves alone.
+Reports in the database are `draft` or `saved`. **Save draft** updates the working copy. **Save for review** stores a version. A saved report is not Approved or Final. The four-state workflow is a proposal in `docs/audits/batches/BATCH_06_HANDOVER.md` and stays blocked on DEP-06.
 
-## Checks run
-`npm run typecheck`, `npm run lint`, `npm run build`, `npm test` (packages/db), `npm run db:backup`, `npm run db:restore-test`, browser walk-through (sign-in, dashboard quick action, all module pages, mobile menu), HTTP checks without a session.
+## Completed through Batch 07
+
+- Decisions D1 to D21 in `docs/DECISIONS.md`.
+- Fresh local setup removes imported directory clients. Existing databases are not stripped by a later migrate. The historical SQL remains in git (DEP-05, GW-004).
+- Fictional backup and restore on an isolated local database (GW-007).
+- Analytics worker, fixture sync and a prepared cron entry. No live provider call (GW-005, DEP-01).
+- Enquiry screens against a local fixture when `ENQUIRY_DATABASE_URL` points at that fixture. The shared setting is empty. No mail is sent (GW-006, DEP-02, DEP-03).
+- Administrator-only connection secrets (GW-011).
+- Repeatable fictional seed against `report_snapshots_current_idx` (GW-009).
+- Header controls that wrap below the desktop breakpoint, one home-page `h1`, and the link and image lint warnings from the earlier scan (GW-012, GW-014, GW-015).
+- README, this file, `docs/HANDOVER.md` and `docs/GENIE_WORKS_V1_STAFF_SOP.md` describe the nine-module app (GW-016).
+
+## Still open
+
+| Item | What is missing |
+| --- | --- |
+| DEP-01 | A named non-production analytics property and permission to read it |
+| DEP-02 | An enquiry source the source owner approves. The local fixture is not that source |
+| DEP-03 | A sender and an approved test recipient, or a decision that provider acceptance is enough |
+| DEP-04 | An authorised staging project |
+| DEP-05 | A repository-owner decision on the historical migration text. No history rewrite was done |
+| DEP-06 | One product-owner choice for report states, and where the final artifact lives |
+| DEP-07 | A staging website that will call the blog or SEO API |
+| DEP-08 | A named rollback owner |
+| Owners | Clinic owner, content approver, security reviewer and release approver are unnamed |
+
+Do not describe live analytics, email delivery or website API consumption as verified. Do not describe a saved report as approved.
+
+## Legacy routes
+
+Tasks, approvals, Google Ads, issues, HCSA and timeline still open. They are listed in `README.md`. They are not launch-menu modules and were not deleted.
 
 ## Exact next step
-On a resumed session: `npm run db:start`, `npm run dev`, sign in as `admin@example.invalid`. Then either (a) start Milestone 2 refinement from `docs/HANDOVER.md` section 5, or (b) if the user wants a different build order, re-read `docs/DECISIONS.md` D1 and adjust.
+
+Batch 08 can start the role, client, blog, fixture-enquiry and keyboard journeys that do not need a provider, a live enquiry source, a mail sender or a website consumer. Report finalisation stays blocked on DEP-06. Do not start Batch 08 until its prompt is given.
+
+On a resumed local session: `npm run db:start`, then `npm run dev`, and sign in as `admin@example.invalid` through `/dev/magic-links` only when the database is local. Do not touch the clinic website Postgres on port 54329.

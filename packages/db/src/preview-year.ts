@@ -308,7 +308,8 @@ async function insertPending(db: pg.PoolClient, clientId: string, actor: string,
     });
     await db.query(
       `insert into report_snapshots (client_id, source, channel, metric, dimension, period_start, period_end, value, unit, note, entered_by)
-       values ${placeholders.join(",")}`,
+       values ${placeholders.join(",")}
+       on conflict do nothing`,
       values,
     );
   }

@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { redirect } from "next/navigation";
 import { canEditClient, listAccountReferences, listClients } from "@clinic-genie/db";
 import { requireAccess } from "@/lib/session";
@@ -36,7 +37,7 @@ export default async function NewAuditPage({ searchParams }: { searchParams: Pro
           </form>
         ) : (
           <>
-            <p className="text-sm mb-4">Client: <strong>{clientLabel(chosen)}</strong> <a href="/google-ads/audits/new" className="text-action underline ml-2">change</a></p>
+            <p className="text-sm mb-4">Client: <strong>{clientLabel(chosen)}</strong> <Link href="/google-ads/audits/new" className="text-action underline ml-2">change</Link></p>
             <AuditForm clientId={chosen.id} references={data.references} />
           </>
         )}

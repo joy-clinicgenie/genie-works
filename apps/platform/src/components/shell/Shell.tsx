@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useSyncExternalStore, useState, type ReactNode } from "react";
@@ -18,7 +19,7 @@ const ICONS = { LayoutDashboard, Building2, Inbox, ClipboardList, Search, BarCha
 function ProductName({ mark = 28, subtitle = true }: { mark?: number; subtitle?: boolean }) {
   return (
     <span className="flex items-center gap-2.5 min-w-0">
-      <img src="/brandmark.svg" alt="" width={mark} height={mark} className="shrink-0" />
+      <Image src="/brandmark.svg" alt="" width={mark} height={mark} unoptimized className="shrink-0" />
       <span className="min-w-0 leading-tight">
         <span className="block whitespace-nowrap font-semibold text-ink">Genie Works</span>
         {subtitle && <span className="block text-[11px] italic font-normal text-muted">Internal Platform for Genies</span>}
@@ -119,7 +120,7 @@ export function Shell({ workspace, modules, platform, header, account, staffName
 
   const brand = (mark: number, onClose?: () => void, rail = false) => (
     <div className={`flex items-center ${rail && collapsed ? "justify-center px-2 pt-4 pb-1" : "gap-2 px-5 pt-5 pb-1"}`}>
-      {rail && collapsed ? <img src="/brandmark.svg" alt="Genie Works" width={mark} height={mark} className="shrink-0" /> : <ProductName mark={mark} />}
+      {rail && collapsed ? <Image src="/brandmark.svg" alt="Genie Works" width={mark} height={mark} unoptimized className="shrink-0" /> : <ProductName mark={mark} />}
       {rail && !collapsed && <PanelLeft className="ml-auto size-[18px] shrink-0 text-muted" strokeWidth={1.5} aria-hidden="true" />}
       {onClose && (
         <button className="ml-auto inline-flex size-11 items-center justify-center rounded-xl text-ink-soft hover:bg-brand-pale" aria-label="Close menu" onClick={onClose}>
@@ -155,12 +156,11 @@ export function Shell({ workspace, modules, platform, header, account, staffName
         </div>
       )}
       <div className="flex min-h-dvh flex-col min-w-0">
-        <header className="sticky top-0 z-30 flex min-h-16 w-full items-center gap-3 border-b border-line-strong bg-surface px-4 py-3 lg:px-8">
-          <button className="inline-flex size-11 shrink-0 items-center justify-center rounded-xl hover:bg-brand-pale lg:hidden" aria-label="Open menu" aria-expanded={open} onClick={() => setOpen(true)}>
+        <header className="sticky top-0 z-30 flex w-full flex-wrap items-center gap-2 border-b border-line-strong bg-surface px-3 py-2 lg:min-h-16 lg:flex-nowrap lg:gap-3 lg:px-8 lg:py-3">
+          <button type="button" className="inline-flex size-11 shrink-0 items-center justify-center rounded-xl hover:bg-brand-pale focus-visible:outline focus-visible:outline-[3px] focus-visible:outline-offset-2 focus-visible:outline-action lg:hidden" aria-label="Open menu" aria-expanded={open} onClick={() => setOpen(true)}>
             <Menu className="size-5" aria-hidden="true" />
           </button>
-          <TopBar staffName={staffName} pages={[...workspace, ...modules, ...platform]} clients={clients} adds={adds} />
-          <div className="shrink-0 lg:hidden">{header}</div>
+          <TopBar staffName={staffName} pages={[...workspace, ...modules, ...platform]} clients={clients} adds={adds} environment={header} />
         </header>
         <main id="main" className="w-full min-w-0 max-w-none flex-1 px-4 pt-6 pb-6 lg:px-8 lg:pt-8 lg:pb-8">
           <BackButton />

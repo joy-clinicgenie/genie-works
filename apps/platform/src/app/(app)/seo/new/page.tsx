@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { redirect } from "next/navigation";
 import { canEditClient, listActiveStaff, listClients, listWebsites } from "@clinic-genie/db";
 import { requireAccess } from "@/lib/session";
@@ -42,7 +43,7 @@ export default async function NewSeoPage({ searchParams }: { searchParams: Promi
           </form>
         ) : (
           <>
-            <p className="text-sm mb-4">Client: <strong>{clientLabel(chosen)}</strong> <a href="/seo/new" className="text-action underline ml-2">change</a></p>
+            <p className="text-sm mb-4">Client: <strong>{clientLabel(chosen)}</strong> <Link href="/seo/new" className="text-action underline ml-2">change</Link></p>
             <SeoPageForm clientId={chosen.id} websites={data.websites.filter((w) => w.status === "active")} owners={data.owners.filter((o) => o.platform_role !== "read_only")} />
           </>
         )}

@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { redirect } from "next/navigation";
 import { canEditClient, listActiveStaff, listClients } from "@clinic-genie/db";
 import { requireAccess } from "@/lib/session";
@@ -41,7 +42,7 @@ export default async function NewTaskPage({ searchParams }: { searchParams: Prom
           </form>
         ) : (
           <>
-            <p className="text-sm mb-4">Client: <strong>{clientLabel(chosen)}</strong> <a href="/tasks/new" className="text-action underline ml-2">change</a></p>
+            <p className="text-sm mb-4">Client: <strong>{clientLabel(chosen)}</strong> <Link href="/tasks/new" className="text-action underline ml-2">change</Link></p>
             <TaskForm mode="create" values={{ clientId: chosen.id, ownerUserId: access.user.id }} owners={data.owners.filter((o) => o.platform_role !== "read_only")} relatedPicker={data.picker} />
           </>
         )}

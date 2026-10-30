@@ -1,3 +1,5 @@
+import Image from "next/image";
+
 const logos: Record<string, { src: string; width: number; height: number; plate: "light" | "dark" }> = {
   cfac: { src: "/client-marks/cfac.png", width: 510, height: 132, plate: "light" },
   cedar: { src: "/client-marks/cedar.png", width: 654, height: 248, plate: "dark" },
@@ -29,7 +31,7 @@ export function ClientMark({ slug, name, shortCode, size = "lg" }: { slug: strin
     const frame = size === "lg" ? (wide ? "h-20 w-44" : "size-20") : wide ? "h-11 w-24" : "size-11";
     return (
       <span className={`grid shrink-0 place-items-center overflow-hidden rounded-2xl p-2 ring-4 ring-surface ${frame} ${logo.plate === "dark" ? "bg-ink" : "bg-surface"}`}>
-        <img src={logo.src} alt="" width={logo.width} height={logo.height} className="h-full w-full object-contain" />
+        <Image src={logo.src} alt="" width={logo.width} height={logo.height} unoptimized className="h-full w-full object-contain" />
       </span>
     );
   }

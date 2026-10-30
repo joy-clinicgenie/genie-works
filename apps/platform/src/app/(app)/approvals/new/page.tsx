@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { redirect } from "next/navigation";
 import { canEditClient, listClients } from "@clinic-genie/db";
 import { requireAccess } from "@/lib/session";
@@ -38,7 +39,7 @@ export default async function NewApprovalPage({ searchParams }: { searchParams: 
           </form>
         ) : (
           <>
-            <p className="text-sm mb-4">Client: <strong>{clientLabel(chosen)}</strong> <a href="/approvals/new" className="text-action underline ml-2">change</a></p>
+            <p className="text-sm mb-4">Client: <strong>{clientLabel(chosen)}</strong> <Link href="/approvals/new" className="text-action underline ml-2">change</Link></p>
             <ApprovalForm mode="create" values={{ clientId: chosen.id }} relatedPicker={data.picker} />
           </>
         )}
