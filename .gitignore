@@ -15,6 +15,7 @@ backups/*.dump
 .DS_Store
 npm-debug.log*
 backups/*.json
+backups/**/*.json
 apps/platform/AGENTS.md
 playwright-report/
 test-results/
