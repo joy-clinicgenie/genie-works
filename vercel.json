@@ -2,5 +2,11 @@
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "framework": "nextjs",
   "installCommand": "npm install",
-  "buildCommand": "AUTH_SECRET=\"${AUTH_SECRET:-preview-build-only}\" npm run build -w @clinic-genie/platform && if [ ! -e .next ]; then cp -R apps/platform/.next .next; fi"
+  "buildCommand": "AUTH_SECRET=\"${AUTH_SECRET:-preview-build-only}\" npm run build -w @clinic-genie/platform && if [ ! -e .next ]; then cp -R apps/platform/.next .next; fi",
+  "crons": [
+    {
+      "path": "/api/internal/analytics/worker",
+      "schedule": "0 2 * * *"
+    }
+  ]
 }

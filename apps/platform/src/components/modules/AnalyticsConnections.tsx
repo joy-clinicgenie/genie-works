@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { listClients, listConnections, listWebsites, readExchangedToken, type AccessProfile } from "@clinic-genie/db";
+import { formatDateTime, listClients, listConnectionSyncStatus, listConnections, listWebsites, readExchangedToken, type AccessProfile, type ConnectionSyncStatus } from "@clinic-genie/db";
 import { serviceTx, staffTx } from "@/lib/db";
 import { Badge } from "@/components/ui/Badge";
 import { buttonClass } from "@/components/ui/Button";
@@ -23,6 +23,31 @@ const MESSAGES: Record<string, string> = {
   overlap: "The file overlaps an existing range and was stored only because replace was selected. Provider partitions stay in place.",
   replay: "This file was already imported.",
 };
+
+function safeErrorText(code: string): string {
+  const words: Record<string, string> = {
+    rate_limited: "The provider asked us to wait. Retry stops after five attempts.",
+    reconnect_required: "The connection needs to be restored.",
+    provider_rejected: "The provider rejected the request.",
+    lease_expired: "A sync stopped before it finished.",
+    page_failed: "A later page failed. The previous complete report is unchanged.",
+    unsupported: "This report is not available from the provider.",
+  };
+  return words[code] ?? "A sync job needs attention.";
+}
+
+function SyncState({ status }: { status: ConnectionSyncStatus | undefined }) {
+  return (
+    <div className="mt-1 text-sm text-ink-soft">
+      <p>Last successful sync: {status?.lastSuccessAt ? formatDateTime(status.lastSuccessAt) : "No successful sync"}</p>
+      <p>
+        Queue: {status?.queued ?? 0} queued, {status?.leased ?? 0} leased, {status?.failed ?? 0} failed
+        {(status?.reconnectRequired ?? 0) > 0 ? `, ${status?.reconnectRequired} waiting for reconnect` : ""}
+      </p>
+      {status?.safeError ? <p className="text-ink">{safeErrorText(status.safeError)}</p> : null}
+    </div>
+  );
+}
 
 export async function AnalyticsConnections({
   access,
@@ -49,20 +74,22 @@ export async function AnalyticsConnections({
   const data = await staffTx(access, async (db) => {
     const clients = await listClients(db);
     const selected = clients.find((client) => client.id === requestedClientId) ?? clients[0] ?? null;
-    if (!selected) return { clients, selected: null, websites: [], connections: [] };
+    if (!selected) return { clients, selected: null, websites: [], connections: [], sync: [] as ConnectionSyncStatus[] };
     return {
       clients,
       selected,
       websites: await listWebsites(db, selected.id),
       connections: await listConnections(db, selected.id),
+      sync: await listConnectionSyncStatus(db, selected.id),
     };
   });
+  const syncByConnection = new Map(data.sync.map((row) => [row.connectionId, row]));
   const message = notice ? MESSAGES[notice] : undefined;
   const pendingWebsite = data.websites.find((website) => website.id === pending?.websiteId);
   return (
     <div className="border-t border-line px-5 py-5">
       <h3 className="text-sm font-semibold text-ink">Analytics providers</h3>
-      <p className="mt-1 text-sm text-ink-soft">One traffic source per website. Search Console can sit beside it. Tokens stay on the server.</p>
+      <p className="mt-1 text-sm text-ink-soft">One traffic source per website. Search Console can sit beside it. Tokens stay on the server. A connection check is not a successful data sync.</p>
       {message && <p className="mt-3 text-sm text-ink">{message}</p>}
       {!googleReady && !wixReady && <p className="mt-3 text-sm text-ink-soft">Not configured. Add the provider credentials on the server before connecting a clinic.</p>}
       <ClinicConnectionPicker key={data.selected?.id ?? "none"} clients={data.clients.map((client) => ({ id: client.id, name: client.name }))} selected={data.selected?.id ?? ""} />
@@ -86,8 +113,11 @@ export async function AnalyticsConnections({
             {rows.length === 0 && <p className="mt-3 text-sm text-ink-soft">Not connected.</p>}
             <ul className="mt-3 space-y-2">
               {rows.map((connection) => (
-                <li key={connection.id} className="flex flex-wrap items-center justify-between gap-3 text-sm">
-                  <span className="text-ink">{connection.provider.toUpperCase()} · {connection.external_property_id}</span>
+                <li key={connection.id} className="flex flex-wrap items-start justify-between gap-3 text-sm">
+                  <div>
+                    <span className="text-ink">{connection.provider.toUpperCase()} · {connection.external_property_id}</span>
+                    <SyncState status={syncByConnection.get(connection.id)} />
+                  </div>
                   <span className="flex items-center gap-2">
                     <Badge tone={connection.status === "connected" ? "good" : "warn"}>{connection.status === "reconnect_required" ? "Reconnect required" : connection.status}</Badge>
                     <form action={disconnectAnalytics}>

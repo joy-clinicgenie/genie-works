@@ -85,6 +85,8 @@ describe("analytics board from snapshots", () => {
 
   it("computes visitor-to-lead from enquiries and visitors", () => {
     expect(board.leads.current).toBe(14);
+    expect(board.formStarts.current).toBeNull();
+    expect(board.formSubmissions.current).toBeNull();
     expect(board.users.current).toBe(972);
     expect(board.conversionRate.current).toBe(1.4);
     expect(board.conversionRate.previous).toBe(1.2);

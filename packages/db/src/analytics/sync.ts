@@ -180,7 +180,71 @@ export async function enqueueBackfill(db: Queryable, connectionId: string, oldes
   return created;
 }
 
+export interface ConnectionSyncStatus {
+  connectionId: string;
+  queued: number;
+  leased: number;
+  failed: number;
+  reconnectRequired: number;
+  lastSuccessAt: Date | null;
+  safeError: string | null;
+}
+
+/** Queue counts and the last succeeded sync run. A connection verification time is not included. */
+export async function listConnectionSyncStatus(db: Queryable, clientId: string): Promise<ConnectionSyncStatus[]> {
+  const { rows } = await db.query<{
+    connection_id: string;
+    queued: number;
+    leased: number;
+    failed: number;
+    reconnect_required: number;
+    last_success_at: Date | string | null;
+    safe_error: string | null;
+  }>(
+    `select c.id as connection_id,
+       count(j.id) filter (where j.state = 'queued')::int as queued,
+       count(j.id) filter (where j.state = 'leased')::int as leased,
+       count(j.id) filter (where j.state = 'failed')::int as failed,
+       count(j.id) filter (where j.state = 'reconnect_required')::int as reconnect_required,
+       (select max(r.finished_at) from analytics_sync_runs r where r.connection_id = c.id and r.result = 'succeeded') as last_success_at,
+       (select j2.safe_error_code from analytics_jobs j2
+         where j2.connection_id = c.id
+           and j2.safe_error_code is not null
+           and j2.state in ('failed', 'reconnect_required', 'queued', 'leased')
+         order by j2.updated_at desc
+         limit 1) as safe_error
+     from analytics_connections c
+     left join analytics_jobs j on j.connection_id = c.id
+     where c.client_id = $1 and c.disconnected_at is null
+     group by c.id
+     order by c.id`,
+    [clientId],
+  );
+  return rows.map((row) => ({
+    connectionId: row.connection_id,
+    queued: Number(row.queued),
+    leased: Number(row.leased),
+    failed: Number(row.failed),
+    reconnectRequired: Number(row.reconnect_required),
+    lastSuccessAt: row.last_success_at ? new Date(row.last_success_at) : null,
+    safeError: row.safe_error,
+  }));
+}
+
 export async function leaseNext(db: Queryable, owner: string, now: Date): Promise<JobRow | null> {
+  const at = now.toISOString();
+  await db.query(
+    `update analytics_jobs
+     set state = 'failed', safe_error_code = 'lease_expired', lease_owner = null, lease_until = null, updated_at = $1
+     where state = 'leased' and lease_until is not null and lease_until < $1::timestamptz and attempts >= 5`,
+    [at],
+  );
+  await db.query(
+    `update analytics_jobs
+     set state = 'queued', next_attempt_at = $1, lease_owner = null, lease_until = null, updated_at = $1
+     where state = 'leased' and lease_until is not null and lease_until < $1::timestamptz and attempts < 5`,
+    [at],
+  );
   const { rows } = await db.query<JobRow>(
     `with next as (
        select id from analytics_jobs

@@ -29,6 +29,10 @@ Reuse existing supported scheduler and persistent job infrastructure where compa
 
 Use job uniqueness on connection + template/query hash + period + active state, enforced by DB partial unique index. Independent tenants share quotas fairly; cap per-property concurrency. Partition daily additive reports separately from range snapshots. Failed pagination or exhausted quota must never partially replace a previously complete report. A valid provider response containing zero rows may clear a partition only after successful coverage/empty validation.
 
+The repository cron calls `GET /api/internal/analytics/worker` daily at 02:00 UTC (10:00 Asia/Singapore). Vercel Cron uses GET and a bearer secret. The same handler accepts POST for a manual call. That file is preparation for the next deployment. It is not a running hosted schedule, and a local call is not proof that the hosted cron ran.
+
+An expired lease returns to the queue until the job has been leased five times, then it fails with `lease_expired`. A provider retry stops after the same five attempts.
+
 ## Retry and repair
 Transient network/429/5xx: respect Retry-After, jittered backoff, maximum 5 attempts by default, then failed with safe reason and manual retry. Permission/auth failures: one locked token refresh where valid; invalid_grant/revoked credentials becomes reconnect_required and pauses connection jobs. Unsupported field/schema change disables affected template and triggers rediscovery. Never retry an invalid query indefinitely.
 
@@ -38,4 +42,4 @@ Manual Refresh returns an existing pending job when equivalent work is queued; o
 Never promise a 90-day Wix Data API backfill when only its documented window is accessible. Collect available source history, preserve subsequent daily reports and offer explicit CSV import for gaps. Validate report type, timezone, column mapping, dates, source site and numeric units. Detect truncated exports by declared export limits/row counts, not assumptions from a file title. Quarantine duplicates and overlaps; preview replacement/retain decision per partition. Imports get checksum, source filename and provenance, and never silently override API data. Importing daily visitor counts does not recover monthly unique visitors.
 
 ## Operations
-Expose connection status, last attempt/success, next scheduled run, measured-through date, coverage, pending jobs and safe errors. Log correlation IDs and counts, not tokens/patient data. Alerts go to existing authorised operational status mechanisms; this pack does not authorise sending external messages or buying monitoring services. Analytics worker failure cannot block public pages, accepted form submissions or notification dispatch.
+Expose connection status, last attempt/success, next scheduled run, measured-through date, coverage, pending jobs and safe errors. The connections screen shows queued, leased and failed counts, the latest safe error, and the last succeeded sync run. `verified_at` is the connection check and is not shown as that sync time. Log correlation IDs and counts, not tokens/patient data. Alerts go to existing authorised operational status mechanisms; this pack does not authorise sending external messages or buying monitoring services. Analytics worker failure cannot block public pages, accepted form submissions or notification dispatch.

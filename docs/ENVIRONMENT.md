@@ -28,7 +28,8 @@ Used by the embedded database on this machine and by `npm run db:rehearse`.
 | `ANALYTICS_WIX_APP_ID` | Wix app id. |
 | `ANALYTICS_WIX_APP_SECRET` | Wix app secret. |
 | `ANALYTICS_TOKEN_KEY` | Key used to encrypt stored provider tokens. |
-| `ANALYTICS_WORKER_SECRET` | Bearer secret for the analytics worker. |
+| `ANALYTICS_WORKER_SECRET` | Bearer secret for the analytics worker. A manual call may use POST or GET. |
+| `CRON_SECRET` | Bearer a Vercel Cron sends. The worker accepts this or `ANALYTICS_WORKER_SECRET`. |
 | `ANALYTICS_LIVE_REPORTS` | Reads promoted provider data when on. |
 | `ANALYTICS_FIXTURE_MODE` | When on, provider calls must stay on this machine. |
 | `ANALYTICS_ALLOW_REMOTE_WORKER` | Allows the worker database host to be remote. Leave unset for local work. |

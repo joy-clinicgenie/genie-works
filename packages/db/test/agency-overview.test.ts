@@ -108,6 +108,26 @@ describe("agency command centre aggregates", () => {
       expect(bareSummary.notices.map((notice) => notice.message)).toEqual(["Website analytics is not connected."]);
     });
   });
+
+  it("leaves GA4 and Wix sessions uncombined when both are connected", async () => {
+    const admin = await staffByEmail("admin@example.invalid");
+    await asContext(SERVICE, async (db) => {
+      const client = await createClient(db, {
+        slug: `f${randomBytes(4).toString("hex")}`, name: "Separate Sources Clinic (fictional)", ownerUserId: admin.id, channels: ["website"], isSynthetic: true, notes: null,
+      }, admin.id);
+      const site = await createWebsite(db, { clientId: client.id, name: "Two sources", url: "https://two-sources.example.invalid", platform: "Wix", environment: "production", notes: null }, admin.id);
+      const ga4 = await connect(db, client.id, site.id, "ga4", "prop-separate-ga4", admin.id);
+      const wix = await connect(db, client.id, site.id, "wix", "prop-separate-wix", admin.id);
+      const days = [{ date: "2026-10-01", sessions: 10 }, { date: "2026-10-02", sessions: 10 }];
+      await seedDays(db, { connectionId: ga4.id, clientId: client.id, websiteId: site.id, provider: "ga4", fetchedAt: now, days });
+      await seedDays(db, { connectionId: wix.id, clientId: client.id, websiteId: site.id, provider: "wix", fetchedAt: now, days: days.map((day) => ({ date: day.date, sessions: 40 })) });
+      await applyContext(db, staffCtx(admin));
+      const summary = await agencySessionSummary(db, { clientId: client.id, ...window, now });
+      expect(summary.total).toBeNull();
+      expect(summary.state).toBe("unavailable");
+      expect(summary.notices.map((notice) => notice.kind)).toEqual(["conflict"]);
+    });
+  });
 });
 
 async function connect(db: pg.PoolClient, clientId: string, websiteId: string, provider: "ga4" | "wix", property: string, actorUserId: string) {

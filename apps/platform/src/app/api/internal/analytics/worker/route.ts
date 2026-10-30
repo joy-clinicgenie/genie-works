@@ -1,10 +1,11 @@
 import { NextResponse } from "next/server";
-import { bearerMatches, runWorkerOnce, SERVICE, withContext, assertFixtureFetch } from "@clinic-genie/db";
+import { SERVICE, assertFixtureFetch, runWorkerOnce, withContext } from "@clinic-genie/db";
+import { workerAuthorized } from "@/lib/analytics-worker";
 
 export const dynamic = "force-dynamic";
 
-export async function POST(request: Request) {
-  if (!bearerMatches(request.headers.get("authorization"), process.env.ANALYTICS_WORKER_SECRET)) {
+async function handle(request: Request) {
+  if (!workerAuthorized(request.headers.get("authorization"))) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
   const outcome = await withContext(SERVICE, (db) => runWorkerOnce(db, "http", {
@@ -20,4 +21,13 @@ export async function POST(request: Request) {
     wixAppSecret: process.env.ANALYTICS_WIX_APP_SECRET,
   }));
   return NextResponse.json({ worked: outcome.worked, result: outcome.result ?? null });
+}
+
+/** Vercel Cron calls this path with GET. POST remains available for a manual bearer call. */
+export function GET(request: Request) {
+  return handle(request);
+}
+
+export function POST(request: Request) {
+  return handle(request);
 }
