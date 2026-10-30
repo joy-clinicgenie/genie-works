@@ -14,6 +14,7 @@
     "db:start": "npm run start -w @clinic-genie/db",
     "db:migrate": "npm run migrate -w @clinic-genie/db",
     "db:seed": "npm run seed -w @clinic-genie/db",
+    "db:rehearse": "npm run rehearse -w @clinic-genie/db",
     "db:reset": "npm run reset -w @clinic-genie/db",
     "db:backup": "npm run backup -w @clinic-genie/db",
     "db:restore-test": "npm run restore-test -w @clinic-genie/db",

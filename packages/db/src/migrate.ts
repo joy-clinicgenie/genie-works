@@ -3,6 +3,8 @@ import { readdirSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import type pg from "pg";
+import { removeImportedDirectoryClients } from "./rehearsal";
+import { databaseTarget } from "./testing/targets";
 
 const MIGRATIONS_DIR = join(dirname(fileURLToPath(import.meta.url)), "..", "migrations");
 
@@ -60,7 +62,28 @@ export async function runMigrations(pool: pg.Pool, log: (line: string) => void =
       client.release();
     }
   }
+  if (shouldStripImportedDirectory(result.applied)) {
+    const removed = await removeImportedDirectoryClients(pool);
+    log(`fresh setup removed ${removed} imported directory clients`);
+  }
   return result;
+}
+
+/** Historical directory rows are removed only while this run is creating the schema. */
+export function shouldStripImportedDirectory(applied: string[]): boolean {
+  return applied.includes("0001_foundation.sql");
+}
+
+export function describeDatabaseTarget(url: string): string {
+  try {
+    const target = databaseTarget(url);
+    const place = target.local ? "local" : "remote";
+    const port = target.port || "default";
+    const database = target.database || "(none)";
+    return `database target: ${place} port ${port} database ${database}`;
+  } catch {
+    return "database target: unreadable";
+  }
 }
 
 export function databaseNameFromUrl(url: string): string {
@@ -71,14 +94,36 @@ export function databaseNameFromUrl(url: string): string {
   }
 }
 
-/** Refuses to run destructive helpers against anything that does not look like a development or test database. */
-export function assertSafeTarget(url: string): void {
-  const pattern = process.env.SEED_ALLOWED_DB_PATTERN || "clinic_genie";
-  const name = databaseNameFromUrl(url);
-  if (process.env.NODE_ENV === "production") {
-    throw new Error("Refusing to run in NODE_ENV=production.");
+function assertNotProduction(): void {
+  if (process.env.NODE_ENV === "production" || process.env.VERCEL_ENV === "production") {
+    throw new Error("Refusing to run in production.");
   }
-  if (!name.includes(pattern)) {
-    throw new Error(`Refusing to touch database "${name}": name does not contain "${pattern}".`);
+}
+
+/** Refuses seeds, resets and restore tests against a remote, sibling or production database. */
+export function assertSafeTarget(url: string): void {
+  assertNotProduction();
+  const target = databaseTarget(url);
+  if (target.port === "54329") {
+    throw new Error("Refusing: port 54329 is the sibling clinic website database.");
+  }
+  if (!target.local) {
+    throw new Error("Refusing: destructive commands require a local database.");
+  }
+  const pattern = process.env.SEED_ALLOWED_DB_PATTERN || "clinic_genie";
+  if (!target.database.includes(pattern)) {
+    throw new Error(`Refusing to touch database "${target.database}": name does not contain "${pattern}".`);
+  }
+}
+
+/** Refuses an accidental migration against a shared database. Remote hosts need an explicit non-production opt-in. */
+export function assertMigrationTarget(url: string): void {
+  assertNotProduction();
+  const target = databaseTarget(url);
+  if (target.port === "54329") {
+    throw new Error("Refusing: port 54329 is the sibling clinic website database.");
+  }
+  if (!target.local && process.env.MIGRATE_ALLOW_REMOTE !== "1") {
+    throw new Error("Refusing: migration target is not local. Set MIGRATE_ALLOW_REMOTE=1 only for an approved non-production host.");
   }
 }

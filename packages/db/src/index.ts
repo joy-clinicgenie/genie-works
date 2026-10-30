@@ -34,7 +34,7 @@ export * from "./analytics/connections";
 export * from "./analytics/sync";
 export * from "./analytics/read";
 export * from "./analytics/agency-sessions";
-export { assertEnquiryFixtureUrl, assertFixtureFetch, assertLocalWorkerDatabase } from "./testing/targets";
+export { assertEnquiryFixtureUrl, assertFixtureFetch, assertLocalWorkerDatabase, isSharedDatabaseUrl } from "./testing/targets";
 export * from "./analytics/providers/ga4";
 export * from "./analytics/providers/wix";
 export * from "./analytics/providers/gsc";

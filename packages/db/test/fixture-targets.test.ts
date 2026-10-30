@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { assertSafeTarget } from "../src/migrate";
+import { assertMigrationTarget, assertSafeTarget, shouldStripImportedDirectory } from "../src/migrate";
 import { assertEnquiryFixtureUrl, assertFixtureFetch, assertLocalWorkerDatabase } from "../src/testing/targets";
 import { bearerMatches } from "../src/analytics/crypto";
 import { syncIsStale, PROVIDER_FIXTURE_SCENARIOS } from "../src/testing/provider-fixtures";
@@ -12,6 +12,31 @@ describe("fixture target guards", () => {
     expect(() => assertSafeTarget("postgresql://postgres:postgres@127.0.0.1:54339/clinic_genie")).toThrow(/production/);
     process.env.NODE_ENV = previous;
     expect(() => assertSafeTarget("postgresql://postgres:postgres@127.0.0.1:54339/production")).toThrow(/Refusing/);
+    expect(() => assertSafeTarget("postgresql://postgres:postgres@db.example.com:5432/clinic_genie")).toThrow(/local database/);
+    expect(() => assertSafeTarget("postgresql://postgres:postgres@127.0.0.1:54329/clinic_genie")).toThrow(/54329/);
+    const vercel = process.env.VERCEL_ENV;
+    process.env.VERCEL_ENV = "production";
+    expect(() => assertSafeTarget("postgresql://postgres:postgres@127.0.0.1:54339/clinic_genie")).toThrow(/production/);
+    if (vercel === undefined) delete process.env.VERCEL_ENV;
+    else process.env.VERCEL_ENV = vercel;
+  });
+
+  it("refuses a remote migration unless an explicit non-production opt-in is set", () => {
+    const previous = process.env.MIGRATE_ALLOW_REMOTE;
+    delete process.env.MIGRATE_ALLOW_REMOTE;
+    expect(() => assertMigrationTarget("postgresql://postgres:postgres@db.example.com:5432/clinic_genie")).toThrow(/not local/);
+    expect(() => assertMigrationTarget("postgresql://postgres:postgres@127.0.0.1:54329/clinic_genie")).toThrow(/54329/);
+    process.env.MIGRATE_ALLOW_REMOTE = "1";
+    expect(() => assertMigrationTarget("postgresql://postgres:postgres@db.example.com:5432/clinic_genie")).not.toThrow();
+    const nodeEnv = process.env.NODE_ENV;
+    process.env.NODE_ENV = "production";
+    expect(() => assertMigrationTarget("postgresql://postgres:postgres@db.example.com:5432/clinic_genie")).toThrow(/production/);
+    if (nodeEnv === undefined) delete process.env.NODE_ENV;
+    else process.env.NODE_ENV = nodeEnv;
+    if (previous === undefined) delete process.env.MIGRATE_ALLOW_REMOTE;
+    else process.env.MIGRATE_ALLOW_REMOTE = previous;
+    expect(shouldStripImportedDirectory(["0001_foundation.sql"])).toBe(true);
+    expect(shouldStripImportedDirectory(["0035_rehearsal.sql"])).toBe(false);
   });
 
   it("rejects the platform database, the sibling port and a remote enquiry target before any reset", () => {

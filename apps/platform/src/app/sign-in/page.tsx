@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { authProviders, signIn } from "@/lib/auth";
+import { assertRuntimeAuthSecret, magicLinksEnabled } from "@/lib/runtime-policy";
 import { getAccess } from "@/lib/session";
 import { Button } from "@/components/ui/Button";
 import { Field, Input } from "@/components/ui/Field";
@@ -9,6 +10,7 @@ import { Notice } from "@/components/ui/Notice";
 export const metadata = { title: "Sign in" };
 
 export default async function SignInPage({ searchParams }: { searchParams: Promise<{ error?: string; sent?: string }> }) {
+  assertRuntimeAuthSecret();
   const access = await getAccess();
   if (access) redirect("/");
   const { error, sent } = await searchParams;
@@ -36,7 +38,7 @@ export default async function SignInPage({ searchParams }: { searchParams: Promi
         </div>
         {error && <Notice tone="bad" title="Sign in was not completed">{error === "AccessDenied" ? "This email is not an active staff account." : "Please try again or contact an administrator."}</Notice>}
         {sent && <Notice tone="good" title="Sign-in link recorded">In development the link is not emailed. Open <Link href="/dev/magic-links" className="underline">the development links page</Link> to use it.</Notice>}
-        {authProviders.devLinks && (
+        {magicLinksEnabled() && (
           <form action={sendLink} className="space-y-4 mt-4">
             <Field label="Work email" hint="Development: use one of the seeded addresses, for example admin@example.invalid." htmlFor="email">
               <Input id="email" name="email" type="email" autoComplete="email" required />

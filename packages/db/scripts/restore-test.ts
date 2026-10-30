@@ -2,11 +2,12 @@ import { resolve } from "node:path";
 import { latestBackupFile, restoreTest } from "../src/backup";
 import { closePools, getAdminPool } from "../src/client";
 import { loadRootEnv, requireEnv } from "../src/env";
-import { assertSafeTarget } from "../src/migrate";
+import { assertSafeTarget, describeDatabaseTarget } from "../src/migrate";
 
 loadRootEnv();
 const adminUrl = requireEnv("DATABASE_ADMIN_URL");
 assertSafeTarget(adminUrl);
+console.log(describeDatabaseTarget(adminUrl));
 const file = process.argv[2] ? resolve(process.argv[2]) : latestBackupFile(resolve(process.cwd().includes("packages/db") ? "../../backups" : "backups"));
 if (!file) {
   console.error("No backup file found. Run npm run db:backup first.");

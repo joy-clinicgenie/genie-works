@@ -14,6 +14,27 @@ export function databaseNameFromUrl(url: string): string {
   }
 }
 
+export function databaseTarget(url: string): { local: boolean; port: string; database: string } {
+  const target = parsed(url);
+  return {
+    local: LOCAL_HOSTS.has(target.hostname),
+    port: target.port,
+    database: decodeURIComponent(target.pathname.replace(/^\//, "")),
+  };
+}
+
+/** A shared or unreadable database. Development sign-in shortcuts stay off. */
+export function isSharedDatabaseUrl(url: string): boolean {
+  if (!url.trim()) return true;
+  try {
+    const target = databaseTarget(url);
+    if (target.database === "neondb" || target.port === SIBLING_CLINIC_PORT) return true;
+    return !target.local;
+  } catch {
+    return true;
+  }
+}
+
 function parsed(url: string): URL {
   try {
     return new URL(url);

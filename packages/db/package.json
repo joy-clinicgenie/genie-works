@@ -9,6 +9,7 @@
     "start": "tsx scripts/start-embedded.ts",
     "migrate": "tsx scripts/migrate.ts",
     "seed": "tsx scripts/seed.ts",
+    "rehearse": "tsx scripts/rehearse.ts",
     "reset": "tsx scripts/reset.ts",
     "backup": "tsx scripts/backup.ts",
     "restore-test": "tsx scripts/restore-test.ts",

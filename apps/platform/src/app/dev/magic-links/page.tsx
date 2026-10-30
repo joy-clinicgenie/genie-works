@@ -1,12 +1,14 @@
 import { notFound } from "next/navigation";
-import { SERVICE, envFlag, listMagicLinks, withContext } from "@clinic-genie/db";
+import { SERVICE, listMagicLinks, withContext } from "@clinic-genie/db";
+import { assertRuntimeAuthSecret, magicLinksEnabled } from "@/lib/runtime-policy";
 import { Notice } from "@/components/ui/Notice";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Development sign-in links" };
 
 export default async function MagicLinksPage() {
-  if (!envFlag("AUTH_DEV_MAGIC_LINKS") || process.env.NODE_ENV === "production") notFound();
+  assertRuntimeAuthSecret();
+  if (!magicLinksEnabled()) notFound();
   const links = await withContext(SERVICE, (db) => listMagicLinks(db));
   return (
     <main className="max-w-2xl mx-auto px-4 py-10">

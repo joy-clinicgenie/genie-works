@@ -2,9 +2,10 @@ import NextAuth from "next-auth";
 import type { Provider } from "next-auth/providers";
 import Google from "next-auth/providers/google";
 import PostgresAdapter from "@auth/pg-adapter";
-import { SERVICE, authAdapterClient, createStaff, envFlag, getActiveStaffByEmail, recordAudit, recordMagicLink, withContext } from "@clinic-genie/db";
+import { SERVICE, authAdapterClient, createStaff, getActiveStaffByEmail, recordAudit, recordMagicLink, withContext } from "@clinic-genie/db";
+import { assertRuntimeAuthSecret, decideSignIn, magicLinksEnabled } from "./runtime-policy";
 
-const devLinks = envFlag("AUTH_DEV_MAGIC_LINKS") && process.env.NODE_ENV !== "production";
+const devLinks = magicLinksEnabled();
 
 const providers: Provider[] = [];
 if (devLinks) {
@@ -16,6 +17,7 @@ if (devLinks) {
     maxAge: 15 * 60,
     options: {},
     async sendVerificationRequest({ identifier, url, expires }: { identifier: string; url: string; expires: Date }) {
+      if (!magicLinksEnabled()) return;
       // No mail is sent. The link is recorded in the database and shown on /dev/magic-links.
       await withContext(SERVICE, (db) => recordMagicLink(db, identifier, url, expires));
     },
@@ -36,20 +38,12 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
   callbacks: {
     /** Identity alone is not access. Only active staff records may sign in. */
     async signIn({ user, account, profile }) {
+      assertRuntimeAuthSecret();
       const email = user.email?.toLowerCase();
       if (!email) return false;
       let staff = await withContext(SERVICE, (db) => getActiveStaffByEmail(db, email));
-      const allowedDomain = process.env.AUTH_GOOGLE_HD?.trim().toLowerCase();
-      const domain = email.split("@")[1];
       const hosted = profile && typeof profile === "object" && "hd" in profile && typeof profile.hd === "string" ? profile.hd.toLowerCase() : undefined;
-      if (
-        !staff &&
-        process.env.NODE_ENV !== "production" &&
-        account?.provider === "google" &&
-        allowedDomain &&
-        domain === allowedDomain &&
-        (!hosted || hosted === allowedDomain)
-      ) {
+      if (decideSignIn({ email, hasStaff: Boolean(staff), provider: account?.provider, hostedDomain: hosted }) === "create-admin") {
         await withContext(SERVICE, (db) => createStaff(db, { email, displayName: user.name?.trim() || email, role: "admin" }, null));
         staff = await withContext(SERVICE, (db) => getActiveStaffByEmail(db, email));
       }
