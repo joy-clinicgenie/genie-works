@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { canExport, canManageRegistry, canPublishClient, canReviewClient } from "@clinic-genie/db";
+import { canExport, canPublishClient, canReviewClient, canWriteConnectionSecrets } from "@clinic-genie/db";
 import { requireAccess } from "@/lib/session";
 import { Badge, label, type Tone } from "@/components/ui/Badge";
 import { Card, CardHeader } from "@/components/ui/Card";
@@ -44,7 +44,7 @@ export default async function SeoSettingsPage({ searchParams }: { searchParams: 
             <p className="mt-1 text-sm text-muted">Capability: {bundle.connected ? "Can publish saved page settings and redirects to a connected Next.js deployment." : "Not connected."} This is not a full website management integration.</p>
             {site.platform.toLowerCase().includes("next") ? (
               <div className="mt-4">
-                <SeoSiteSettingsEditor clientId={site.clientId} website={site} settings={[]} verificationToken={bundle.verification} connected={bundle.connected} canManageIntegration={canManageRegistry(access)} canPublish={canPublishClient(access, site.clientId)} section="connection" />
+                <SeoSiteSettingsEditor clientId={site.clientId} website={site} settings={[]} verificationToken={bundle.verification} connected={bundle.connected} canManageIntegration={canWriteConnectionSecrets(access)} canPublish={canPublishClient(access, site.clientId)} section="connection" />
               </div>
             ) : <p className="mt-3 text-sm text-muted">This website platform does not accept the published-settings API.</p>}
           </Card>
@@ -99,7 +99,7 @@ export default async function SeoSettingsPage({ searchParams }: { searchParams: 
             <li>Edit SEO: {bundle ? (bundle.canEdit ? "Allowed" : "Not allowed") : "Choose a website to check edit permission."}</li>
             <li>Publish SEO settings: {site ? (canPublishClient(access, site.clientId) ? "Allowed" : "Not allowed") : "Choose a website to check publish permission."}</li>
             <li>Review: {site ? (canReviewClient(access, site.clientId) ? "Allowed" : "Not allowed") : "Choose a website to check review permission."}</li>
-            <li>Manage website credentials: {canManageRegistry(access) ? "Allowed" : "Not allowed"}</li>
+            <li>Manage website credentials: {canWriteConnectionSecrets(access) ? "Allowed" : "Not allowed"}</li>
             <li>Export: {canExport(access) ? "Your role may export, but SEO export is not available." : "Not allowed."}</li>
           </ul>
           <p className="mt-4 text-muted">No scan, sync, reminder or notification schedule is configured. Usage limits are not metered.</p>

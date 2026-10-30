@@ -1,4 +1,5 @@
 import type { Queryable } from "../client";
+import { assertConnectionSecretAdmin } from "../services/auth";
 import { recordAudit } from "../services/audit";
 import { sha256 } from "../services/references";
 import { encryptSecret, randomUrlToken, decryptSecret } from "./crypto";
@@ -45,6 +46,7 @@ export async function createOAuthState(db: Queryable, input: {
   redirectUri: string;
   now?: Date;
 }): Promise<{ id: string; state: string; verifier: string }> {
+  await assertConnectionSecretAdmin(db, input.actorUserId);
   await assertWebsite(db, input.clientId, input.websiteId);
   const state = randomUrlToken();
   const verifier = randomUrlToken(48);
@@ -61,6 +63,7 @@ export async function createOAuthState(db: Queryable, input: {
 
 export async function exchangeOAuthState(db: Queryable, input: { state: string; token: unknown; now?: Date }): Promise<{ id: string; clientId: string; websiteId: string; provider: AnalyticsProvider; actorUserId: string }> {
   const row = await loadState(db, input.state, input.now ?? new Date());
+  await assertConnectionSecretAdmin(db, row.actor_user_id);
   if (row.exchanged_at || row.used_at) throw new AnalyticsRuleError("This connection attempt was already used.");
   const secret = encryptSecret(JSON.stringify(input.token));
   await db.query(
@@ -108,6 +111,7 @@ export async function saveConnection(db: Queryable, input: {
   tokenNonce: string;
   actorUserId: string;
 }): Promise<PublicConnection> {
+  await assertConnectionSecretAdmin(db, input.actorUserId);
   await assertWebsite(db, input.clientId, input.websiteId);
   const { rows } = await db.query<PublicConnection>(
     `insert into analytics_connections
@@ -136,6 +140,7 @@ export async function saveConnection(db: Queryable, input: {
 }
 
 export async function disconnectConnection(db: Queryable, input: { connectionId: string; actorUserId: string }): Promise<void> {
+  await assertConnectionSecretAdmin(db, input.actorUserId);
   const { rows } = await db.query<{ id: string; client_id: string }>(
     `update analytics_connections set status = 'disconnected', disconnected_at = now(), updated_at = now()
      where id = $1 and disconnected_at is null returning id, client_id`,

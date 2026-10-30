@@ -1,6 +1,6 @@
 import { createHash, randomBytes } from "node:crypto";
 import type { Queryable } from "../client";
-import { PermissionDeniedError } from "./auth";
+import { assertConnectionSecretAdmin, PermissionDeniedError } from "./auth";
 import { recordAudit } from "./audit";
 import { requireWebsiteForClient } from "./registry";
 
@@ -297,7 +297,7 @@ export async function saveSeoBusinessProfile(
 }
 
 export async function issueSeoSiteToken(db: Queryable, clientId: string, websiteId: string, actorUserId: string): Promise<string> {
-  await assertPublisher(db, actorUserId);
+  await assertConnectionSecretAdmin(db, actorUserId);
   await requireWebsiteForClient(db, websiteId, clientId);
   const token = randomBytes(32).toString("base64url");
   const tokenHash = createHash("sha256").update(token).digest("hex");

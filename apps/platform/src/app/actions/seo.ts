@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import {
-  archiveSeoPage, canEditClient, canManageRegistry, canPublishClient, createSeoPage, getSeoPage, issueSeoSiteToken, recordSeoChange,
+  archiveSeoPage, canEditClient, canPublishClient, canWriteConnectionSecrets, createSeoPage, getSeoPage, issueSeoSiteToken, recordSeoChange,
   saveGoogleSiteVerification, saveSeoBusinessProfile, saveSeoPageSetting, saveSeoRedirect,
   updateSeoPage, verifySeoChange, type SeoBusinessProfileRow, type SeoPageInput,
 } from "@clinic-genie/db";
@@ -189,7 +189,7 @@ export async function rotateSeoSiteTokenAction(_prev: { ok: true; message?: stri
   const access = await requireAccess();
   const clientId = str(form, "clientId");
   const websiteId = str(form, "websiteId");
-  if (!canManageRegistry(access)) return { ok: false as const, error: "Only admins and managers can create or rotate website API credentials." };
+  if (!canWriteConnectionSecrets(access)) return { ok: false as const, error: "Only an administrator can create or rotate website API credentials." };
   if (!canEditClient(access, clientId)) return { ok: false as const, error: "You cannot connect this client's website." };
   try {
     const token = await staffTx(access, (db) => issueSeoSiteToken(db, clientId, websiteId, access.user.id));

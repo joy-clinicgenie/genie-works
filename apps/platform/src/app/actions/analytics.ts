@@ -4,8 +4,10 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import {
   AnalyticsRuleError,
+  PermissionDeniedError,
   bindConnectionFromState,
   canManageRegistry,
+  canWriteConnectionSecrets,
   disconnectConnection,
   encryptSecret,
   enqueueDue,
@@ -44,7 +46,7 @@ async function managerWebsite(clientId: string, websiteId: string) {
 
 export async function bindAnalyticsProperty(formData: FormData) {
   const access = await requireAccess();
-  if (!canManageRegistry(access)) fail("denied");
+  if (!canWriteConnectionSecrets(access)) fail("secret_denied");
   const state = str(formData, "state");
   const propertyId = str(formData, "propertyId");
   if (!state || !propertyId) fail("property_required");
@@ -79,6 +81,7 @@ export async function bindAnalyticsProperty(formData: FormData) {
       await enqueueDue(db, new Date(), pending.websiteId);
     });
   } catch (error) {
+    if (error instanceof PermissionDeniedError) fail("secret_denied", pending.clientId);
     if (error instanceof AnalyticsRuleError && error.message === "traffic_exists") fail("traffic_exists", pending.clientId);
     console.error("Analytics bind failed", { name: error instanceof Error ? error.name : "Error" });
     fail("oauth_failed", pending.clientId);
@@ -92,7 +95,10 @@ export async function connectWix(formData: FormData) {
   const clientId = str(formData, "clientId");
   const websiteId = str(formData, "websiteId");
   const instanceId = str(formData, "instanceId");
-  const { access, website } = await managerWebsite(clientId, websiteId);
+  const access = await requireAccess();
+  if (!canWriteConnectionSecrets(access)) fail("secret_denied", clientId);
+  const website = await staffTx(access, async (db) => (await listWebsites(db, clientId)).find((row) => row.id === websiteId) ?? null);
+  if (!website) fail("secret_denied", clientId);
   if (!website.platform.toLowerCase().includes("wix")) fail("wix_rejected", clientId);
   const appId = process.env.ANALYTICS_WIX_APP_ID;
   const appSecret = process.env.ANALYTICS_WIX_APP_SECRET;
@@ -138,6 +144,7 @@ export async function connectWix(formData: FormData) {
       await enqueueDue(db, new Date(), websiteId);
     });
   } catch (error) {
+    if (error instanceof PermissionDeniedError) fail("secret_denied", clientId);
     if (error instanceof AnalyticsRuleError && error.message === "traffic_exists") fail("traffic_exists", clientId);
     console.error("Wix connection failed", { name: error instanceof Error ? error.name : "Error" });
     fail("wix_rejected", clientId);
@@ -149,11 +156,16 @@ export async function connectWix(formData: FormData) {
 
 export async function disconnectAnalytics(formData: FormData) {
   const access = await requireAccess();
-  if (!canManageRegistry(access)) fail("denied");
+  if (!canWriteConnectionSecrets(access)) fail("secret_denied");
   const connectionId = str(formData, "connectionId");
   const clientId = str(formData, "clientId");
   if (!connectionId) fail("denied", clientId);
-  await serviceTx((db) => disconnectConnection(db, { connectionId, actorUserId: access.user.id }));
+  try {
+    await serviceTx((db) => disconnectConnection(db, { connectionId, actorUserId: access.user.id }));
+  } catch (error) {
+    if (error instanceof PermissionDeniedError) fail("secret_denied", clientId);
+    throw error;
+  }
   revalidatePath("/settings");
   revalidatePath("/analytics");
   done("disconnected", clientId);

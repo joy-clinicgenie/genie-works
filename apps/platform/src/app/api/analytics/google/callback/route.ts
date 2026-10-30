@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { AnalyticsRuleError, canManageRegistry, decryptSecret, exchangeOAuthState, sha256 } from "@clinic-genie/db";
+import { AnalyticsRuleError, canWriteConnectionSecrets, decryptSecret, exchangeOAuthState, sha256 } from "@clinic-genie/db";
 import { requireAccess } from "@/lib/session";
 import { serviceTx } from "@/lib/db";
 
@@ -11,7 +11,7 @@ function settingsRedirect(request: Request, query: Record<string, string | null 
 
 export async function GET(request: Request) {
   const access = await requireAccess();
-  if (!canManageRegistry(access)) return settingsRedirect(request, { analyticsError: "denied" });
+  if (!canWriteConnectionSecrets(access)) return settingsRedirect(request, { analyticsError: "secret_denied" });
   const url = new URL(request.url);
   const code = url.searchParams.get("code");
   const state = url.searchParams.get("state");

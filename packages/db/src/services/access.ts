@@ -5,7 +5,7 @@
  * publish and export for every client. A specialist member may view, edit and
  * submit for review. A reviewer member may view, review and approve. A read-only
  * member may view. Publishing and export stay with admin and manager. Connection
- * credentials stay admin-only. Client membership covers every website of that
+ * credentials stay admin-only (`canWriteConnectionSecrets`). Client membership covers every website of that
  * client. There is no second website-grant list.
  *
  * Registry creates and updates for websites and account references stay with

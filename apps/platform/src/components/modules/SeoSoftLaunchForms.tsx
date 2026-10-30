@@ -51,7 +51,7 @@ function SiteConnectionForm({ clientId, website, verificationToken, connected, c
             {tokenState && !tokenState.ok && <p role="alert" className="mt-2 text-sm text-bad">{tokenState.error}</p>}
           </>
         ) : (
-          <p className="mt-3 text-xs text-muted">Only admins and managers can create or rotate the website API credential.</p>
+          <p className="mt-3 text-xs text-muted">Only an administrator can create or rotate the website API credential.</p>
         )}
       </div>
     </div>

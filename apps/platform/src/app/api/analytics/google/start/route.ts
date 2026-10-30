@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { NextResponse } from "next/server";
-import { canManageRegistry, createOAuthState } from "@clinic-genie/db";
+import { canWriteConnectionSecrets, createOAuthState } from "@clinic-genie/db";
 import { requireAccess } from "@/lib/session";
 import { serviceTx } from "@/lib/db";
 
@@ -10,8 +10,8 @@ export async function GET(request: Request) {
   const client = url.searchParams.get("client") ?? "";
   const denied = new URL("/settings", request.url);
   if (client) denied.searchParams.set("client", client);
-  if (!canManageRegistry(access)) {
-    denied.searchParams.set("analyticsError", "denied");
+  if (!canWriteConnectionSecrets(access)) {
+    denied.searchParams.set("analyticsError", "secret_denied");
     return NextResponse.redirect(denied);
   }
   const clientId = process.env.ANALYTICS_GOOGLE_CLIENT_ID;

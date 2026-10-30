@@ -65,12 +65,28 @@ export const canPublishClient = (p: AccessProfile, clientId: string): boolean =>
 export const canManageRegistry = (p: AccessProfile): boolean => isGlobal(p);
 /** Manage staff, roles and memberships, and view platform-wide audit and backups. */
 export const canManageUsers = (p: AccessProfile): boolean => isAdmin(p);
+/**
+ * D14: storing, replacing or disconnecting a connection credential is admin-only.
+ * Registry edits stay with `canManageRegistry`.
+ */
+export const canWriteConnectionSecrets = (p: AccessProfile): boolean => isAdmin(p);
 export const canExport = (p: AccessProfile): boolean => isGlobal(p);
 
 export class PermissionDeniedError extends Error {
   constructor(message = "You do not have permission for this action.") {
     super(message);
     this.name = "PermissionDeniedError";
+  }
+}
+
+/** Rejects every actor except an active administrator, including a service call made for a manager. */
+export async function assertConnectionSecretAdmin(db: Queryable, actorUserId: string): Promise<void> {
+  const { rows } = await db.query<{ platform_role: string }>(
+    "select platform_role from staff_users where id = $1 and active",
+    [actorUserId],
+  );
+  if (rows[0]?.platform_role !== "admin") {
+    throw new PermissionDeniedError("Only an administrator can store connection credentials.");
   }
 }
 

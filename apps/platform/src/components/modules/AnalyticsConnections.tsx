@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { formatDateTime, listClients, listConnectionSyncStatus, listConnections, listWebsites, readExchangedToken, type AccessProfile, type ConnectionSyncStatus } from "@clinic-genie/db";
+import { canWriteConnectionSecrets, formatDateTime, listClients, listConnectionSyncStatus, listConnections, listWebsites, readExchangedToken, type AccessProfile, type ConnectionSyncStatus } from "@clinic-genie/db";
 import { serviceTx, staffTx } from "@/lib/db";
 import { Badge } from "@/components/ui/Badge";
 import { buttonClass } from "@/components/ui/Button";
@@ -9,6 +9,7 @@ import { listGoogleProperties } from "@/lib/analytics-properties";
 
 const MESSAGES: Record<string, string> = {
   denied: "That action needs a registry manager.",
+  secret_denied: "Storing or disconnecting a connection credential needs an administrator.",
   not_configured: "Provider credentials are not configured on the server.",
   oauth_failed: "The provider did not complete the connection.",
   property_required: "Choose a property before connecting.",
@@ -62,7 +63,8 @@ export async function AnalyticsConnections({
 }) {
   const googleReady = Boolean(process.env.ANALYTICS_GOOGLE_CLIENT_ID && process.env.ANALYTICS_GOOGLE_CLIENT_SECRET && process.env.ANALYTICS_TOKEN_KEY);
   const wixReady = Boolean(process.env.ANALYTICS_WIX_APP_ID && process.env.ANALYTICS_WIX_APP_SECRET && process.env.ANALYTICS_TOKEN_KEY);
-  const pending = stateToken
+  const canStoreSecrets = canWriteConnectionSecrets(access);
+  const pending = canStoreSecrets && stateToken
     ? await serviceTx(async (db) => {
         const exchanged = await readExchangedToken(db, stateToken, access.user.id);
         if (!exchanged || (exchanged.provider !== "ga4" && exchanged.provider !== "gsc")) return null;
@@ -91,6 +93,7 @@ export async function AnalyticsConnections({
       <h3 className="text-sm font-semibold text-ink">Analytics providers</h3>
       <p className="mt-1 text-sm text-ink-soft">One traffic source per website. Search Console can sit beside it. Tokens stay on the server. A connection check is not a successful data sync.</p>
       {message && <p className="mt-3 text-sm text-ink">{message}</p>}
+      {!canStoreSecrets && <p className="mt-3 text-sm text-ink-soft">Connecting or disconnecting a provider stays with an administrator. Refresh and file import stay available.</p>}
       {!googleReady && !wixReady && <p className="mt-3 text-sm text-ink-soft">Not configured. Add the provider credentials on the server before connecting a clinic.</p>}
       <ClinicConnectionPicker key={data.selected?.id ?? "none"} clients={data.clients.map((client) => ({ id: client.id, name: client.name }))} selected={data.selected?.id ?? ""} />
       {data.selected && data.websites.length === 0 && <p className="mt-4 text-sm text-ink-soft">This clinic has no website yet.</p>}
@@ -120,20 +123,24 @@ export async function AnalyticsConnections({
                   </div>
                   <span className="flex items-center gap-2">
                     <Badge tone={connection.status === "connected" ? "good" : "warn"}>{connection.status === "reconnect_required" ? "Reconnect required" : connection.status}</Badge>
-                    <form action={disconnectAnalytics}>
-                      <input type="hidden" name="connectionId" value={connection.id} />
-                      <input type="hidden" name="clientId" value={data.selected?.id} />
-                      <button className={buttonClass("secondary", "sm")} type="submit">Disconnect</button>
-                    </form>
+                    {canStoreSecrets && (
+                      <form action={disconnectAnalytics}>
+                        <input type="hidden" name="connectionId" value={connection.id} />
+                        <input type="hidden" name="clientId" value={data.selected?.id} />
+                        <button className={buttonClass("secondary", "sm")} type="submit">Disconnect</button>
+                      </form>
+                    )}
                   </span>
                 </li>
               ))}
             </ul>
-            <div className="mt-4 flex flex-wrap gap-2">
-              {googleReady && <Link className={buttonClass("secondary", "sm")} href={`/api/analytics/google/start?client=${data.selected?.id}&website=${website.id}&provider=ga4`}>Connect GA4</Link>}
-              {googleReady && <Link className={buttonClass("secondary", "sm")} href={`/api/analytics/google/start?client=${data.selected?.id}&website=${website.id}&provider=gsc`}>Connect Search Console</Link>}
-            </div>
-            {wixSite && wixReady && (
+            {canStoreSecrets && (
+              <div className="mt-4 flex flex-wrap gap-2">
+                {googleReady && <Link className={buttonClass("secondary", "sm")} href={`/api/analytics/google/start?client=${data.selected?.id}&website=${website.id}&provider=ga4`}>Connect GA4</Link>}
+                {googleReady && <Link className={buttonClass("secondary", "sm")} href={`/api/analytics/google/start?client=${data.selected?.id}&website=${website.id}&provider=gsc`}>Connect Search Console</Link>}
+              </div>
+            )}
+            {canStoreSecrets && wixSite && wixReady && (
               <form action={connectWix} className="mt-3 flex flex-wrap items-end gap-2">
                 <input type="hidden" name="clientId" value={data.selected?.id} />
                 <input type="hidden" name="websiteId" value={website.id} />
@@ -148,7 +155,7 @@ export async function AnalyticsConnections({
           </section>
         );
       })}
-      {pending && (
+      {canStoreSecrets && pending && (
         <form action={bindAnalyticsProperty} className="mt-4 rounded-xl border border-line p-4">
           <h4 className="text-sm font-semibold text-ink">Choose the {pending.provider === "gsc" ? "Search Console" : "GA4"} property{pendingWebsite ? ` for ${pendingWebsite.name}` : ""}</h4>
           <p className="mt-1 text-sm text-ink-soft">{data.selected?.name}{pendingWebsite ? ` · ${pendingWebsite.name}` : ""}</p>

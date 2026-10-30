@@ -123,6 +123,7 @@ describe("application access after deactivation", () => {
     expect(permissions.canEditClient(access as AccessProfile, clientId)).toBe(true);
     expect(permissions.canManageRegistry(access as AccessProfile)).toBe(false);
     expect(permissions.canManageUsers(access as AccessProfile)).toBe(false);
+    expect(permissions.canWriteConnectionSecrets(access as AccessProfile)).toBe(false);
     expect(permissions.canAccessClient(access as AccessProfile, OTHER_CLIENT)).toBe(false);
     expect(permissions.canEditClient(access as AccessProfile, OTHER_CLIENT)).toBe(false);
     await expect(requireClientAccess(clientId)).resolves.toMatchObject({ user: { id: checker.id } });
@@ -133,11 +134,13 @@ describe("application access after deactivation", () => {
     expect(reader?.user.platform_role).toBe("read_only");
     expect(permissions.canAccessClient(reader as AccessProfile, clientId)).toBe(false);
     expect(permissions.canEditClient(reader as AccessProfile, clientId)).toBe(false);
+    expect(permissions.canWriteConnectionSecrets(reader as AccessProfile)).toBe(false);
     await expect(requireClientAccess(clientId)).rejects.toThrow("REDIRECT /clients?denied=1");
 
     signInAs("admin@example.invalid");
     const adminAccess = await getAccess();
     expect(permissions.canManageUsers(adminAccess as AccessProfile)).toBe(true);
+    expect(permissions.canWriteConnectionSecrets(adminAccess as AccessProfile)).toBe(true);
     expect(permissions.canEditClient(adminAccess as AccessProfile, clientId)).toBe(true);
     expect(await sessionCount()).toBe(1);
   });
@@ -145,6 +148,9 @@ describe("application access after deactivation", () => {
   it("refuses staff changes from a specialist or manager", async () => {
     for (const email of ["specialist-a@example.invalid", "manager@example.invalid"]) {
       signInAs(email);
+      const actor = await getAccess();
+      expect(permissions.canWriteConnectionSecrets(actor as AccessProfile)).toBe(false);
+      if (email.startsWith("manager")) expect(permissions.canManageRegistry(actor as AccessProfile)).toBe(true);
       const result = await updateStaffAction(null, staffForm({
         userId: checker.id, displayName: "V1-V01 Checker", role: "admin", deactivate: "on",
       }));

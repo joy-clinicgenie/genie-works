@@ -8,6 +8,7 @@ import {
   canManageAssignments,
   canManageRegistry,
   canManageUsers,
+  canWriteConnectionSecrets,
   canPublishClient,
   canReviewClient,
   getActiveStaffByEmail,
@@ -50,4 +51,5 @@ export const permissions = {
   canManageAssignments,
   canManageRegistry,
   canManageUsers,
+  canWriteConnectionSecrets,
 };
