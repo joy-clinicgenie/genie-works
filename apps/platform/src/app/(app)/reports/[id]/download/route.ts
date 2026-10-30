@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { canAccessClient, canExport, formatDateTime, gatherReportFacts, getSavedReport, issueReportDownload, recordAudit } from "@clinic-genie/db";
+import { canAccessClient, canExport, composeReport, formatDateTime, gatherReportFacts, getSavedReport, issueReportDownload, recordAudit } from "@clinic-genie/db";
 import { requireAccess } from "@/lib/session";
 import { staffTx } from "@/lib/db";
 import { formatReportSerial, reportCsv, reportDownloadDisposition, reportDownloadName } from "@/lib/report-csv";
@@ -33,9 +33,21 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
           observations: version.observations,
           actionsTaken: version.actions_taken,
           nextSteps: version.next_steps,
+          blocks: version.blocks,
         }
       : await (async () => {
           const live = await gatherReportFacts(db, report);
+          const composition = report.checklist.length
+            ? await composeReport(db, {
+                clientId: report.client_id,
+                websiteId: report.website_id,
+                periodStart: report.period_start,
+                periodEnd: report.period_end,
+                comparisonStart: report.comparison_start,
+                comparisonEnd: report.comparison_end,
+                items: report.checklist,
+              })
+            : null;
           return {
             figures: live.figures,
             dataSources: live.dataSources,
@@ -52,6 +64,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
             observations: report.observations,
             actionsTaken: report.actions_taken,
             nextSteps: report.next_steps,
+            blocks: composition?.blocks,
           };
         })();
     const serialNumber = await issueReportDownload(db, { reportId: report.id, clientId: report.client_id, versionNumber: version?.version_number ?? null, format: "csv", actorUserId: access.user.id });

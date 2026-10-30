@@ -46,6 +46,7 @@ export interface WebsiteRow {
   environment: "production" | "staging" | "development";
   status: "active" | "archived";
   notes: string | null;
+  enquiry_key: string | null;
   blog_requirements: { author: boolean; category: boolean; featuredImage: boolean; seo: boolean; social: boolean };
   created_at: Date;
   archived_at: Date | null;

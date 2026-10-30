@@ -29,10 +29,12 @@ export function SavedReportEditor({
   draft,
   clients,
   readOnly,
+  includeNotes = true,
 }: {
   draft: ReportDraft;
   clients: Array<{ id: string; label: string }>;
   readOnly: boolean;
+  includeNotes?: boolean;
 }) {
   const action = draft.id ? saveSavedReportAction : createSavedReportAction;
   const [state, submit, pending] = useActionState(action, null);
@@ -77,29 +79,33 @@ export function SavedReportEditor({
           </fieldset>
         </div>
       </Card>
-      <Card>
-        <CardHeader title="Written commentary" description="Summary, observations, actions taken and proposed next steps." />
-        <div className="grid gap-4 px-5 pb-5">
-          <Field label="Summary" htmlFor="summary"><Textarea id="summary" name="summary" defaultValue={draft.summary} maxLength={4000} readOnly={readOnly} /></Field>
-          <Field label="Observations" htmlFor="observations"><Textarea id="observations" name="observations" defaultValue={draft.observations} maxLength={4000} readOnly={readOnly} /></Field>
-          <Field label="Actions taken" htmlFor="actionsTaken"><Textarea id="actionsTaken" name="actionsTaken" defaultValue={draft.actionsTaken} maxLength={4000} readOnly={readOnly} /></Field>
-          <Field label="Proposed next steps" htmlFor="nextSteps"><Textarea id="nextSteps" name="nextSteps" defaultValue={draft.nextSteps} maxLength={4000} readOnly={readOnly} /></Field>
-        </div>
-      </Card>
-      <Card>
-        <CardHeader title="Data notes" description="Add a note where the recorded sources, refresh time, missing connections or limitations need an explanation. The preview fills the recorded facts." />
-        <div className="grid gap-4 px-5 pb-5">
-          <Field label="Data sources" htmlFor="dataSourcesNote" hint="The preview lists sources found for the chosen periods.">
-            <Textarea id="dataSourcesNote" name="dataSourcesNote" defaultValue={draft.dataSourcesNote} maxLength={2000} readOnly={readOnly} />
-          </Field>
-          <Field label="Missing connections" htmlFor="missingConnections" hint="The preview lists exports that have no figures for these periods.">
-            <Textarea id="missingConnections" name="missingConnections" defaultValue={draft.missingConnections} maxLength={2000} readOnly={readOnly} />
-          </Field>
-          <Field label="Measurement limitations" htmlFor="measurementLimitations">
-            <Textarea id="measurementLimitations" name="measurementLimitations" defaultValue={draft.measurementLimitations} maxLength={2000} readOnly={readOnly} />
-          </Field>
-        </div>
-      </Card>
+      {includeNotes && (
+        <>
+          <Card>
+            <CardHeader title="Written commentary" description="Summary, observations, actions taken and proposed next steps." />
+            <div className="grid gap-4 px-5 pb-5">
+              <Field label="Summary" htmlFor="summary"><Textarea id="summary" name="summary" defaultValue={draft.summary} maxLength={4000} readOnly={readOnly} /></Field>
+              <Field label="Observations" htmlFor="observations"><Textarea id="observations" name="observations" defaultValue={draft.observations} maxLength={4000} readOnly={readOnly} /></Field>
+              <Field label="Actions taken" htmlFor="actionsTaken"><Textarea id="actionsTaken" name="actionsTaken" defaultValue={draft.actionsTaken} maxLength={4000} readOnly={readOnly} /></Field>
+              <Field label="Proposed next steps" htmlFor="nextSteps"><Textarea id="nextSteps" name="nextSteps" defaultValue={draft.nextSteps} maxLength={4000} readOnly={readOnly} /></Field>
+            </div>
+          </Card>
+          <Card>
+            <CardHeader title="Data notes" description="Add a note where the recorded sources, refresh time, missing connections or limitations need an explanation. The preview fills the recorded facts." />
+            <div className="grid gap-4 px-5 pb-5">
+              <Field label="Data sources" htmlFor="dataSourcesNote" hint="The preview lists sources found for the chosen periods.">
+                <Textarea id="dataSourcesNote" name="dataSourcesNote" defaultValue={draft.dataSourcesNote} maxLength={2000} readOnly={readOnly} />
+              </Field>
+              <Field label="Missing connections" htmlFor="missingConnections" hint="The preview lists exports that have no figures for these periods.">
+                <Textarea id="missingConnections" name="missingConnections" defaultValue={draft.missingConnections} maxLength={2000} readOnly={readOnly} />
+              </Field>
+              <Field label="Measurement limitations" htmlFor="measurementLimitations">
+                <Textarea id="measurementLimitations" name="measurementLimitations" defaultValue={draft.measurementLimitations} maxLength={2000} readOnly={readOnly} />
+              </Field>
+            </div>
+          </Card>
+        </>
+      )}
       {!readOnly && (
         <div className="flex flex-wrap items-center gap-3">
           <Button type="submit" disabled={pending}>{pending ? "Saving…" : draft.id ? "Save" : "Create"}</Button>

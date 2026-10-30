@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
-import { gatherReportFacts, getSavedReport } from "@clinic-genie/db";
+import { composeReport, gatherReportFacts, getSavedReport } from "@clinic-genie/db";
 import { requireAccess } from "@/lib/session";
 import { staffTx } from "@/lib/db";
 import { ReportDocument } from "@/components/modules/ReportDocument";
@@ -30,10 +30,21 @@ export default async function ReportPrintPage({ params, searchParams }: { params
     const report = await getSavedReport(db, id);
     if (!report) return null;
     const facts = await gatherReportFacts(db, report);
-    return { report, facts };
+    const composition = report.checklist.length
+      ? await composeReport(db, {
+          clientId: report.client_id,
+          websiteId: report.website_id,
+          periodStart: report.period_start,
+          periodEnd: report.period_end,
+          comparisonStart: report.comparison_start,
+          comparisonEnd: report.comparison_end,
+          items: report.checklist,
+        })
+      : null;
+    return { report, facts, composition };
   });
   if (!loaded) notFound();
-  const { report, facts } = loaded;
+  const { report, facts, composition } = loaded;
   const version = report.versions.find((item) => item.id === versionId) ?? null;
   const preview = version
     ? {
@@ -55,6 +66,10 @@ export default async function ReportPrintPage({ params, searchParams }: { params
         missingNote: version.missing_connections,
         limitationNote: version.limitation_note,
         measurementLimitations: version.measurement_limitations,
+        blocks: version.blocks,
+        websiteLabel: version.website_label,
+        reportType: version.report_type,
+        preparedBy: version.creator_name,
         caption: `Version ${version.version_number}, retained for client review.`,
       }
     : {
@@ -74,8 +89,12 @@ export default async function ReportPrintPage({ params, searchParams }: { params
         lastRefresh: facts.lastRefresh,
         missingConnections: facts.missingConnections,
         missingNote: report.missing_connections,
-        limitationNote: facts.limitationNote,
+        limitationNote: composition?.limitationNote ?? facts.limitationNote,
         measurementLimitations: report.measurement_limitations,
+        blocks: composition?.blocks,
+        websiteLabel: report.website_label,
+        reportType: report.checklist.length ? report.report_type : null,
+        preparedBy: report.creator_name,
       };
   return (
     <article className="card p-5">

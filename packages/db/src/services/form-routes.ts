@@ -1,6 +1,8 @@
 import type { Queryable } from "../client";
 import { recordAudit } from "./audit";
 
+// Client-level routes remain for existing rows. New proposals are stored in website_forms.
+
 export class FormRouteRuleError extends Error {
   field?: string;
   constructor(message: string, field?: string) {

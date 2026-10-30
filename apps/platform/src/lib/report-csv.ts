@@ -1,5 +1,5 @@
 import { REPORT_SECTIONS } from "@clinic-genie/contracts";
-import { OPERATIONAL_TIME_ZONE, formatPeriod, type SavedFigure } from "@clinic-genie/db";
+import { OPERATIONAL_TIME_ZONE, formatPeriod, type ReportBlock, type SavedFigure } from "@clinic-genie/db";
 import { sourceLabel } from "@/components/modules/ReportDocument";
 
 /** Display form of a download serial. The sequence starts at 1, so the first file is RD-0001. */
@@ -62,6 +62,7 @@ export function reportCsv(input: {
   lastRefresh: string;
   missingConnections: string[];
   limitationNote: string | null;
+  blocks?: ReportBlock[];
 }): string {
   const compared = Boolean(input.comparisonStart && input.comparisonEnd);
   const rows = [
@@ -74,6 +75,10 @@ export function reportCsv(input: {
     "",
     line(["Section", "Metric", "Comparison", "Reporting period", "Change", "Change %"]),
   ];
+  for (const block of input.blocks ?? []) {
+    if (block.narrative || block.suggestion) rows.push(line([block.groupLabel, block.itemLabel, "", block.narrative || block.suggestion, "", block.narrative ? "" : "Suggested"]));
+    for (const item of block.lines) rows.push(line([block.groupLabel, item.label, item.previous, item.current, item.change, item.note]));
+  }
   for (const key of input.sections) {
     const section = REPORT_SECTIONS.find((item) => item.key === key);
     for (const figure of input.figures.filter((item) => item.section === key)) {

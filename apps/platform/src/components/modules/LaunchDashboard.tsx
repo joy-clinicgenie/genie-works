@@ -214,7 +214,7 @@ export function LaunchDashboard({
                   <Link href={`/enquiries/${item.id}`} className="flex items-center justify-between gap-3 py-2.5 text-sm hover:text-action">
                     <span className="min-w-0">
                       <span className="block truncate font-medium">{item.reference}</span>
-                      <span className="block truncate text-xs text-muted">{item.clinicName}</span>
+                      <span className="block truncate text-xs text-muted">{item.clinicName}{item.isSynthetic ? " · Demonstration data" : ""}</span>
                     </span>
                     <Badge tone={item.status === "new" ? "info" : item.status === "closed" ? "neutral" : "good"}>{item.status}</Badge>
                   </Link>

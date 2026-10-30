@@ -5,7 +5,7 @@ import { Card, CardHeader } from "@/components/ui/Card";
 import { Drawer } from "@/components/ui/Drawer";
 import { LinkButton } from "@/components/ui/Button";
 import { todaySgt } from "@clinic-genie/db";
-import { completedSince, googleQuery, seoHref, type GoogleControls, type SeoContext, type WebsiteSeoBundle } from "@/lib/seo-workspace";
+import { completedSince, googleQuery, seoHref, type GoogleControls, type SearchConsoleConnection, type SeoContext, type WebsiteSeoBundle } from "@/lib/seo-workspace";
 import { HiddenSeoContext, Unavailable } from "@/components/modules/seo/SeoFrame";
 
 const RANGES = [
@@ -76,20 +76,21 @@ export function AssistantPanel({ ctx, bundle, demo = false }: { ctx: SeoContext;
   );
 }
 
-export function GooglePanel({ ctx, controls, demo = false }: { ctx: SeoContext; controls: GoogleControls; demo?: boolean }) {
+export function GooglePanel({ ctx, controls, search = null, demo = false }: { ctx: SeoContext; controls: GoogleControls; search?: SearchConsoleConnection | null; demo?: boolean }) {
   const report = seoHref("/seo/reports", ctx, { tab: "google-search", ...googleQuery(controls) });
   const consoleHref = "https://search.google.com/search-console";
   const metricLabel = METRICS.find(([id]) => id === controls.metric)?.[1] ?? "Clicks";
   const chip = (active: boolean) => `inline-flex min-h-9 items-center rounded-full px-3 text-sm ${active ? "bg-action text-white" : "bg-surface-muted text-ink"}`;
+  const property = !demo && search?.status === "connected" ? search.propertyId : null;
   return (
     <Card>
       <CardHeader
         title="Site performance on Google"
-        description={demo ? "Demonstration layout only. Search Console is not the source of these labels." : "Search Console is not connected. Controls choose the report context and do not invent results."}
-        action={demo ? <Badge tone="warn">Demo data</Badge> : <Badge>Not connected</Badge>}
+        description={demo ? "Demonstration layout only. Search Console is not the source of these labels." : property ? `Connected to ${property}. Controls choose the report context. Stored search figures appear after a sync.` : "Search Console is not connected. Controls choose the report context and do not invent results."}
+        action={demo ? <Badge tone="warn">Demo data</Badge> : <Badge tone={property ? "good" : "neutral"}>{property ? "Connected" : "Not connected"}</Badge>}
       />
       <div className="space-y-4 px-5 pb-5">
-        <p className="text-xs text-muted">Verified property: not connected. Latest Google reporting date: unavailable.</p>
+        <p className="text-xs text-muted">{property ? `Verified property: ${property}.` : "Verified property: not connected."} Latest Google reporting date: unavailable.</p>
         <div className="flex flex-wrap gap-2">
           {RANGES.map(([id, label]) => <Link key={id} href={controlHref(ctx, controls, { range: id })} aria-current={controls.range === id ? "true" : undefined} className={chip(controls.range === id)}>{label}</Link>)}
         </div>

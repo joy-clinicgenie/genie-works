@@ -31,7 +31,7 @@ export default async function SeoOverviewPage({ searchParams }: { searchParams: 
         <p id="check-unavailable" className="text-xs text-muted">Run website check is unavailable because no crawler is connected.</p>
         <AssistantPanel ctx={ctx} bundle={bundle} demo={ctx.demo} />
         <div className="grid items-start gap-4 xl:grid-cols-3">
-          <div className="xl:col-span-2"><GooglePanel ctx={ctx} controls={controls} demo={ctx.demo} /></div>
+          <div className="xl:col-span-2"><GooglePanel ctx={ctx} controls={controls} search={bundle?.searchConsole} demo={ctx.demo} /></div>
           <AiPanel ctx={ctx} />
         </div>
         <div className="grid items-start gap-4 lg:grid-cols-2">

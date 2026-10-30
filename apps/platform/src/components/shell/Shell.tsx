@@ -34,7 +34,11 @@ function NavGroup({ title, items, pathname, collapsed }: { title: string; items:
       <ul className="space-y-1">
         {items.map((item) => {
           const Icon = ICONS[item.icon];
-          const active = item.href === "/" ? pathname === "/" : pathname.startsWith(item.href) || (item.href === "/my-tasks" && pathname.startsWith("/tasks"));
+          const active = item.href === "/"
+            ? pathname === "/"
+            : item.href === "/enquiries"
+              ? pathname.startsWith("/enquiries") || pathname.startsWith("/forms")
+              : pathname.startsWith(item.href) || (item.href === "/my-tasks" && pathname.startsWith("/tasks"));
           return (
             <li key={item.href}>
               <Link

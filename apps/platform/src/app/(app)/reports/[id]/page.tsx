@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { canEditClient, canExport, formatDateTime, formatPeriod, gatherReportFacts, getSavedReport } from "@clinic-genie/db";
+import { isReportTemplate } from "@clinic-genie/contracts";
+import { canEditClient, canExport, composeReport, formatDateTime, formatPeriod, gatherReportFacts, getSavedReport, listReportWebsites } from "@clinic-genie/db";
 import { requireAccess } from "@/lib/session";
 import { staffTx } from "@/lib/db";
 import { PageHeader, Card, CardHeader } from "@/components/ui/Card";
@@ -8,6 +9,7 @@ import { buttonClass, LinkButton } from "@/components/ui/Button";
 import { Notice } from "@/components/ui/Notice";
 import { ReportDocument } from "@/components/modules/ReportDocument";
 import { DuplicateReport, SavedReportEditor } from "@/components/modules/SavedReportEditor";
+import { ReportBuilder } from "@/components/modules/ReportBuilder";
 import { clientLabel } from "@/lib/client-label";
 
 export const dynamic = "force-dynamic";
@@ -23,10 +25,23 @@ export default async function SavedReportPage({ params, searchParams }: { params
     const report = await getSavedReport(db, id);
     if (!report) return null;
     const facts = await gatherReportFacts(db, report);
-    return { report, facts };
+    const composition = report.checklist.length
+      ? await composeReport(db, {
+          clientId: report.client_id,
+          websiteId: report.website_id,
+          periodStart: report.period_start,
+          periodEnd: report.period_end,
+          comparisonStart: report.comparison_start,
+          comparisonEnd: report.comparison_end,
+          items: report.checklist,
+        })
+      : null;
+    const websites = await listReportWebsites(db, [report.client_id]);
+    return { report, facts, composition, websites };
   });
   if (!loaded) notFound();
-  const { report, facts } = loaded;
+  const { report, facts, composition, websites } = loaded;
+  const built = report.checklist.length > 0;
   const version = report.versions.find((item) => item.id === versionId) ?? null;
   const preview = version
     ? {
@@ -48,6 +63,10 @@ export default async function SavedReportPage({ params, searchParams }: { params
         missingNote: version.missing_connections,
         limitationNote: version.limitation_note,
         measurementLimitations: version.measurement_limitations,
+        blocks: version.blocks,
+        websiteLabel: version.website_label,
+        reportType: version.report_type,
+        preparedBy: version.creator_name,
         caption: `Version ${version.version_number}, retained for client review on ${formatDateTime(version.created_at)}. Figures are the values saved with this version.`,
       }
     : {
@@ -67,9 +86,13 @@ export default async function SavedReportPage({ params, searchParams }: { params
         lastRefresh: facts.lastRefresh,
         missingConnections: facts.missingConnections,
         missingNote: report.missing_connections,
-        limitationNote: facts.limitationNote,
+        limitationNote: composition?.limitationNote ?? facts.limitationNote,
         measurementLimitations: report.measurement_limitations,
-        caption: "Review the last saved wording with the latest recorded figures before downloading.",
+        blocks: composition?.blocks,
+        websiteLabel: report.website_label,
+        reportType: built ? report.report_type : null,
+        preparedBy: report.creator_name,
+        caption: built ? "Review the recorded figures. Empty cells are not stored, and they are not zero." : "Review the last saved wording with the latest recorded figures before downloading.",
       };
   const canEdit = canEditClient(access, report.client_id);
   const canDownload = canExport(access);
@@ -84,13 +107,13 @@ export default async function SavedReportPage({ params, searchParams }: { params
         action={
           <div className="flex shrink-0 flex-wrap justify-end gap-2">
             {canDownload && <a className={buttonClass()} href={downloadHref}>Download CSV</a>}
-            <LinkButton href={`/reports/${report.id}/print${versionQuery}`} variant="secondary">Open summary</LinkButton>
+            <LinkButton href={`/reports/${report.id}/print${versionQuery}`} variant="secondary">{built ? "Generate PDF" : "Open summary"}</LinkButton>
             {canEdit && <DuplicateReport reportId={report.id} />}
           </div>
         }
       />
       <Card>
-        <CardHeader title="Report preview" description="A CSV downloads the tables and commentary. Open the summary and use the browser print dialog to save a PDF." />
+        <CardHeader title="Report preview" description={built ? "A CSV downloads the checklist. Generate PDF opens the summary so the browser can save a PDF." : "A CSV downloads the tables and commentary. Open the summary and use the browser print dialog to save a PDF."} />
         <div className="px-5 pb-5">
           {!canDownload && <div className="mb-4"><Notice tone="neutral">Download is not allowed for this account.</Notice></div>}
           <ReportDocument clientName={clientLabel({ name: report.client_name, reference_number: report.reference_number })} {...preview} />
@@ -112,28 +135,51 @@ export default async function SavedReportPage({ params, searchParams }: { params
         </ul>
       </Card>
       <div className="mt-4">
-        <SavedReportEditor
-          key={report.updated_at.toISOString()}
-          readOnly={!canEdit}
-          clients={[]}
-          draft={{
-            id: report.id,
-            clientId: report.client_id,
-            name: report.name,
-            periodStart: report.period_start,
-            periodEnd: report.period_end,
-            comparisonStart: report.comparison_start ?? "",
-            comparisonEnd: report.comparison_end ?? "",
-            sections: report.sections,
-            summary: report.summary ?? "",
-            observations: report.observations ?? "",
-            actionsTaken: report.actions_taken ?? "",
-            nextSteps: report.next_steps ?? "",
-            dataSourcesNote: report.data_sources_note ?? "",
-            missingConnections: report.missing_connections ?? "",
-            measurementLimitations: report.measurement_limitations ?? "",
-          }}
-        />
+        {built ? (
+          <ReportBuilder
+            key={report.updated_at.toISOString()}
+            readOnly={!canEdit}
+            preparedBy={report.creator_name}
+            clients={[{ id: report.client_id, label: clientLabel({ name: report.client_name, reference_number: report.reference_number }) }]}
+            websites={websites.map((item) => ({ id: item.id, clientId: item.client_id, label: item.url ? `${item.name} (${item.url})` : item.name }))}
+            draft={{
+              id: report.id,
+              clientId: report.client_id,
+              websiteId: report.website_id ?? "",
+              reportType: report.report_type,
+              templateKey: isReportTemplate(report.template_key) ? report.template_key : "monthly",
+              name: report.name,
+              periodStart: report.period_start,
+              periodEnd: report.period_end,
+              comparisonStart: report.comparison_start ?? "",
+              comparisonEnd: report.comparison_end ?? "",
+              items: report.checklist,
+            }}
+          />
+        ) : (
+          <SavedReportEditor
+            key={report.updated_at.toISOString()}
+            readOnly={!canEdit}
+            clients={[]}
+            draft={{
+              id: report.id,
+              clientId: report.client_id,
+              name: report.name,
+              periodStart: report.period_start,
+              periodEnd: report.period_end,
+              comparisonStart: report.comparison_start ?? "",
+              comparisonEnd: report.comparison_end ?? "",
+              sections: report.sections,
+              summary: report.summary ?? "",
+              observations: report.observations ?? "",
+              actionsTaken: report.actions_taken ?? "",
+              nextSteps: report.next_steps ?? "",
+              dataSourcesNote: report.data_sources_note ?? "",
+              missingConnections: report.missing_connections ?? "",
+              measurementLimitations: report.measurement_limitations ?? "",
+            }}
+          />
+        )}
       </div>
     </>
   );

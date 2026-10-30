@@ -2,6 +2,7 @@ import { afterAll, describe, expect, it } from "vitest";
 import pg from "pg";
 import { loadRootEnv, requireEnv } from "../src/env";
 import { enquiryFixtureUrlFromAdmin } from "../src/testing/targets";
+import { setEnquiryFollowUp, websiteFormConfigPresent } from "../src/services/enquiry-follow-up";
 import {
   HARBOUR_DUPLICATE_KEY,
   RETRY_FAILURE_OUTBOX_ID,
@@ -52,14 +53,24 @@ describe("synthetic enquiry fixture", () => {
       await expect(pool.query(
         `insert into enquiries (
            id, public_reference, clinic_id, form_key, form_version, idempotency_key, payload_digest,
-           name, contact_number, reason, attribution_source, notice_version, status, is_synthetic, created_at
+           name, contact_number, email, reason, attribution_source, notice_version, status, is_synthetic, created_at
          ) values (
            '11111111-1111-4111-8111-111111111199', 'TEST-DUP', 'harbourview-dental', 'appointment-enquiry', 1, $1, 'other',
-           'Other', '00000000', 'general-enquiry', 'direct', 'fixture-notice-v1', 'new', true, now()
+           'Other', '11111111', 'other.person@example.invalid', 'general-enquiry', 'direct', 'fixture-notice-v1', 'new', true, now()
          )`,
         [HARBOUR_DUPLICATE_KEY],
       )).rejects.toThrow(/duplicate key/);
       expect((await pool.query<{ count: number }>("select count(*)::int as count from enquiries")).rows[0]?.count).toBe(before.rows[0]?.count);
+      const kept = await pool.query<{ public_reference: string; name: string; email: string | null; contact_number: string }>(
+        "select public_reference, name, email, contact_number from enquiries where clinic_id = 'harbourview-dental' and idempotency_key = $1",
+        [HARBOUR_DUPLICATE_KEY],
+      );
+      expect(kept.rows).toEqual([{
+        public_reference: "TEST-HV-NEW-001",
+        name: "Test Person Harbour",
+        email: "harbour.person@example.invalid",
+        contact_number: "00000000",
+      }]);
 
       const shape = await pool.query<{ id: string }>(
         `insert into enquiries (
@@ -84,6 +95,21 @@ describe("synthetic enquiry fixture", () => {
       expect((await pool.query<{ count: number }>("select count(*)::int as count from enquiries")).rows[0]?.count).toBe(6);
       const requeued = await pool.query<{ status: string }>("select status from notification_outbox where id = $1", [RETRY_SUCCESS_OUTBOX_ID]);
       expect(requeued.rows[0]?.status).toBe("pending");
+
+      const closedId = "11111111-1111-4111-8111-111111111103";
+      const closedBefore = await pool.query<{ status: string; name: string; email: string | null }>("select status, name, email from enquiries where id = $1", [closedId]);
+      expect(closedBefore.rows[0]?.status).toBe("closed");
+      const viewed = await pool.query<{ status: string }>("select status from enquiries where id = $1", [closedId]);
+      expect(viewed.rows[0]?.status).toBe("closed");
+      const opened = await setEnquiryFollowUp(pool, { id: closedId, fromStatus: "closed", toStatus: "new", scope: ["harbourview-dental"] });
+      expect(opened?.reference).toBe("TEST-HV-CLOSED-003");
+      const after = await pool.query<{ status: string; name: string; email: string | null }>("select status, name, email from enquiries where id = $1", [closedId]);
+      expect(after.rows[0]).toEqual({ status: "new", name: closedBefore.rows[0]?.name, email: closedBefore.rows[0]?.email });
+      expect(await setEnquiryFollowUp(pool, { id: closedId, fromStatus: "closed", toStatus: "acknowledged", scope: ["harbourview-dental"] })).toBeNull();
+      expect(await setEnquiryFollowUp(pool, { id: closedId, fromStatus: "new", toStatus: "closed", scope: ["northgate-physio"] })).toBeNull();
+      expect((await pool.query<{ status: string }>("select status from enquiries where id = $1", [closedId])).rows[0]?.status).toBe("new");
+      expect(await websiteFormConfigPresent(pool)).toBe(false);
+      expect(await setEnquiryFollowUp(pool, { id: closedId, fromStatus: "new", toStatus: "closed", scope: null })).toMatchObject({ id: closedId });
     } finally {
       await pool.end();
     }

@@ -44,16 +44,20 @@ export interface AuditEventRow {
   metadata: Record<string, unknown>;
 }
 
-export async function listAuditEvents(db: Queryable, opts: { clientId?: string; limit?: number } = {}): Promise<AuditEventRow[]> {
+export async function listAuditEvents(db: Queryable, opts: { clientId?: string; limit?: number; action?: string; targetIds?: string[] } = {}): Promise<AuditEventRow[]> {
+  const targetIds = opts.targetIds && opts.targetIds.length > 0 ? opts.targetIds : null;
+  if (opts.targetIds && opts.targetIds.length === 0) return [];
   const { rows } = await db.query<AuditEventRow>(
     `select a.*, u.display_name as actor_name, c.name as client_name
      from audit_events a
      left join staff_users u on u.id = a.actor_user_id
      left join clients c on c.id = a.client_id
      where ($1::uuid is null or a.client_id = $1)
+       and ($3::text is null or a.action = $3)
+       and ($4::text[] is null or a.target_id = any($4))
      order by a.occurred_at desc
      limit $2`,
-    [opts.clientId ?? null, opts.limit ?? 100],
+    [opts.clientId ?? null, opts.limit ?? 100, opts.action ?? null, targetIds],
   );
   return rows;
 }

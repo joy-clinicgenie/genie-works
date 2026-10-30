@@ -17,7 +17,9 @@ export function EnquiryTabs({ children }: { children: ReactNode }) {
       nav={
         <InnerNavGroup title="Enquiries">
           {TABS.map(([href, name]) => {
-            const active = href === "/enquiries/notifications" ? pathname.startsWith(href) : pathname === "/enquiries" || (pathname.startsWith("/enquiries/") && !pathname.startsWith("/enquiries/notifications"));
+            const active = href === "/enquiries/notifications"
+              ? pathname.startsWith(href)
+              : pathname === "/enquiries" || (pathname.startsWith("/enquiries/") && !pathname.startsWith("/enquiries/notifications"));
             return <InnerNavLink key={href} href={href} current={active}>{name}</InnerNavLink>;
           })}
         </InnerNavGroup>

@@ -5,6 +5,7 @@ import {
   getGoogleSiteVerification,
   hasActiveSeoSiteToken,
   listClientsForRequest,
+  listConnections,
   listSeoBusinessProfiles,
   listSeoChanges,
   listSeoPageSettings,
@@ -57,6 +58,11 @@ export interface SetupCheck {
   status: "ready" | "attention" | "unverified";
 }
 
+export interface SearchConsoleConnection {
+  status: string;
+  propertyId: string;
+}
+
 export interface WebsiteSeoBundle {
   pages: SeoPageRow[];
   unassignedPages: number;
@@ -66,10 +72,27 @@ export interface WebsiteSeoBundle {
   redirects: SeoRedirectRow[];
   profiles: SeoBusinessProfileRow[];
   verification: string | null;
+  searchConsole: SearchConsoleConnection | null;
   connected: boolean;
   checks: SetupCheck[];
   canEdit: boolean;
   canPublish: boolean;
+}
+
+export function pickSearchConsole(
+  rows: Array<{ website_id: string; provider: string; status: string; external_property_id: string; disconnected_at: Date | null }>,
+  websiteId: string,
+): SearchConsoleConnection | null {
+  const active = rows.filter((row) => row.website_id === websiteId && row.provider === "gsc" && row.disconnected_at === null && row.status !== "disconnected");
+  const chosen = active.find((row) => row.status === "connected") ?? active[0];
+  return chosen ? { status: chosen.status, propertyId: chosen.external_property_id } : null;
+}
+
+export function searchConsoleCapability(search: SearchConsoleConnection | null, verification: string | null): string {
+  const tag = verification ? " Can publish an HTML verification tag." : "";
+  if (search?.status === "connected") return `Connected to ${search.propertyId}. Can read search reports. Cannot inspect URLs.${tag}`;
+  if (search?.status === "reconnect_required") return `Reconnect required for ${search.propertyId}. Cannot read search reports until the account is connected again. Cannot inspect URLs.${tag}`;
+  return `Not connected. Cannot read search reports or inspect URLs.${tag}`;
 }
 
 export interface GoogleControls {
@@ -190,6 +213,7 @@ export function setupChecks(input: {
   pageSettingCount: number;
   redirectCount: number;
   verification: string | null;
+  searchConsole: SearchConsoleConnection | null;
   profiles: SeoBusinessProfileRow[];
 }): SetupCheck[] {
   const checks: SetupCheck[] = [
@@ -221,10 +245,12 @@ export function setupChecks(input: {
     },
     {
       title: "Google Search Console",
-      detail: input.verification
-        ? "An HTML verification token is saved for publishing. Ownership still has to be confirmed in Google Search Console."
-        : "No HTML verification token is saved. Search reports are not connected.",
-      status: input.verification ? "unverified" : "attention",
+      detail: input.searchConsole?.status === "connected"
+        ? `Connected to ${input.searchConsole.propertyId}. Search reports can be read. URL inspection is not available.${input.verification ? " An HTML verification token is saved for publishing." : ""}`
+        : input.verification
+          ? "An HTML verification token is saved for publishing. Ownership still has to be confirmed in Google Search Console. Search reports are not connected."
+          : "No Search Console property is connected.",
+      status: input.searchConsole?.status === "connected" ? "ready" : input.verification ? "unverified" : "attention",
     },
   ];
   if (input.profiles.length === 0) {
@@ -244,7 +270,7 @@ export function setupChecks(input: {
 
 export async function loadWebsiteSeo(access: AccessProfile, site: SeoSite): Promise<WebsiteSeoBundle> {
   const loaded = await staffTx(access, async (db) => {
-    const [pages, changes, tasks, settings, redirects, profiles, verification] = await Promise.all([
+    const [pages, changes, tasks, settings, redirects, profiles, verification, connections] = await Promise.all([
       listSeoPages(db, { clientId: site.clientId }),
       listSeoChanges(db, { clientId: site.clientId, limit: 100 }),
       listTasks(db, { clientId: site.clientId, statuses: [...TASK_STATUSES], limit: 300 }),
@@ -252,8 +278,9 @@ export async function loadWebsiteSeo(access: AccessProfile, site: SeoSite): Prom
       listSeoRedirects(db, { clientId: site.clientId, websiteId: site.id, includeInactive: true }),
       listSeoBusinessProfiles(db, site.clientId),
       getGoogleSiteVerification(db, site.id),
+      listConnections(db, site.clientId),
     ]);
-    return { pages, changes, tasks, settings, redirects, profiles, verification };
+    return { pages, changes, tasks, settings, redirects, profiles, verification, searchConsole: pickSearchConsole(connections, site.id) };
   });
   const connected = await serviceTx((db) => hasActiveSeoSiteToken(db, site.id));
   const pages = loaded.pages.filter((page) => page.website_id === site.id);
@@ -268,6 +295,7 @@ export async function loadWebsiteSeo(access: AccessProfile, site: SeoSite): Prom
     redirects: loaded.redirects,
     profiles: loaded.profiles,
     verification: loaded.verification,
+    searchConsole: loaded.searchConsole,
     connected,
     checks: setupChecks({
       codeManaged,
@@ -275,6 +303,7 @@ export async function loadWebsiteSeo(access: AccessProfile, site: SeoSite): Prom
       pageSettingCount: loaded.settings.length,
       redirectCount: loaded.redirects.filter((rule) => rule.active).length,
       verification: loaded.verification,
+      searchConsole: loaded.searchConsole,
       profiles: loaded.profiles,
     }),
     canEdit: canEditClient(access, site.clientId),

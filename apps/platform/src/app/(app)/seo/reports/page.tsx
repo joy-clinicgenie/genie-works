@@ -3,7 +3,7 @@ import { requireAccess } from "@/lib/session";
 import { Card, CardHeader } from "@/components/ui/Card";
 import { SeoFrame, Unavailable } from "@/components/modules/seo/SeoFrame";
 import { DemoNote } from "@/components/modules/seo/OverviewPanels";
-import { googleQuery, loadSeoContext, queryText, readGoogleControls, selectedTab, seoHref, type SeoSearch } from "@/lib/seo-workspace";
+import { googleQuery, loadSeoContext, loadWebsiteSeo, queryText, readGoogleControls, selectedTab, seoHref, type SeoSearch } from "@/lib/seo-workspace";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "SEO reports" };
@@ -19,6 +19,8 @@ export default async function SeoReportsPage({ searchParams }: { searchParams: P
   const access = await requireAccess();
   const query = await searchParams;
   const ctx = await loadSeoContext(access, query);
+  const bundle = ctx.selected && !ctx.demo ? await loadWebsiteSeo(access, ctx.selected) : null;
+  const searchConnected = bundle?.searchConsole?.status === "connected";
   const controls = readGoogleControls(query);
   const tab = selectedTab(queryText(query, "tab"), TABS, "google-search");
   const contextLine = `${controls.range === "custom" ? "Custom dates" : `Last ${controls.range} days`} · ${controls.metric} · ${controls.record} · ${controls.direction} ${controls.changeMetric}`;
@@ -26,7 +28,7 @@ export default async function SeoReportsPage({ searchParams }: { searchParams: P
     <SeoFrame ctx={ctx} pathname="/seo/reports" title="Reports" description="Detailed analysis behind the overview. Export and scheduled delivery are not available." tabs={TABS} currentTab={tab} tabExtra={googleQuery(controls)}>
       {ctx.demo ? <DemoNote>Report tables do not contain sample performance.</DemoNote> : null}
       {ctx.demo && tab !== "saved" ? null : tab === "google-search" ? (
-        <Unavailable title="Google Search Console is not connected">{contextLine}. Clicks, impressions, CTR and average position are unavailable for this context. Changing the overview controls only preserves this context. Country, device and search-type filters have no data source. Export is not available.</Unavailable>
+        <Unavailable title={searchConnected ? "Search reports are not stored for this period" : "Google Search Console is not connected"}>{searchConnected ? `Connected to ${bundle?.searchConsole?.propertyId}. ` : ""}{contextLine}. Clicks, impressions, CTR and average position are {searchConnected ? "not stored yet" : "unavailable"} for this context. Changing the overview controls only preserves this context. Country, device and search-type filters have no data source. Export is not available.</Unavailable>
       ) : tab === "ai-traffic" ? (
         <Unavailable title="AI traffic is not connected">Referral sessions and retrieval activity are separate, and both are unavailable. They are not combined into one number.</Unavailable>
       ) : tab === "crawler" ? (
