@@ -6,6 +6,7 @@ import Link from "next/link";
 import { Bold, Image as ImageIcon, Italic, Link2, List, ListOrdered, Search, Settings, X } from "lucide-react";
 import type { ArticleBlock, ArticleBody } from "@clinic-genie/db";
 import { Button } from "@/components/ui/Button";
+import { PillSelect } from "@/components/ui/PillSelect";
 import { Field, FormError, Input, Select, Textarea } from "@/components/ui/Field";
 import type { ActionState } from "@/lib/actions";
 import { ArticleDocument, type ArticleDocumentHandle } from "./ArticleDocument";
@@ -249,12 +250,12 @@ export function ArticleForm({
           </div>
           <div className="relative flex items-center gap-1 overflow-x-auto border-t border-line px-2 py-1 lg:px-6" role="toolbar" aria-label="Formatting">
             <label className="sr-only" htmlFor="article-style">Text style</label>
-            <select
+            <PillSelect
               id="article-style"
               value={style}
               disabled={!canStyleText || style === "image"}
               onChange={(event) => restyle(event.target.value as EditorStyle)}
-              className="h-11 shrink-0 rounded-xl border border-line bg-surface px-2 text-sm text-ink disabled:opacity-40"
+              className="h-11 shrink-0"
             >
               <option value="paragraph">Paragraph</option>
               <option value="heading-2">Heading 2</option>
@@ -263,7 +264,7 @@ export function ArticleForm({
               <option value="ordered-list">Numbered list</option>
               {style === "link" && <option value="link">Link</option>}
               {style === "image" && <option value="image">Image</option>}
-            </select>
+            </PillSelect>
             <span className="mx-1 h-6 w-px shrink-0 bg-line" aria-hidden="true" />
             <ToolButton label="Bold" disabled={!canFormatInline} onClick={() => documentRef.current?.format("bold")}><Bold className="size-4" aria-hidden="true" /></ToolButton>
             <ToolButton label="Italic" disabled={!canFormatInline} onClick={() => documentRef.current?.format("italic")}><Italic className="size-4" aria-hidden="true" /></ToolButton>

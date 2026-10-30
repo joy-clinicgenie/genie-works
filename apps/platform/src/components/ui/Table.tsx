@@ -2,7 +2,7 @@ import type { ReactNode } from "react";
 
 export function Table({ children, caption, className = "" }: { children: ReactNode; caption?: string; className?: string }) {
   return (
-    <div className={`overflow-x-auto ${className}`} tabIndex={0} aria-label={caption}>
+    <div className={`min-w-0 max-w-full overflow-x-auto ${className}`} tabIndex={0} aria-label={caption}>
       <table className="w-full text-sm border-collapse">
         {caption && <caption className="sr-only">{caption}</caption>}
         {children}

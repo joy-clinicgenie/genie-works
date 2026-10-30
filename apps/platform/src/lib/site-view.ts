@@ -1,4 +1,4 @@
-import { getClient, listAccountReferences, listClients, listSnapshots, listWebsites, type AccessProfile, type AccountReferenceRow, type SnapshotRow, type WebsiteRow } from "@clinic-genie/db";
+import { getClient, listAccountReferences, listClients, listSnapshotClientIds, listSnapshots, listWebsites, type AccessProfile, type AccountReferenceRow, type SnapshotRow, type WebsiteRow } from "@clinic-genie/db";
 import { staffTx } from "@/lib/db";
 import { alignRecordedPeriod, latestUpdate, matchedPeriods, day, type PeriodWindow } from "@/lib/site-metrics";
 
@@ -30,10 +30,9 @@ export async function loadSiteView(access: AccessProfile, requestedId?: string, 
       clients.unshift(requested);
     }
     if (clients.length === 0) return null;
-    const recorded = await listSnapshots(db, { limit: 50000 });
-    const withSessions = new Set(recorded.filter((row) => row.metric === "sessions").map((row) => row.client_id));
+    const withSessions = new Set(await listSnapshotClientIds(db, "sessions"));
     const chosen = clients.find((client) => client.id === requestedId) ?? clients.find((client) => withSessions.has(client.id)) ?? clients[0]!;
-    const snapshots = recorded.filter((row) => row.client_id === chosen.id);
+    const snapshots = await listSnapshots(db, { clientId: chosen.id, limit: 20000 });
     const websites = await listWebsites(db, chosen.id);
     const references = await listAccountReferences(db, chosen.id);
     const requestedSite = requestedWebsiteId ? websites.find((item: WebsiteRow) => item.id === requestedWebsiteId) : undefined;

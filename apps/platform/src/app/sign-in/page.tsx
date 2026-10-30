@@ -1,24 +1,10 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { cookies } from "next/headers";
 import { authProviders, signIn } from "@/lib/auth";
 import { getAccess } from "@/lib/session";
-import { SignInErrorProbe } from "@/components/modules/SignInErrorProbe";
 import { Button } from "@/components/ui/Button";
 import { Field, Input } from "@/components/ui/Field";
 import { Notice } from "@/components/ui/Notice";
-
-function dbHostKind(): "missing" | "local" | "remote" {
-  const raw = process.env.DATABASE_URL;
-  if (!raw) return "missing";
-  try {
-    const host = new URL(raw.replace(/^postgresql:/, "http:")).hostname;
-    if (host === "localhost" || host === "127.0.0.1" || host === "::1") return "local";
-    return "remote";
-  } catch {
-    return "missing";
-  }
-}
 
 export const metadata = { title: "Sign in" };
 
@@ -26,13 +12,6 @@ export default async function SignInPage({ searchParams }: { searchParams: Promi
   const access = await getAccess();
   if (access) redirect("/");
   const { error, sent } = await searchParams;
-  const cause = (await cookies()).get("gw_dbg")?.value;
-  let authUrlHost = "";
-  try {
-    authUrlHost = process.env.AUTH_URL ? new URL(process.env.AUTH_URL).host : "";
-  } catch {
-    authUrlHost = "invalid";
-  }
 
   async function sendLink(formData: FormData) {
     "use server";
@@ -56,7 +35,6 @@ export default async function SignInPage({ searchParams }: { searchParams: Promi
           </div>
         </div>
         {error && <Notice tone="bad" title="Sign in was not completed">{error === "AccessDenied" ? "This email is not an active staff account." : "Please try again or contact an administrator."}</Notice>}
-        <SignInErrorProbe error={error} cause={cause} dbHostKind={dbHostKind()} authUrlHost={authUrlHost} />
         {sent && <Notice tone="good" title="Sign-in link recorded">In development the link is not emailed. Open <Link href="/dev/magic-links" className="underline">the development links page</Link> to use it.</Notice>}
         {authProviders.devLinks && (
           <form action={sendLink} className="space-y-4 mt-4">

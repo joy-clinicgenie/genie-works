@@ -1,101 +1,135 @@
+import { agencySessionSummary, dashboardReportAttention, listClients, type AgencySessionSummary } from "@clinic-genie/db";
 import { requireAccess } from "@/lib/session";
 import { staffTx } from "@/lib/db";
-import { formatDateTime, formatPeriod, listApprovals, listClients, listIssues, listTimeline } from "@clinic-genie/db";
-import { LaunchDashboard } from "@/components/modules/LaunchDashboard";
-import { listFormSubmissions, notificationAttention, submissionClinicScope, submissionStatusCounts } from "@/lib/form-submissions";
+import { AgencyOverview } from "@/components/modules/AgencyOverview";
+import { enquiryConnection, notificationAttention, submissionClinicScope, submissionStatusCounts } from "@/lib/form-submissions";
+import { periodRange } from "@/lib/period-range";
+import {
+  analyticsDashboardHref,
+  dashboardRangeId,
+  enquiryDashboardHref,
+  notificationFailureHref,
+  reportsLibraryHref,
+  sessionComparison,
+} from "@/lib/agency-overview";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Dashboard" };
 
-const OPEN_ISSUE_STATUSES = ["open", "investigating", "resolved_pending_verification", "reopened"] as const;
+const CLIENT_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-export default async function DashboardPage() {
+export default async function DashboardPage({ searchParams }: { searchParams: Promise<{ client?: string; range?: string }> }) {
   const access = await requireAccess();
+  const params = await searchParams;
+  const rangeId = dashboardRangeId(params.range);
+  const windows = periodRange(rangeId);
   const scope = submissionClinicScope(access);
-  const [directory, enquiries, notifications, submissions] = await Promise.all([
-    staffTx(access, async (db) => {
-      const clients = await listClients(db);
-      const approvals = await listApprovals(db, { statuses: ["submitted", "changes_requested"], limit: 5 });
-      const issues = await listIssues(db, { statuses: [...OPEN_ISSUE_STATUSES], limit: 20 });
-      const timeline = await listTimeline(db, { limit: 20 });
-      const websites = await db.query<{ client_id: string; count: number }>("select client_id, count(*)::int as count from websites group by client_id");
-      const performance = await db.query<{ client_id: string; name: string; period_start: string; period_end: string; sessions: number | null }>(
-        `select c.id as client_id, c.name, s.period_start::text as period_start, s.period_end::text as period_end, sum(s.value)::float as sessions
-         from report_snapshots s
-         join clients c on c.id = s.client_id
-         where s.superseded_by_id is null and s.metric = 'sessions' and s.source = 'ga4_export'
-           and (s.period_start, s.period_end) = (
-             select period_start, period_end from report_snapshots
-             where superseded_by_id is null and metric = 'sessions' and source = 'ga4_export'
-             order by period_end desc, abs((period_end - period_start) - 29), period_start desc limit 1
-           )
-         group by c.id, c.name, s.period_start, s.period_end
-         order by sessions desc nulls last
-         limit 4`,
-      );
-      const byClient = new Map(websites.rows.map((row) => [row.client_id, Number(row.count)]));
-      const period = performance.rows[0];
-      return {
-        clientCount: clients.length,
-        websiteCount: clients.reduce((sum, client) => sum + (byClient.get(client.id) ?? 0), 0),
-        clients: clients.slice(0, 6).map((client) => ({
-          id: client.id,
-          reference: client.reference_number,
-          name: client.name,
-          websites: byClient.get(client.id) ?? 0,
-        })),
-        approvals: approvals.map((item) => ({
-          id: item.id,
-          title: item.title,
-          clientName: item.client_name,
-          status: item.status,
-        })),
-        alerts: issues
-          .filter((issue) => issue.severity === "high" || issue.severity === "critical")
-          .slice(0, 4)
-          .map((issue) => ({
-            id: issue.id,
-            href: `/issues/${issue.id}`,
-            title: issue.title,
-            detail: issue.client_name,
-            severity: issue.severity,
-          })),
-        activity: timeline.filter((event) => !event.event_type.startsWith("task_")).slice(0, 5).map((event) => ({
-          id: event.id,
-          title: event.title,
-          clientName: event.client_name,
-          when: formatDateTime(event.occurred_at),
-          actor: event.actor_name,
-        })),
-        performance: performance.rows
-          .filter((row) => row.sessions !== null)
-          .map((row) => ({ clientId: row.client_id, name: row.name, sessions: Math.round(Number(row.sessions)) })),
-        performancePeriod: period ? formatPeriod(period.period_start.slice(0, 10), period.period_end.slice(0, 10)) : null,
-      };
-    }),
-    submissionStatusCounts(scope),
-    notificationAttention(scope),
-    listFormSubmissions(scope, {}),
+  const requestedClient = params.client && CLIENT_ID.test(params.client) ? params.client : null;
+
+  const registry = await settle(staffTx(access, async (db) => {
+    const clients = await listClients(db);
+    const websites = await db.query<{ client_id: string; count: number }>("select client_id, count(*)::int as count from websites group by client_id");
+    return {
+      clients: clients.map((client) => ({
+        id: client.id,
+        name: client.name,
+        slug: client.slug,
+        referenceNumber: client.reference_number,
+      })),
+      websites: new Map(websites.rows.map((row) => [row.client_id, Number(row.count)])),
+    };
+  }), null);
+
+  const selected = registry?.clients.find((client) => client.id === requestedClient) ?? null;
+  const clientId = selected?.id ?? null;
+  const clinic = selected?.slug ?? null;
+  const from = windows.current.start;
+  const to = windows.current.end;
+
+  const [enquiries, notifications, reports, sessions] = await Promise.all([
+    settle(submissionStatusCounts(scope, { from, to, clinicId: clinic }), { connected: false as const }),
+    settle(notificationAttention(scope, clinic), { connected: false as const }),
+    settle(staffTx(access, (db) => dashboardReportAttention(db, clientId)), null),
+    settle(staffTx(access, (db) => agencySessionSummary(db, {
+      clientId,
+      start: from,
+      end: to,
+      previousStart: windows.previous.start,
+      previousEnd: windows.previous.end,
+    })), unavailableSessions()),
   ]);
 
-  const failed = notifications.connected ? notifications.failed : 0;
-  const alerts = failed > 0
-    ? [{ id: "failed-notifications", href: "/enquiries/notifications", title: "Failed clinic notifications", detail: `${failed} waiting for an authorised retry`, severity: "high" }, ...directory.alerts]
-    : directory.alerts;
+  const notices: string[] = [];
+  if (!registry) notices.push("The client registry is unavailable. Other sections remain available.");
+  if (!enquiries.connected) {
+    const connection = await enquiryConnection().catch(() => ({ configured: false, reachable: false }));
+    notices.push(connection.configured
+      ? "The enquiry database is unavailable. Other sections remain available."
+      : "The enquiry database is not connected. Other sections remain available.");
+  } else if (!notifications.connected) {
+    notices.push("Notification status is unavailable. Enquiry counts are still shown.");
+  }
+  if (!reports) notices.push("Reports are unavailable. Other sections remain available.");
+  for (const notice of sessions.notices) notices.push(notice.message);
+
+  const linkedWebsites = registry
+    ? selected
+      ? registry.websites.get(selected.id) ?? 0
+      : registry.clients.reduce((sum, client) => sum + (registry.websites.get(client.id) ?? 0), 0)
+    : null;
+  const enquiryHrefs = {
+    total: enquiryDashboardHref({ from, to, clinic }),
+    new: enquiryDashboardHref({ status: "new", from, to, clinic }),
+    acknowledged: enquiryDashboardHref({ status: "acknowledged", from, to, clinic }),
+    closed: enquiryDashboardHref({ status: "closed", from, to, clinic }),
+  };
+  const counts = enquiries.connected ? enquiries.counts : null;
 
   return (
-    <LaunchDashboard
-      clientCount={directory.clientCount}
-      websiteCount={directory.websiteCount}
-      clients={directory.clients}
-      enquiries={enquiries}
-      recent={submissions.connected ? submissions.items.slice(0, 5) : []}
-      notifications={notifications}
-      approvals={directory.approvals}
-      alerts={alerts.slice(0, 5)}
-      activity={directory.activity}
-      performance={directory.performance}
-      performancePeriod={directory.performancePeriod}
+    <AgencyOverview
+      clients={registry?.clients ?? []}
+      clientId={selected?.id ?? ""}
+      rangeId={rangeId}
+      activeClients={registry ? registry.clients.length : null}
+      linkedWebsites={linkedWebsites}
+      clientsHref="/clients"
+      websitesHref={selected ? `/clients/${selected.id}` : "/clients"}
+      enquiries={counts
+        ? { connected: true, total: counts.new + counts.acknowledged + counts.closed, counts }
+        : { connected: false }}
+      enquiryHrefs={enquiryHrefs}
+      notificationFailures={enquiries.connected && notifications.connected ? notifications.failed : null}
+      notificationHref={notificationFailureHref(clinic)}
+      draftCount={reports ? reports.draftCount : null}
+      latestDraft={reports?.latest ? { ...reports.latest, updatedAt: reports.latest.updatedAt } : null}
+      reportsHref={reportsLibraryHref(clientId)}
+      reportsUnavailable={!reports}
+      sessions={sessions}
+      comparison={sessionComparison(sessions.total, sessions.previous)}
+      analyticsHref={analyticsDashboardHref(rangeId, clientId)}
+      notices={notices}
     />
   );
+}
+
+function unavailableSessions(): AgencySessionSummary {
+  return {
+    state: "unavailable",
+    total: null,
+    previous: null,
+    series: null,
+    top: [],
+    fetchedAt: null,
+    notices: [{ id: "analytics-unavailable", kind: "unavailable", message: "Website sessions are unavailable." }],
+    websiteCount: 0,
+    unconnectedCount: 0,
+  };
+}
+
+async function settle<T>(work: Promise<T>, fallback: T): Promise<T> {
+  try {
+    return await work;
+  } catch {
+    return fallback;
+  }
 }

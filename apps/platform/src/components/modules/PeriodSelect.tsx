@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { Calendar, ChevronDown, ChevronLeft, ChevronRight, Globe } from "lucide-react";
 import { buttonClass } from "@/components/ui/Button";
+import { PillSelect } from "@/components/ui/PillSelect";
 import {
   PERIOD_RANGES,
   addIsoDays,
@@ -157,7 +158,7 @@ export function PeriodSelect({ clientId, websiteId, range, from, to }: { clientI
         aria-haspopup="dialog"
         aria-expanded={open}
         onClick={() => (open ? setOpen(false) : openPanel())}
-        className={`inline-flex min-h-10 items-center gap-2.5 rounded-xl border bg-surface py-2 pl-4 pr-4 text-sm font-medium text-ink ${open ? "border-action shadow-[0_0_0_3px_rgba(19,108,114,0.16)]" : "border-line"}`}
+        className={`inline-flex min-h-10 items-center gap-2.5 rounded-full border bg-surface py-2 pl-4 pr-4 text-sm font-medium text-ink ${open ? "border-action shadow-[0_0_0_3px_rgba(19,108,114,0.16)]" : "border-line"}`}
       >
         <Calendar className="size-4 text-ink-soft" aria-hidden="true" />
         {buttonText}
@@ -190,36 +191,26 @@ export function PeriodSelect({ clientId, websiteId, range, from, to }: { clientI
                   <ChevronLeft className="size-4" aria-hidden="true" />
                 </button>
                 <div className="flex items-center gap-2">
-                  <label className="relative">
-                    <span className="sr-only">Month</span>
-                    <select
-                      aria-label="Month"
-                      value={visible.month}
-                      onChange={(event) => setVisible({ year: visible.year, month: Number(event.target.value) })}
-                      className="appearance-none bg-transparent py-1 pr-6 text-sm font-semibold text-ink"
-                    >
-                      {MONTHS.map((name, index) => (
-                        <option key={name} value={index + 1} disabled={visible.year === currentMonth.year && index + 1 > currentMonth.month}>{name}</option>
-                      ))}
-                    </select>
-                    <ChevronDown className="pointer-events-none absolute top-1/2 right-0 size-3.5 -translate-y-1/2 text-ink-soft" aria-hidden="true" />
-                  </label>
-                  <label className="relative">
-                    <span className="sr-only">Year</span>
-                    <select
-                      aria-label="Year"
-                      value={visible.year}
-                      onChange={(event) => {
-                        const year = Number(event.target.value);
-                        const month = year === currentMonth.year ? Math.min(visible.month, currentMonth.month) : visible.month;
-                        setVisible({ year, month });
-                      }}
-                      className="appearance-none bg-transparent py-1 pr-6 text-sm font-semibold text-ink"
-                    >
-                      {years.map((year) => <option key={year} value={year}>{year}</option>)}
-                    </select>
-                    <ChevronDown className="pointer-events-none absolute top-1/2 right-0 size-3.5 -translate-y-1/2 text-ink-soft" aria-hidden="true" />
-                  </label>
+                  <PillSelect
+                    aria-label="Month"
+                    value={visible.month}
+                    onChange={(event) => setVisible({ year: visible.year, month: Number(event.target.value) })}
+                  >
+                    {MONTHS.map((name, index) => (
+                      <option key={name} value={index + 1} disabled={visible.year === currentMonth.year && index + 1 > currentMonth.month}>{name}</option>
+                    ))}
+                  </PillSelect>
+                  <PillSelect
+                    aria-label="Year"
+                    value={visible.year}
+                    onChange={(event) => {
+                      const year = Number(event.target.value);
+                      const month = year === currentMonth.year ? Math.min(visible.month, currentMonth.month) : visible.month;
+                      setVisible({ year, month });
+                    }}
+                  >
+                    {years.map((year) => <option key={year} value={year}>{year}</option>)}
+                  </PillSelect>
                 </div>
                 <button type="button" aria-label="Next month" disabled={atCurrentMonth} onClick={() => shiftMonth(1)} className="grid size-8 place-items-center rounded-full text-ink-soft hover:bg-brand-pale disabled:opacity-30">
                   <ChevronRight className="size-4" aria-hidden="true" />
@@ -265,8 +256,8 @@ export function PeriodSelect({ clientId, websiteId, range, from, to }: { clientI
               <p className="mt-0.5 inline-flex items-center gap-1.5 text-xs text-muted"><Globe className="size-3.5" aria-hidden="true" />GMT +08:00</p>
             </div>
             <div className="flex items-center gap-2">
-              <button type="button" className={`${buttonClass("secondary", "sm")} rounded-full px-4`} onClick={() => setOpen(false)}>Cancel</button>
-              <button type="button" className={`${buttonClass("primary", "sm")} rounded-full px-4`} onClick={apply}>Apply</button>
+              <button type="button" className={buttonClass("secondary", "sm")} onClick={() => setOpen(false)}>Cancel</button>
+              <button type="button" className={buttonClass("primary", "sm")} onClick={apply}>Apply</button>
             </div>
           </div>
         </div>

@@ -21,7 +21,7 @@ export function Notice({ tone = "info", title, children }: { tone?: Tone; title?
 export function EmptyState({ title, children, action }: { title: string; children?: ReactNode; action?: ReactNode }) {
   return (
     <div className="card p-8 text-center">
-      <h3 className="font-semibold">{title}</h3>
+      <h2 className="font-semibold">{title}</h2>
       {children && <p className="text-sm text-muted mt-1 max-w-md mx-auto">{children}</p>}
       {action && <div className="mt-4 flex justify-center">{action}</div>}
     </div>

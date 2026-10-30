@@ -10,8 +10,8 @@ export function loadRootEnv(): void {
   const here = dirname(fileURLToPath(import.meta.url));
   const candidates = [join(here, "..", "..", "..", ".env"), join(process.cwd(), ".env")];
   for (const file of candidates) {
-    if (!existsSync(file)) continue;
-    const text = readFileSync(file, "utf8");
+    if (!existsSync(/*turbopackIgnore: true*/ file)) continue;
+    const text = readFileSync(/*turbopackIgnore: true*/ file, "utf8");
     for (const rawLine of text.split(/\r?\n/)) {
       const line = rawLine.trim();
       if (!line || line.startsWith("#")) continue;

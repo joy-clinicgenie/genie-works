@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 import Link from "next/link";
-import { ChevronDown } from "lucide-react";
 import { Button, buttonClass } from "./Button";
+import { PillSelect } from "./PillSelect";
 
 /** GET form so filters live in the URL and can be shared or bookmarked. */
 export function FilterBar({ children, action, clearHref, formKey }: { children: ReactNode; action?: string; clearHref?: string; formKey?: string }) {
@@ -18,15 +18,12 @@ export function FilterSelect({ name, label, value, options, allLabel = "All" }: 
   return (
     <label className="flex max-w-full flex-col gap-1 text-xs font-medium text-muted">
       {label}
-      <span className="relative inline-flex max-w-full">
-        <select name={name} defaultValue={value ?? ""} className="min-h-10 w-full min-w-40 max-w-full appearance-none rounded-full border border-line bg-surface py-2 pl-4 pr-11 text-sm text-ink">
-          <option value="">{allLabel}</option>
-          {options.map((o) => (
-            <option key={o.value} value={o.value}>{o.label}</option>
-          ))}
-        </select>
-        <ChevronDown className="pointer-events-none absolute right-4 top-1/2 size-4 -translate-y-1/2 text-ink-soft" aria-hidden="true" />
-      </span>
+      <PillSelect name={name} defaultValue={value ?? ""} className="w-full min-w-40">
+        <option value="">{allLabel}</option>
+        {options.map((o) => (
+          <option key={o.value} value={o.value}>{o.label}</option>
+        ))}
+      </PillSelect>
     </label>
   );
 }
@@ -35,7 +32,7 @@ export function FilterInput({ name, label, value, type = "text", placeholder, cl
   return (
     <label className="text-xs font-medium text-muted flex flex-col gap-1">
       {label}
-      <input name={name} type={type} defaultValue={value ?? ""} placeholder={placeholder} className={`min-h-9 min-w-36 rounded-full border border-line bg-surface px-3 py-1.5 text-sm text-ink ${className}`} />
+      <input name={name} type={type} defaultValue={value ?? ""} placeholder={placeholder} className={`min-h-10 min-w-36 rounded-full border border-line bg-surface px-4 py-2 text-sm font-medium text-ink ${className}`} />
     </label>
   );
 }

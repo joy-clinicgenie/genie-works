@@ -22,12 +22,11 @@ export const getAccess = cache(async (): Promise<AccessProfile | null> => {
   const session = await auth();
   const email = session?.user?.email?.toLowerCase();
   if (!email) return null;
-  const profile = await withContext(SERVICE, async (db) => {
+  return withContext(SERVICE, async (db) => {
     const staff = await getActiveStaffByEmail(db, email);
     if (!staff) return null;
     return resolveAccess(db, staff.id);
   });
-  return profile;
 });
 
 export async function requireAccess(): Promise<AccessProfile> {

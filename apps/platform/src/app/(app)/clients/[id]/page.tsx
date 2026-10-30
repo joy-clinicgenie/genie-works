@@ -5,16 +5,9 @@ import { staffTx } from "@/lib/db";
 import { Card, CardHeader, KeyValue } from "@/components/ui/Card";
 import { Badge, label } from "@/components/ui/Badge";
 import { LinkButton } from "@/components/ui/Button";
+import { ClientMark } from "@/components/shell/ClientMark";
 
 export const dynamic = "force-dynamic";
-
-function clientMark(shortCode: string | null, name: string) {
-  const code = shortCode?.replace(/[^A-Za-z0-9]/g, "") ?? "";
-  if (code.length >= 2 && code.length <= 5) return code.toUpperCase();
-  const words = name.split(/\s+/).filter((word) => /[A-Za-z]/.test(word[0] ?? ""));
-  const letters = words.slice(0, 2).map((word) => word[0]).join("");
-  return (letters || name.slice(0, 2) || "CG").toUpperCase();
-}
 
 function workspaceLinks(clientId: string, slug: string, websites: Array<{ id: string; environment: string }>) {
   const site = websites.find((item) => item.environment === "production") ?? websites[0];
@@ -45,7 +38,6 @@ export default async function ClientOverviewPage({ params }: { params: Promise<{
     timeline: (await listTimeline(db, { clientId: id, limit: 20 })).filter((event) => !event.event_type.startsWith("task_")).slice(0, 8),
   }));
   const client = data.client;
-  const mark = clientMark(client.short_code, client.name);
   const primary = data.contacts.find((contact) => contact.is_primary);
   const detail = [client.reference_number, client.short_code, client.specialty].filter(Boolean).join(" · ");
   const contact = [client.contact_email, client.contact_phone].filter(Boolean).join(" · ");
@@ -54,7 +46,7 @@ export default async function ClientOverviewPage({ params }: { params: Promise<{
     <div className="space-y-6">
       <section className="card overflow-hidden">
         <div className="flex flex-col gap-5 bg-brand-pale/50 px-5 py-6 sm:flex-row sm:items-center sm:px-6">
-          <div className={`grid size-20 shrink-0 place-items-center rounded-full bg-surface font-semibold tracking-wide text-action ring-4 ring-surface ${mark.length > 3 ? "text-sm" : "text-lg"}`} aria-hidden="true">{mark}</div>
+          <ClientMark slug={client.slug} name={client.name} shortCode={client.short_code} />
           <div className="min-w-0 flex-1">
             <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted"><Link href="/clients" className="hover:text-action">Clients</Link></div>
             <h1 className="mt-1 text-[1.75rem] font-semibold leading-tight tracking-tight break-words">{client.name}</h1>

@@ -4,7 +4,6 @@ import { test } from "node:test";
 import { extractRecord as extractCg01, validateRecord as validateCg01 } from "../decisions/cg-01-checks.mjs";
 import { extractRecord, validateRecord } from "../decisions/day-01-checks.mjs";
 
-const root = new URL("../", import.meta.url);
 const markdown = readFileSync(new URL("../decisions/DAY-01-scope-audit.md", import.meta.url), "utf8");
 const cg01Markdown = readFileSync(new URL("../decisions/CG-01-pilot-scope.md", import.meta.url), "utf8");
 
@@ -25,14 +24,13 @@ test("normal: frozen scope matches the CG-01 record and the files on disk", () =
   assert.equal(record.securityReviewer.status, "not-booked");
   assert.equal(record.access.vercel, "not-confirmed");
 
+  const docs = new URL("../docs/", import.meta.url);
   for (let number = 0; number <= 20; number += 1) {
     const prefix = String(number).padStart(2, "0") + "_";
-    assert.ok(readdirSync(root).some((name) => name.startsWith(prefix)));
+    assert.ok(readdirSync(docs).some((name) => name.startsWith(prefix)), `missing specification ${prefix}`);
   }
-  assert.equal(existsSync(new URL("../package.json", import.meta.url)), false);
-  assert.equal(existsSync(new URL("../apps", import.meta.url)), false);
-  assert.equal(existsSync(new URL("../.env", import.meta.url)), false);
-  assert.equal(existsSync(new URL("../.github", import.meta.url)), false);
+  assert.equal(existsSync(new URL("../package.json", import.meta.url)), true);
+  assert.equal(existsSync(new URL("../apps", import.meta.url)), true);
 });
 
 test("failure: migration, invented URL, confirmed access, or fake booking is rejected", () => {

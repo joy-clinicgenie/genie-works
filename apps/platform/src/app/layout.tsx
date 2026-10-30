@@ -8,6 +8,7 @@ export const metadata: Metadata = {
   title: { default: "Clinic Genie", template: "%s | Clinic Genie" },
   description: "Internal operations platform for Clinic Genie staff.",
   robots: { index: false, follow: false },
+  icons: { icon: "/brandmark.svg" },
 };
 
 export const viewport: Viewport = { width: "device-width", initialScale: 1, themeColor: "#DDF7F8" };

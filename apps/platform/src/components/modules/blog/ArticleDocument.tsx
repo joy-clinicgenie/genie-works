@@ -2,6 +2,7 @@
 
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useLayoutEffect, useRef, useState, type ClipboardEvent, type KeyboardEvent } from "react";
 import type { ArticleBlock, TextSpan } from "@clinic-genie/db";
+import { PillSelect } from "@/components/ui/PillSelect";
 import {
   MAX_BLOCKS,
   escapeHtml,
@@ -482,7 +483,7 @@ export const ArticleDocument = forwardRef<ArticleDocumentHandle, {
             )}
             {active.index === index && !readOnly ? (
               <div className="grid gap-2 sm:grid-cols-2">
-                <select
+                <PillSelect
                   aria-label="Image"
                   value={block.mediaId}
                   onChange={(event) => {
@@ -490,17 +491,17 @@ export const ArticleDocument = forwardRef<ArticleDocumentHandle, {
                     const alt = media.find((item) => item.id === mediaId)?.alt_text ?? block.alt;
                     emit(blocks.map((entry, entryIndex) => (entryIndex === index && entry.type === "image" ? { ...entry, mediaId, alt } : entry)));
                   }}
-                  className="min-h-11 rounded-xl border border-line bg-surface px-3 text-sm"
+                  className="w-full"
                 >
                   <option value="">Choose an image</option>
                   {media.map((item) => <option key={item.id} value={item.id}>{item.alt_text}</option>)}
-                </select>
+                </PillSelect>
                 <input
                   aria-label="Image alt text"
                   value={block.alt}
                   maxLength={300}
                   onChange={(event) => emit(blocks.map((entry, entryIndex) => (entryIndex === index && entry.type === "image" ? { ...entry, alt: event.target.value } : entry)))}
-                  className="min-h-11 rounded-xl border border-line bg-surface px-3 text-sm"
+                  className="min-h-10 rounded-full border border-line bg-surface px-4 text-sm font-medium text-ink"
                 />
                 <button type="button" className="text-left text-sm text-muted underline" onClick={() => emit(removeAt(blocks, index), { index: Math.max(0, index - 1), item: null, offset: 0 })}>Remove image</button>
               </div>

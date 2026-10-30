@@ -1,6 +1,6 @@
 import { randomBytes } from "node:crypto";
 import pg from "pg";
-import { canManageRegistry, formatDateTime, setEnquiryFollowUp, todaySgt, websiteFormConfigPresent, type AccessProfile } from "@clinic-genie/db";
+import { canManageRegistry, enquiryStatusCountQuery, formatDateTime, setEnquiryFollowUp, todaySgt, websiteFormConfigPresent, type AccessProfile } from "@clinic-genie/db";
 import { customWindow, periodRange } from "@/lib/period-range";
 
 const STATUSES = ["new", "acknowledged", "closed"] as const;
@@ -345,27 +345,26 @@ function toListItem(row: ListRow): SubmissionListItem {
 const LIST_COLUMNS = `e.id, e.public_reference, e.clinic_id, c.display_name as clinic_name, e.website_key, e.form_key,
   e.created_at, e.name, e.status, n.status as notification_status, e.attribution_source, e.page_path, e.is_synthetic`;
 
-export async function submissionStatusCounts(scope: string[] | null): Promise<{ connected: true; counts: Record<SubmissionStatus, number> } | { connected: false }> {
-  const rows = await readEnquiry<{ status: SubmissionStatus; count: number }>(
-    `select status, count(*)::int as count from enquiries
-     where is_synthetic = false
-       and ($1::text[] is null or clinic_id = any($1))
-     group by status`,
-    [scope],
-  );
+export async function submissionStatusCounts(
+  scope: string[] | null,
+  window?: { from?: string | null; to?: string | null; clinicId?: string | null },
+): Promise<{ connected: true; counts: Record<SubmissionStatus, number> } | { connected: false }> {
+  const query = enquiryStatusCountQuery(scope, window);
+  const rows = await readEnquiry<{ status: SubmissionStatus; count: number }>(query.sql, query.params);
   if (!rows) return { connected: false };
   const counts: Record<SubmissionStatus, number> = { new: 0, acknowledged: 0, closed: 0 };
   for (const row of rows) if (row.status in counts) counts[row.status] = Number(row.count);
   return { connected: true, counts };
 }
 
-export async function notificationAttention(scope: string[] | null): Promise<{ connected: true; pending: number; failed: number; unconfigured: number } | { connected: false }> {
+export async function notificationAttention(scope: string[] | null, clinicId?: string | null): Promise<{ connected: true; pending: number; failed: number; unconfigured: number } | { connected: false }> {
   const rows = await readEnquiry<{ status: string; count: number }>(
     `select status, count(*)::int as count from notification_outbox
      where event_type = 'clinic_notification'
        and ($1::text[] is null or clinic_id = any($1))
+       and ($2::text is null or clinic_id = $2)
      group by status`,
-    [scope],
+    [scope, clinicId || null],
   );
   if (!rows) return { connected: false };
   const count = (status: string) => Number(rows.find((row) => row.status === status)?.count ?? 0);

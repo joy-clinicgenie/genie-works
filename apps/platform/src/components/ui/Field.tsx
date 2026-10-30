@@ -1,4 +1,5 @@
 import { forwardRef, type InputHTMLAttributes, type ReactNode, type SelectHTMLAttributes, type TextareaHTMLAttributes } from "react";
+import { PillSelect } from "./PillSelect";
 
 const control = "block w-full rounded-xl border border-line bg-surface px-3 py-2 text-base text-ink min-h-11 placeholder:text-muted/70 disabled:bg-surface-muted disabled:text-muted";
 
@@ -23,11 +24,11 @@ export const Textarea = forwardRef<HTMLTextAreaElement, TextareaHTMLAttributes<H
   return <textarea ref={ref} rows={3} {...props} className={`${control} min-h-24 ${props.className ?? ""}`} />;
 });
 
-export function Select({ children, ...props }: SelectHTMLAttributes<HTMLSelectElement>) {
+export function Select({ className = "", children, ...props }: SelectHTMLAttributes<HTMLSelectElement>) {
   return (
-    <select {...props} className={`${control} ${props.className ?? ""}`}>
+    <PillSelect className={`w-full ${className}`} {...props}>
       {children}
-    </select>
+    </PillSelect>
   );
 }
 

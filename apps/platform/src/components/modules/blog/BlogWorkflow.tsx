@@ -2,7 +2,6 @@
 
 import { useState } from "react";
 import { useActionState } from "react";
-import Link from "next/link";
 import {
   archiveArticleAction,
   publishArticleAction,
@@ -13,7 +12,7 @@ import {
   submitArticleAction,
   unpublishArticleAction,
 } from "@/app/actions/blog";
-import { Button } from "@/components/ui/Button";
+import { Button, LinkButton } from "@/components/ui/Button";
 import { Field, FormError, Textarea } from "@/components/ui/Field";
 import { Notice } from "@/components/ui/Notice";
 
@@ -91,7 +90,7 @@ export function BlogWorkflow({
         {canEdit && draft && (
           <form action={submit}><input type="hidden" name="articleId" value={articleId} /><Button type="submit" disabled={submitting}>Submit for review</Button></form>
         )}
-        {previewHref && <Link href={previewHref} className="inline-flex min-h-11 items-center rounded-full border border-line px-4 text-sm font-medium">Preview</Link>}
+        {previewHref && <LinkButton href={previewHref} variant="secondary">Preview</LinkButton>}
         {canDecide && inReview && (
           <>
             <form action={review} className="flex flex-wrap items-end gap-2">

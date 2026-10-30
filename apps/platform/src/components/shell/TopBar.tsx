@@ -111,11 +111,11 @@ export function TopBar({
         )}
       </div>
       <Link href="/reports" className={`${buttonClass("secondary", "sm")} hidden whitespace-nowrap sm:inline-flex`}>Reports</Link>
-      {adds.length === 1 && <Link href={adds[0]!.href} className={`${buttonClass("primary", "sm")} whitespace-nowrap`}><Plus className="size-4" aria-hidden="true" />Add new</Link>}
+      {adds.length === 1 && <Link href={adds[0]!.href} aria-label="Add new" className={`${buttonClass("primary", "sm")} whitespace-nowrap`}><Plus className="size-4" aria-hidden="true" /><span className="hidden sm:inline">Add new</span></Link>}
       {adds.length > 1 && (
         <div className="relative">
-          <button type="button" className={`${buttonClass("primary", "sm")} whitespace-nowrap`} aria-expanded={menuOpen} aria-haspopup="menu" onClick={() => setMenuOpen((open) => !open)}>
-            <Plus className="size-4" aria-hidden="true" />Add new
+          <button type="button" className={`${buttonClass("primary", "sm")} whitespace-nowrap`} aria-label="Add new" aria-expanded={menuOpen} aria-haspopup="menu" onClick={() => setMenuOpen((open) => !open)}>
+            <Plus className="size-4" aria-hidden="true" /><span className="hidden sm:inline">Add new</span>
           </button>
           {menuOpen && (
             <ul role="menu" className="absolute right-0 top-[calc(100%+6px)] z-40 min-w-40 overflow-hidden rounded-2xl bg-surface py-1 shadow-pop">

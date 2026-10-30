@@ -2,8 +2,9 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useSyncExternalStore, useState, type ReactNode } from "react";
-import { ChevronLeft, ChevronRight, Menu, PanelLeft, X, LayoutDashboard, ListChecks, Building2, CheckSquare, Inbox, ClipboardList, Search, Megaphone, AlertTriangle, Stethoscope, BarChart3, LineChart, History, Settings, Shield } from "lucide-react";
+import { useEffect, useSyncExternalStore, useState, type ReactNode } from "react";
+import { ChevronLeft, ChevronRight, Menu, PanelLeft, X, LayoutDashboard, Building2, Inbox, ClipboardList, Search, BarChart3, LineChart, Settings, Shield } from "lucide-react";
+import { BackButton, BackSlotProvider } from "./BackButton";
 import { TopBar, type TopLink } from "./TopBar";
 
 export interface NavItem {
@@ -12,7 +13,7 @@ export interface NavItem {
   icon: keyof typeof ICONS;
 }
 
-const ICONS = { LayoutDashboard, ListChecks, Building2, CheckSquare, Inbox, ClipboardList, Search, Megaphone, AlertTriangle, Stethoscope, BarChart3, LineChart, History, Settings, Shield };
+const ICONS = { LayoutDashboard, Building2, Inbox, ClipboardList, Search, BarChart3, LineChart, Settings, Shield };
 
 function ProductName({ mark = 28, subtitle = true }: { mark?: number; subtitle?: boolean }) {
   return (
@@ -30,7 +31,7 @@ function NavGroup({ title, items, pathname, collapsed }: { title: string; items:
   if (!items.length) return null;
   return (
     <div className={collapsed ? "" : "mb-6"}>
-      {collapsed ? <h2 className="sr-only">{title}</h2> : <div className="mb-2 px-3 text-[11px] font-semibold uppercase tracking-[0.16em] text-muted">{title}</div>}
+      {collapsed ? <p className="sr-only">{title}</p> : <div className="mb-2 px-3 text-[11px] font-semibold uppercase tracking-[0.16em] text-muted">{title}</div>}
       <ul className="space-y-1">
         {items.map((item) => {
           const Icon = ICONS[item.icon];
@@ -87,13 +88,24 @@ function subscribeNav(onStoreChange: () => void) {
   return () => window.removeEventListener("gw-nav", onStoreChange);
 }
 
-function navCollapsed() {
-  return localStorage.getItem(NAV_KEY) === "closed";
+function cookieCollapsed() {
+  return document.cookie.split("; ").includes(`${NAV_KEY}=closed`);
 }
 
-export function Shell({ workspace, modules, platform, header, account, staffName, clients, adds, children }: { workspace: NavItem[]; modules: NavItem[]; platform: NavItem[]; header: ReactNode; account: ReactNode; staffName: string; clients: TopLink[]; adds: TopLink[]; children: ReactNode }) {
+function writeNavCookie(value: "open" | "closed") {
+  document.cookie = `${NAV_KEY}=${value}; Path=/; Max-Age=31536000; SameSite=Lax`;
+  localStorage.setItem(NAV_KEY, value);
+  window.dispatchEvent(new Event("gw-nav"));
+}
+
+export function Shell({ workspace, modules, platform, header, account, staffName, clients, adds, navCollapsed = false, children }: { workspace: NavItem[]; modules: NavItem[]; platform: NavItem[]; header: ReactNode; account: ReactNode; staffName: string; clients: TopLink[]; adds: TopLink[]; navCollapsed?: boolean; children: ReactNode }) {
   const [open, setOpen] = useState(false);
-  const collapsed = useSyncExternalStore(subscribeNav, navCollapsed, () => false);
+  const collapsed = useSyncExternalStore(subscribeNav, cookieCollapsed, () => navCollapsed);
+  useEffect(() => {
+    if (document.cookie.includes(`${NAV_KEY}=`)) return;
+    const stored = localStorage.getItem(NAV_KEY);
+    if (stored === "closed" || stored === "open") writeNavCookie(stored);
+  }, []);
   const pathname = usePathname();
   const [lastPath, setLastPath] = useState(pathname);
   if (pathname !== lastPath) {
@@ -102,8 +114,7 @@ export function Shell({ workspace, modules, platform, header, account, staffName
   }
 
   function toggleNav() {
-    localStorage.setItem(NAV_KEY, collapsed ? "open" : "closed");
-    window.dispatchEvent(new Event("gw-nav"));
+    writeNavCookie(collapsed ? "open" : "closed");
   }
 
   const brand = (mark: number, onClose?: () => void, rail = false) => (
@@ -119,6 +130,7 @@ export function Shell({ workspace, modules, platform, header, account, staffName
   );
 
   return (
+    <BackSlotProvider>
     <div className="min-h-dvh lg:grid lg:transition-[grid-template-columns] lg:duration-300 lg:ease-out" style={{ gridTemplateColumns: collapsed ? `${RAIL_WIDTH}px minmax(0,1fr)` : `${SIDEBAR_WIDTH}px minmax(0,1fr)` }}>
       <a href="#main" className="sr-only focus:not-sr-only focus:absolute focus:top-2 focus:left-2 focus:z-50 focus:bg-surface focus:px-3 focus:py-2 focus:rounded-md">Skip to main content</a>
       <aside className="sticky top-0 hidden h-dvh min-w-0 overflow-hidden border-r border-line bg-surface lg:flex lg:flex-col">
@@ -150,7 +162,10 @@ export function Shell({ workspace, modules, platform, header, account, staffName
           <TopBar staffName={staffName} pages={[...workspace, ...modules, ...platform]} clients={clients} adds={adds} />
           <div className="shrink-0 lg:hidden">{header}</div>
         </header>
-        <main id="main" className="w-full min-w-0 max-w-none flex-1 px-4 pt-6 pb-6 lg:px-8 lg:pt-8 lg:pb-8">{children}</main>
+        <main id="main" className="w-full min-w-0 max-w-none flex-1 px-4 pt-6 pb-6 lg:px-8 lg:pt-8 lg:pb-8">
+          <BackButton />
+          {children}
+        </main>
       </div>
       <button
         type="button"
@@ -163,5 +178,6 @@ export function Shell({ workspace, modules, platform, header, account, staffName
         {collapsed ? <ChevronRight className="size-3.5" strokeWidth={1.75} aria-hidden="true" /> : <ChevronLeft className="size-3.5" strokeWidth={1.75} aria-hidden="true" />}
       </button>
     </div>
+    </BackSlotProvider>
   );
 }

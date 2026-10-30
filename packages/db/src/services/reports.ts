@@ -46,6 +46,15 @@ export class ReportRuleError extends Error {
 
 const SELECT = `select s.*, c.name as client_name, u.display_name as entered_by_name from report_snapshots s join clients c on c.id = s.client_id join staff_users u on u.id = s.entered_by`;
 
+/** Clients that have a current snapshot for one metric. Used to choose a website without loading every client's rows. */
+export async function listSnapshotClientIds(db: Queryable, metric: ReportMetricKey): Promise<string[]> {
+  const { rows } = await db.query<{ client_id: string }>(
+    "select distinct client_id from report_snapshots where superseded_by_id is null and metric = $1",
+    [metric],
+  );
+  return rows.map((row) => row.client_id);
+}
+
 export async function listSnapshots(db: Queryable, f: { clientId?: string; source?: string; channel?: string; includeSuperseded?: boolean; limit?: number } = {}): Promise<SnapshotRow[]> {
   const { rows } = await db.query<SnapshotRow>(
     `${SELECT} where ($1::uuid is null or s.client_id = $1) and ($2::text is null or s.source = $2) and ($3::text is null or s.channel = $3)

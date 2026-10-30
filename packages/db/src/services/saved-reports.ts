@@ -325,6 +325,37 @@ async function insertVersion(db: Queryable, reportId: string, input: SavedReport
   return rows[0]!;
 }
 
+export interface DashboardDraft {
+  id: string;
+  name: string;
+  clientId: string;
+  clientName: string;
+  updatedAt: Date;
+}
+
+/** Unfinished drafts only. Saved-for-review reports are excluded. The latest row is the most recently edited. */
+export async function dashboardReportAttention(db: Queryable, clientId?: string | null): Promise<{ draftCount: number; latest: DashboardDraft | null }> {
+  const id = clientId ?? null;
+  const count = await db.query<{ count: number }>(
+    `select count(*)::int as count from saved_reports where status = 'draft' and ($1::uuid is null or client_id = $1)`,
+    [id],
+  );
+  const latest = await db.query<{ id: string; name: string; client_id: string; client_name: string; updated_at: Date }>(
+    `select r.id, r.name, r.client_id, c.name as client_name, r.updated_at
+     from saved_reports r
+     join clients c on c.id = r.client_id
+     where r.status = 'draft' and ($1::uuid is null or r.client_id = $1)
+     order by r.updated_at desc, r.id desc
+     limit 1`,
+    [id],
+  );
+  const row = latest.rows[0];
+  return {
+    draftCount: Number(count.rows[0]?.count ?? 0),
+    latest: row ? { id: row.id, name: row.name, clientId: row.client_id, clientName: row.client_name, updatedAt: row.updated_at } : null,
+  };
+}
+
 export async function listSavedReports(db: Queryable, clientId?: string): Promise<SavedReportRow[]> {
   const { rows } = await db.query<SavedReportRow>(
     `${REPORT_SELECT} where ($1::uuid is null or r.client_id = $1) order by r.created_at desc limit 100`,

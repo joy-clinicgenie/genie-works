@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { LinkButton } from "@/components/ui/Button";
 import { formatDateTime, formatPeriod } from "@clinic-genie/db";
 import { ClientPicker } from "./ClientPicker";
 import { PeriodSelect } from "./PeriodSelect";
@@ -45,14 +46,14 @@ export function SiteHeader({
   return (
     <header className="mb-6">
       <h1 className="text-[1.65rem] font-semibold tracking-tight text-ink">{title}</h1>
-      <div className="mt-1 flex items-center justify-between gap-4">
-        <h2 className="min-w-0 text-xl font-semibold tracking-tight text-ink">
+      <div className="mt-1 flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
+        <h2 className="min-w-0 max-w-full text-xl font-semibold tracking-tight text-ink">
           {clientReference && <span className="mr-2 inline-flex translate-y-[-1px] items-center rounded-md bg-brand-pale px-2 py-0.5 align-middle text-sm font-semibold tracking-normal text-action">{clientReference}</span>}
           {clientName}
         </h2>
-        <div className="flex shrink-0 items-center gap-2">
+        <div className="flex min-w-0 max-w-full flex-wrap items-center gap-2">
           <ClientPicker clients={clients} value={clientId} label="Clinic" range={range} from={from} to={to} />
-          {analyticsHref && <Link href={analyticsHref} className="inline-flex min-h-9 items-center rounded-xl bg-action px-4 text-sm font-medium text-white hover:bg-action-hover">View analytics</Link>}
+          {analyticsHref && <LinkButton href={analyticsHref} size="sm">View analytics</LinkButton>}
         </div>
       </div>
       {range && comparedLabel ? (

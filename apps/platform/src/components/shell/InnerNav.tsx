@@ -1,5 +1,6 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
+import { BackSlot } from "@/components/shell/BackButton";
 
 export function innerNavItemClass(active: boolean) {
   return `flex w-full items-center rounded-xl px-3 py-2 min-h-11 text-left text-sm font-medium leading-snug transition-colors ${active ? "bg-brand-pale text-ink" : "text-ink-soft hover:bg-brand-pale/70 hover:text-ink"}`;
@@ -9,6 +10,7 @@ export function InnerNavFrame({ label, nav, children }: { label: string; nav: Re
   return (
     <div className="-mx-4 -mt-6 -mb-6 flex min-h-[calc(100dvh-4rem)] flex-col lg:-mx-8 lg:-mt-8 lg:-mb-8 lg:flex-row">
       <nav aria-label={label} className="max-h-[40vh] shrink-0 overflow-y-auto border-b border-line bg-surface px-3 py-4 lg:sticky lg:top-16 lg:h-[calc(100dvh-4rem)] lg:max-h-none lg:w-56 lg:self-start lg:overflow-y-auto lg:border-b-0 lg:border-r">
+        <BackSlot />
         {nav}
       </nav>
       <div className="min-w-0 flex-1 px-4 py-6 lg:px-8 lg:py-8">{children}</div>

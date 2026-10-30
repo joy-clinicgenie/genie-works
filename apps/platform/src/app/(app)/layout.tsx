@@ -1,3 +1,4 @@
+import { cookies } from "next/headers";
 import { LogOut } from "lucide-react";
 import { signOut } from "@/lib/auth";
 import { requireAccess } from "@/lib/session";
@@ -9,6 +10,7 @@ import { clientLabel } from "@/lib/client-label";
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const access = await requireAccess();
+  const navCollapsed = (await cookies()).get("gw-nav")?.value === "closed";
   const workspace: NavItem[] = [
     { href: "/", label: "Dashboard", icon: "LayoutDashboard" },
     { href: "/clients", label: "Clients", icon: "Building2" },
@@ -59,7 +61,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     </div>
   );
   return (
-    <Shell workspace={workspace} modules={modules} platform={platform} header={header} account={account} staffName={name} clients={clients.map((client) => ({ href: `/clients/${client.id}`, label: clientLabel(client), keywords: [client.short_code, client.public_name, client.legal_name, client.specialty, client.slug].filter(Boolean).join(" ") }))} adds={adds}>
+    <Shell workspace={workspace} modules={modules} platform={platform} header={header} account={account} staffName={name} navCollapsed={navCollapsed} clients={clients.map((client) => ({ href: `/clients/${client.id}`, label: clientLabel(client), keywords: [client.short_code, client.public_name, client.legal_name, client.specialty, client.slug].filter(Boolean).join(" ") }))} adds={adds}>
       {children}
     </Shell>
   );

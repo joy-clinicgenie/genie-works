@@ -2,6 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { buttonClass } from "@/components/ui/Button";
+import { PillSelect } from "@/components/ui/PillSelect";
 
 export function ClinicConnectionPicker({ clients, selected }: { clients: Array<{ id: string; name: string }>; selected: string }) {
   const router = useRouter();
@@ -16,9 +17,9 @@ export function ClinicConnectionPicker({ clients, selected }: { clients: Array<{
     >
       <label className="text-sm text-ink">
         Clinic
-        <select name="client" defaultValue={selected} className="mt-1 block min-h-10 rounded-xl border border-line bg-white px-3 text-sm">
+        <PillSelect name="client" defaultValue={selected} className="mt-1">
           {clients.map((client) => <option key={client.id} value={client.id}>{client.name}</option>)}
-        </select>
+        </PillSelect>
       </label>
       <button className={buttonClass("secondary")} type="submit">Show</button>
     </form>

@@ -5,10 +5,15 @@ import { loadRootEnv } from "@clinic-genie/db/src/env";
 loadRootEnv();
 
 const nextConfig: NextConfig = {
+  // Lets a production audit build run beside `next dev` without sharing `.next`.
+  distDir: process.env.NEXT_DIST_DIR || ".next",
   transpilePackages: ["@clinic-genie/db", "@clinic-genie/contracts"],
   serverExternalPackages: ["pg", "embedded-postgres"],
   typedRoutes: false,
   poweredByHeader: false,
+  async rewrites() {
+    return [{ source: "/favicon.ico", destination: "/brandmark.svg" }];
+  },
   headers: async () => [
     {
       source: "/blog/:id/preview",

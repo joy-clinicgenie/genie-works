@@ -3,7 +3,7 @@ import Link from "next/link";
 import { Badge } from "@/components/ui/Badge";
 import { Card, CardHeader } from "@/components/ui/Card";
 import { Drawer } from "@/components/ui/Drawer";
-import { LinkButton } from "@/components/ui/Button";
+import { Button, LinkButton, buttonClass } from "@/components/ui/Button";
 import { todaySgt } from "@clinic-genie/db";
 import { completedSince, googleQuery, seoHref, type GoogleControls, type SearchConsoleConnection, type SeoContext, type WebsiteSeoBundle } from "@/lib/seo-workspace";
 import { HiddenSeoContext, Unavailable } from "@/components/modules/seo/SeoFrame";
@@ -80,7 +80,7 @@ export function GooglePanel({ ctx, controls, search = null, demo = false }: { ct
   const report = seoHref("/seo/reports", ctx, { tab: "google-search", ...googleQuery(controls) });
   const consoleHref = "https://search.google.com/search-console";
   const metricLabel = METRICS.find(([id]) => id === controls.metric)?.[1] ?? "Clicks";
-  const chip = (active: boolean) => `inline-flex min-h-9 items-center rounded-full px-3 text-sm ${active ? "bg-action text-white" : "bg-surface-muted text-ink"}`;
+  const chip = (active: boolean) => buttonClass(active ? "primary" : "secondary", "sm");
   const property = !demo && search?.status === "connected" ? search.propertyId : null;
   return (
     <Card>
@@ -97,9 +97,9 @@ export function GooglePanel({ ctx, controls, search = null, demo = false }: { ct
         {controls.range === "custom" && (
           <form method="get" action="/seo" className="flex flex-wrap items-end gap-3">
             <HiddenSeoContext ctx={ctx} extra={{ range: "custom", metric: controls.metric, record: controls.record, direction: controls.direction, changeMetric: controls.changeMetric }} />
-            <label className="text-xs text-muted">From <input name="from" type="date" defaultValue={controls.from} className="mt-1 block min-h-9 rounded-xl border border-line px-3" /></label>
-            <label className="text-xs text-muted">To <input name="to" type="date" defaultValue={controls.to} className="mt-1 block min-h-9 rounded-xl border border-line px-3" /></label>
-            <button type="submit" className="min-h-9 rounded-xl bg-surface-muted px-3 text-sm">Apply custom dates</button>
+            <label className="text-xs text-muted">From <input name="from" type="date" defaultValue={controls.from} className="mt-1 block min-h-10 rounded-full border border-line bg-surface px-4 text-sm font-medium text-ink" /></label>
+            <label className="text-xs text-muted">To <input name="to" type="date" defaultValue={controls.to} className="mt-1 block min-h-10 rounded-full border border-line bg-surface px-4 text-sm font-medium text-ink" /></label>
+            <Button type="submit" variant="secondary" size="sm">Apply custom dates</Button>
           </form>
         )}
         <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">

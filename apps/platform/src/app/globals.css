@@ -103,4 +103,6 @@ body {
   background: var(--color-surface);
   border-radius: 1.5rem;
   box-shadow: var(--shadow-card);
+  min-width: 0;
+  max-width: 100%;
 }
