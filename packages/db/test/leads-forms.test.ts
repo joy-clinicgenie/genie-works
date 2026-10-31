@@ -152,10 +152,32 @@ describe("leads and forms records", () => {
         updatedBy: specA.id,
       });
     })).rejects.toThrow();
-    const visible = await asContext(staffCtx(specB), (db) => listWebsiteForms(db, null));
-    expect(visible.length).toBeGreaterThan(0);
-    expect(visible.every((row) => row.client_id === northgate)).toBe(true);
-    expect(canExport({ user: { platform_role: specB.platform_role } } as never)).toBe(false);
+    await asContext(staffCtx(admin), async (db) => {
+      const sites = await listFormWebsites(db, [northgate]);
+      const site = sites[0];
+      expect(site).toBeTruthy();
+      await saveWebsiteForm(db, {
+        websiteId: site!.id,
+        clientId: northgate,
+        formKey: "appointment-enquiry",
+        displayName: "Appointment enquiry",
+        pagePath: "/request-appointment",
+        proposedActive: true,
+        consentWording: null,
+        screenConfirmation: null,
+        emailAcknowledgement: null,
+        recipientContactId: null,
+        updatedBy: admin.id,
+      });
+    }, { commit: true });
+    try {
+      const visible = await asContext(staffCtx(specB), (db) => listWebsiteForms(db, null));
+      expect(visible.length).toBeGreaterThan(0);
+      expect(visible.every((row) => row.client_id === northgate)).toBe(true);
+      expect(canExport({ user: { platform_role: specB.platform_role } } as never)).toBe(false);
+    } finally {
+      await adminPool.query("delete from website_forms where client_id = $1", [northgate]);
+    }
   });
 
   it("lists a manual notification retry without the enquiry body", async () => {

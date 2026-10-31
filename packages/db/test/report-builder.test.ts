@@ -1,5 +1,5 @@
 import { afterAll, describe, expect, it } from "vitest";
-import { adminPool, appPool, asContext, staffByEmail, staffCtx } from "./helpers";
+import { adminPool, appPool, asContext, clientBySlug, staffByEmail, staffCtx } from "./helpers";
 import type pg from "pg";
 import { composeReport, costPerLead, conversionRate } from "../src/services/report-builder";
 import { createSavedReport, getSavedReport } from "../src/services/saved-reports";
@@ -33,7 +33,7 @@ describe("report builder measurement rules", () => {
 
   it("keeps clicks out of the lead total and leaves cost per lead blank without both inputs", async () => {
     const admin = await staffByEmail("admin@example.invalid");
-    const client = (await adminPool.query<{ id: string }>("select id from clients where short_code = 'SUNRISE'")).rows[0]!.id;
+    const client = await clientBySlug("harbourview-dental");
     const built = await asContext(staffCtx(admin), async (db) => {
       await record(db, client, admin.id, "clinic_records", "enquiries", 4, "2030-04-01", "2030-04-30");
       await record(db, client, admin.id, "manual", "form_submissions", 7, "2030-04-01", "2030-04-30");
@@ -64,7 +64,7 @@ describe("report builder measurement rules", () => {
 
   it("does not calculate cost per lead from clicks when enquiries are absent", async () => {
     const admin = await staffByEmail("admin@example.invalid");
-    const client = (await adminPool.query<{ id: string }>("select id from clients where short_code = 'SUNRISE'")).rows[0]!.id;
+    const client = await clientBySlug("harbourview-dental");
     const built = await asContext(staffCtx(admin), async (db) => {
       await record(db, client, admin.id, "google_ads_export", "cost", 80, "2030-05-01", "2030-05-31", "sgd");
       await record(db, client, admin.id, "manual", "contact_whatsapp", 6, "2030-05-01", "2030-05-31");
@@ -86,7 +86,13 @@ describe("report builder measurement rules", () => {
   it("saves a draft without a client-review version and hides another client's figures", async () => {
     const admin = await staffByEmail("admin@example.invalid");
     const specialist = await staffByEmail("specialist-b@example.invalid");
-    const client = (await adminPool.query<{ id: string }>("select id from clients where short_code = 'SUNRISE'")).rows[0]!.id;
+    const client = await clientBySlug("harbourview-dental");
+    await adminPool.query(
+      `insert into report_snapshots (client_id, source, channel, metric, period_start, period_end, value, unit, entered_by)
+       values ($1, 'ga4_export', 'all', 'sessions', '2030-06-01', '2030-06-30', 40, 'count', $2)`,
+      [client, admin.id],
+    );
+    try {
     const saved = await asContext(staffCtx(admin), async (db) => {
       const id = await createSavedReport(db, {
         clientId: client,
@@ -155,5 +161,11 @@ describe("report builder measurement rules", () => {
       items: ["sessions"],
     }));
     expect(hidden.blocks[0]?.lines[0]?.current).toBe("Not recorded");
+    } finally {
+      await adminPool.query(
+        "delete from report_snapshots where client_id = $1 and metric = 'sessions' and period_start = '2030-06-01'",
+        [client],
+      );
+    }
   });
 });
