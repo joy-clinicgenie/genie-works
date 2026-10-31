@@ -92,7 +92,6 @@ describe("report builder measurement rules", () => {
        values ($1, 'ga4_export', 'all', 'sessions', '2030-06-01', '2030-06-30', 40, 'count', $2)`,
       [client, admin.id],
     );
-    try {
     const saved = await asContext(staffCtx(admin), async (db) => {
       const id = await createSavedReport(db, {
         clientId: client,
@@ -161,11 +160,5 @@ describe("report builder measurement rules", () => {
       items: ["sessions"],
     }));
     expect(hidden.blocks[0]?.lines[0]?.current).toBe("Not recorded");
-    } finally {
-      await adminPool.query(
-        "delete from report_snapshots where client_id = $1 and metric = 'sessions' and period_start = '2030-06-01'",
-        [client],
-      );
-    }
   });
 });
