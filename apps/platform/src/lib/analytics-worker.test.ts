@@ -25,4 +25,11 @@ describe("analytics worker scheduler preparation", () => {
     expect(route).toContain("export function POST");
     expect(route).toContain("workerAuthorized");
   });
+
+  it("requeues an expired lease before the fifth attempt and then records a safe failure", () => {
+    const source = readFileSync(resolve(root, "packages/db/src/analytics/sync.ts"), "utf8");
+    expect(source).toContain("attempts < 5");
+    expect(source).toContain("attempts >= 5");
+    expect(source).toContain("lease_expired");
+  });
 });

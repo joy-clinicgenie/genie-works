@@ -1,6 +1,7 @@
 import { formatDateTime, platformStatus, todaySgt } from "@clinic-genie/db";
 import { requireAccess } from "@/lib/session";
 import { staffTx } from "@/lib/db";
+import { loadOperationsReport } from "@/lib/operations-status";
 import { Card, CardHeader, Stat } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
 import { Notice } from "@/components/ui/Notice";
@@ -10,7 +11,10 @@ export const metadata = { title: "Admin" };
 
 export default async function AdminStatusPage() {
   const access = await requireAccess();
-  const s = await staffTx(access, (db) => platformStatus(db, todaySgt()));
+  const [s, operations] = await Promise.all([
+    staffTx(access, (db) => platformStatus(db, todaySgt())),
+    loadOperationsReport(access),
+  ]);
   const backupOk = s.lastBackup?.outcome === "passed";
   const restoreOk = s.lastRestoreTest?.outcome === "passed";
   return (
@@ -44,6 +48,12 @@ export default async function AdminStatusPage() {
               </>
             ) : <Notice tone="warn" title="Recovery not yet demonstrated">Run <code>npm run db:restore-test</code>. Until then recovery is untested, not failed.</Notice>}
           </div>
+        </Card>
+        <Card className="xl:col-span-2">
+          <CardHeader title="Operations" description="Administrator status for this process. It does not send a notification, and it does not show that a hosted monitor or schedule ran." />
+          <ul className="list-disc space-y-1 px-5 pb-5 pl-9 text-sm text-ink-soft">
+            {operations.signals.map((signal) => <li key={signal}>{signal}</li>)}
+          </ul>
         </Card>
       </div>
     </>

@@ -1,6 +1,6 @@
 # Build status
 
-Updated: 30 October 2026, Asia/Singapore, after Batch 07. Latest approved decision is D21. No D22 is recorded.
+Updated: 31 October 2026, Asia/Singapore, after Batch 09 local preparation. Latest approved decision is D21. No D22 is recorded.
 
 ## Current stage
 
@@ -21,6 +21,8 @@ Reports in the database are `draft` or `saved`. **Save draft** updates the worki
 - Repeatable fictional seed against `report_snapshots_current_idx` (GW-009).
 - Header controls that wrap below the desktop breakpoint, one home-page `h1`, and the link and image lint warnings from the earlier scan (GW-012, GW-014, GW-015).
 - README, this file, `docs/HANDOVER.md` and `docs/GENIE_WORKS_V1_STAFF_SOP.md` describe the nine-module app (GW-016).
+- Browser journeys for roles, clients, the in-app blog, the enquiry fixture, staff deactivation and keyboard focus (Batch 08). That browser pass is not a WCAG conformance claim.
+- Local deployment inventory, environment classification, an administrator operations report, and rollback notes (Batch 09). No staging project was created or deployed.
 
 ## Still open
 
@@ -44,6 +46,6 @@ Tasks, approvals, Google Ads, issues, HCSA and timeline still open. They are lis
 
 ## Exact next step
 
-Batch 08 can start the role, client, blog, fixture-enquiry and keyboard journeys that do not need a provider, a live enquiry source, a mail sender or a website consumer. Report finalisation stays blocked on DEP-06. Do not start Batch 08 until its prompt is given.
+Batch 09 local preparation is recorded in `docs/audits/batches/BATCH_09_HANDOVER.md`. Hosted staging has not started. DEP-04 still has no authorised staging project. Batch 10 can re-audit the local evidence. It cannot close DEP-01 through DEP-08 from that local evidence alone.
 
 On a resumed local session: `npm run db:start`, then `npm run dev`, and sign in as `admin@example.invalid` through `/dev/magic-links` only when the database is local. Do not touch the clinic website Postgres on port 54329.

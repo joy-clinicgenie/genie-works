@@ -33,6 +33,30 @@ Run these from the repository root. The workspace script’s working directory i
 
 Confirm the command prints `Restore test PASSED`, blog activity counts match, the three sign-in tables are 0, and migration names match. Then inspect `/admin/backups` on an application pointed at that same rehearsal database. Drop `clinic_genie_rehearsal_restore_test` after the inspection if `--keep` was used. Do not point these commands at the shared application database.
 
+## Application rollback
+
+Rolling the application back to an older revision does not reverse database changes. Migrations are forward only. Applied files are checksummed and are not edited. There is no down migration. An older application on a newer schema can fail. Restoring rows is a separate action, into an isolated destination, and it does not by itself deploy an older application.
+
+No person is named. DEP-08 stays open until a release owner accepts a rollback path. DEP-04 stays open until a hosting owner names the staging project. DEP-05 is the repository owner's choice about historical migration text. It is not a hosting setting and it is not the rollback owner.
+
+| Action | Role | What is true now |
+| --- | --- | --- |
+| Identify the previous application revision | Engineer | Use `git log` on this repository. The parent of the current candidate is the previous local revision. A hosting provider's previous deployment is not visible from this repository. |
+| Deploy that revision | Hosting owner | Not available. No staging project is authorised. Do not create one from this pack. |
+| Decide that a hosted rollback should happen | Release owner | Unnamed. DEP-08. Do not invent the name. |
+| Restore data | Engineer, on a local rehearsal database only | Use the local logical recovery commands above. The destination is `<source>_restore_test`. It is never the source. Production, a remote host, port 54329, `clinic_genie` and an enquiry database stay refused. |
+| Confirm the restore | Engineer, then the release owner when one is named | The command prints `Restore test PASSED`. Blog activity counts match. `sessions`, `verification_token` and `dev_magic_links` are 0. Migration names match. Admin shows the recorded restore test. Then drop the destination if `--keep` was used. |
+
+A green local restore test is not a hosted rollback, and it does not name the owner.
+
+## Operational status
+
+Public uptime and an external alert destination are not configured in this repository. Their absence here does not prove they are absent outside it.
+
+The application now has an administrator-only report at `/api/internal/operations/status`, and the same sentences on the Admin page. It can say that the enquiry source is not connected, was refused, or could not be reached, and it can count failed notification rows when the local fixture check passes. It can say that analytics jobs are failed, reconnect-required, stalled, or that the last success is older than 36 hours. It can say that no backup or restore test is recorded. It does not include connection strings, secret values, enquiry messages or client names. It does not send mail or any other external notification. Staff alert preferences are a separate, deferred setting and are not this report.
+
+A reading on a local process does not prove that hosted monitoring works. A prepared cron entry does not prove that a schedule ran.
+
 ## Incident runbooks
 - Form/storage failure: stop false success responses, expose clinic fallback, alert owner, preserve evidence and verify recovery.
 - Email outage: retain leads, inspect pending/failed outbox, restore provider and reconcile retries.

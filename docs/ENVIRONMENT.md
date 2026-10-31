@@ -64,4 +64,8 @@ Same names as production, with staging values supplied by the hosting project. N
 | `ANALYTICS_*` | Production provider credentials and the worker secret. |
 | `UPLOADS_DIR` | Replaced by the production file store when one is chosen. |
 
-The build command may substitute `AUTH_SECRET` when the hosting project has not provided one. That substitute is only for the build. A running server must have a distinct runtime secret.
+The build command may substitute `AUTH_SECRET` when the hosting project has not provided one. That substitute is only for the build. A running server must have a distinct runtime secret. `assertRuntimeAuthSecret` rejects a missing value, `preview-build-only` and `replace-with-a-long-random-string` except while `NEXT_PHASE` is `phase-production-build`.
+
+An administrator can read `/api/internal/operations/status`. The same sentences appear on the Admin page. The report names the environment class and whether required values are missing, placeholder or set. It does not include the values. A local `next start` process is classed as local rehearsal when the database is on this machine, even though `NODE_ENV` is production. `VERCEL_ENV=preview` is connected staging. `VERCEL_ENV=production`, or a production process whose database is not on this machine, is production. A remote database with no Vercel environment is unassigned. It is not connected staging, because DEP-04 has no authorised project.
+
+`NODE_ENV=production` or `VERCEL_ENV=production` still refuses the enquiry fixture before a read or write. That refusal was not relaxed.

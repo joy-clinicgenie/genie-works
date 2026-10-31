@@ -191,6 +191,56 @@ export interface ConnectionSyncStatus {
 }
 
 /** Queue counts and the last succeeded sync run. A connection verification time is not included. */
+export interface PlatformSyncHealth {
+  connections: number;
+  queued: number;
+  leased: number;
+  stalledLeases: number;
+  failed: number;
+  reconnectRequired: number;
+  lastSuccessAt: Date | null;
+  safeError: string | null;
+}
+
+/** Counts only. No connection identifiers, property names or error text beyond a short safe code. */
+export async function platformSyncHealth(db: Queryable): Promise<PlatformSyncHealth> {
+  const { rows } = await db.query<{
+    connections: number;
+    queued: number;
+    leased: number;
+    stalled: number;
+    failed: number;
+    reconnect_required: number;
+    last_success_at: Date | string | null;
+    safe_error: string | null;
+  }>(
+    `select
+       (select count(*)::int from analytics_connections where disconnected_at is null) as connections,
+       (select count(*)::int from analytics_jobs where state = 'queued') as queued,
+       (select count(*)::int from analytics_jobs where state = 'leased') as leased,
+       (select count(*)::int from analytics_jobs where state = 'leased' and lease_until is not null and lease_until < now()) as stalled,
+       (select count(*)::int from analytics_jobs where state = 'failed') as failed,
+       (select count(*)::int from analytics_jobs where state = 'reconnect_required') as reconnect_required,
+       (select max(finished_at) from analytics_sync_runs where result = 'succeeded') as last_success_at,
+       (select safe_error_code from analytics_jobs
+         where safe_error_code is not null and state in ('failed', 'reconnect_required')
+         order by updated_at desc
+         limit 1) as safe_error`,
+  );
+  const row = rows[0];
+  const code = row?.safe_error ?? "";
+  return {
+    connections: Number(row?.connections ?? 0),
+    queued: Number(row?.queued ?? 0),
+    leased: Number(row?.leased ?? 0),
+    stalledLeases: Number(row?.stalled ?? 0),
+    failed: Number(row?.failed ?? 0),
+    reconnectRequired: Number(row?.reconnect_required ?? 0),
+    lastSuccessAt: row?.last_success_at ? new Date(row.last_success_at) : null,
+    safeError: /^[a-z0-9_]{1,64}$/.test(code) ? code : null,
+  };
+}
+
 export async function listConnectionSyncStatus(db: Queryable, clientId: string): Promise<ConnectionSyncStatus[]> {
   const { rows } = await db.query<{
     connection_id: string;

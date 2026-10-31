@@ -1,6 +1,6 @@
 # Handover
 
-Updated 30 October 2026, Asia/Singapore. Read `docs/BUILD_STATUS.md` and `README.md` first. The day-to-day staff procedure is `docs/GENIE_WORKS_V1_STAFF_SOP.md`.
+Updated 31 October 2026, Asia/Singapore. Read `docs/BUILD_STATUS.md` and `README.md` first. The day-to-day staff procedure is `docs/GENIE_WORKS_V1_STAFF_SOP.md`. Deployment inventory is `docs/DEPLOYMENT.md`. Staging activation is `docs/STAGING_ACTIVATION.md`. Recovery and rollback are `docs/14_MONITORING_RECOVERY_HANDOVER.md`.
 
 ## 1. What opens
 
@@ -40,5 +40,5 @@ Stay on main unless the task says otherwise. Do not push.
 Start the database with npm run db:start, then npm run dev.
 Do not touch ~/vsc/clinic-demo-a or the Postgres on port 54329.
 Do not seed or migrate a shared database for a local check.
-Batch 08 waits for its own prompt. Report finalisation waits for DEP-06.
+Batch 09 local preparation is done. Hosted staging has not started (DEP-04). Report finalisation waits for DEP-06. A named rollback owner is still missing (DEP-08). Batch 10 can re-audit local evidence. It cannot treat hosted staging as done.
 ```

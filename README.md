@@ -145,4 +145,4 @@ Names and purposes only. Copy `.env.example` and fill values locally. Never comm
 
 ## Hosting note
 
-A deployment keeps the database records. It does not prove live analytics, email delivery or a website reading this API. Backups are the `db:backup` exports plus whatever the database host keeps. Admin shows a backup or restore only after that run has been recorded. Staging and a named rollback owner are still open (DEP-04, DEP-08).
+A deployment keeps the database records. It does not prove live analytics, email delivery or a website reading this API. Backups are the `db:backup` exports plus whatever the database host keeps. Admin shows a backup or restore only after that run has been recorded. An administrator can also open operational status at `/api/internal/operations/status`. That report is for this process. It is not hosted monitoring. Staging and a named rollback owner are still open (DEP-04, DEP-08). The repository inventory and the activation checklist are `docs/DEPLOYMENT.md` and `docs/STAGING_ACTIVATION.md`.
