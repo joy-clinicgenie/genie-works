@@ -1,31 +1,37 @@
-import { afterAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import pg from "pg";
 import { loadRootEnv, requireEnv } from "../src/env";
-import { enquiryFixtureUrlFromAdmin } from "../src/testing/targets";
+import { SUITE_ENQUIRY_DATABASES, suiteEnquiryFixtureUrl } from "../src/testing/targets";
 import { setEnquiryFollowUp, websiteFormConfigPresent } from "../src/services/enquiry-follow-up";
 import {
   FIXTURE_DUPLICATE_KEY,
   RETRY_FAILURE_OUTBOX_ID,
   RETRY_SUCCESS_OUTBOX_ID,
   checkEnquiryFixture,
+  disposeSuiteEnquiryDatabase,
   ensureEnquiryDatabase,
   requeueNotification,
   resetEnquiryFixture,
 } from "../src/testing/enquiry-fixture";
 
 loadRootEnv();
-delete process.env.ENQUIRY_DATABASE_URL;
-const fixtureUrl = enquiryFixtureUrlFromAdmin(requireEnv("DATABASE_ADMIN_URL"));
+const adminUrl = requireEnv("DATABASE_ADMIN_URL");
+const fixtureUrl = suiteEnquiryFixtureUrl(adminUrl, "db");
 
 describe("synthetic enquiry fixture", () => {
+  beforeAll(async () => {
+    await ensureEnquiryDatabase(adminUrl, fixtureUrl);
+  });
+
   afterAll(async () => {
-    await resetEnquiryFixture(fixtureUrl);
+    await disposeSuiteEnquiryDatabase(adminUrl, "db");
   });
 
   it("resets labelled records and keeps a retry from creating another enquiry", async () => {
-    await ensureEnquiryDatabase(requireEnv("DATABASE_ADMIN_URL"));
+    await ensureEnquiryDatabase(adminUrl, fixtureUrl);
     const summary = await resetEnquiryFixture(fixtureUrl);
-    expect(summary.database).toBe("clinic_genie_enquiry_test");
+    expect(summary.database).toBe(SUITE_ENQUIRY_DATABASES.db);
+    expect(summary.database).not.toBe("clinic_genie_enquiry_test");
     expect(summary.host).toBe("127.0.0.1");
     expect(summary.clinics).toEqual(["meridian-skin"]);
     expect(summary.enquiries).toBe(6);
@@ -114,6 +120,19 @@ describe("synthetic enquiry fixture", () => {
 
     const checked = await checkEnquiryFixture(fixtureUrl);
     expect(checked.enquiries).toBe(6);
+  });
+
+  it("refuses a reset when a stored reference is outside the fixture", async () => {
+    await resetEnquiryFixture(fixtureUrl);
+    const pool = new pg.Pool({ connectionString: fixtureUrl, max: 1 });
+    try {
+      await pool.query("update enquiries set public_reference = 'DEMO-OUTSIDE' where public_reference = 'TEST-MS-NEW-006'");
+      await expect(resetEnquiryFixture(fixtureUrl)).rejects.toThrow(/outside the fixture/);
+      expect((await pool.query<{ count: number }>("select count(*)::int as count from enquiries where public_reference = 'DEMO-OUTSIDE'")).rows[0]?.count).toBe(1);
+      await pool.query("update enquiries set public_reference = 'TEST-MS-NEW-006' where public_reference = 'DEMO-OUTSIDE'");
+    } finally {
+      await pool.end();
+    }
   });
 
   it("persists follow-up transitions and lets one concurrent update win", async () => {

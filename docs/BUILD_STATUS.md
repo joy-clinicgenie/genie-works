@@ -51,4 +51,4 @@ Tasks, approvals, Google Ads, issues, HCSA and timeline still open. They are lis
 
 Batch 09 local preparation is recorded in `docs/audits/batches/BATCH_09_HANDOVER.md`. Hosted staging has not started. DEP-04 still has no authorised staging project. Batch 10 can re-audit the local evidence. It cannot close DEP-01 through DEP-08 from that local evidence alone.
 
-On a resumed local session: `npm run db:start`, then `npm run dev`, and sign in as `admin@example.invalid` through `/dev/magic-links` only when the database is local. Do not touch the clinic website Postgres on port 54329.
+On a resumed local session: `npm run db:start`, then `npm run dev`, and sign in as `admin@example.invalid` through `/dev/magic-links` only when the database is local. Do not touch the clinic website Postgres on port 54329. `npm run db:rehearse` replaces only `clinic_genie_rehearsal_isolated` and `clinic_genie_enquiry_test_isolated` after checking that those names are local and are not the shared databases. `npm test` uses its own disposable enquiry databases. Neither command resets `clinic_genie_enquiry_test`.

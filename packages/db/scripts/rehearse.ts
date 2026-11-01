@@ -1,36 +1,47 @@
-/** Creates the local fictional rehearsal database and the isolated enquiry fixture. */
+/**
+ * Creates a disposable local rehearsal database and a disposable enquiry fixture.
+ * Shared databases are checked and refused before any drop.
+ */
 import { createHash } from "node:crypto";
 import { readdirSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import pg from "pg";
 import { loadRootEnv, requireEnv } from "../src/env";
-import { assertSafeTarget, describeDatabaseTarget, ensureAppRole, runMigrations } from "../src/migrate";
-import { REHEARSAL_CLIENT_SLUGS, REHEARSAL_DATABASE } from "../src/rehearsal";
+import { describeDatabaseTarget, ensureAppRole, runMigrations } from "../src/migrate";
+import { REHEARSAL_CLIENT_SLUGS } from "../src/rehearsal";
 import { seedDemo } from "../src/seed";
 import { resetEnquiryFixture } from "../src/testing/enquiry-fixture";
-import { maintenanceUrl } from "../src/testing/targets";
+import { assertDropTarget, maintenanceUrl, rehearsalTargets } from "../src/testing/targets";
 
 loadRootEnv();
 const adminUrl = requireEnv("DATABASE_ADMIN_URL");
-assertSafeTarget(adminUrl);
-const database = decodeURIComponent(new URL(adminUrl).pathname.replace(/^\//, ""));
-if (database !== REHEARSAL_DATABASE) {
-  throw new Error(`Refusing rehearsal: the database must be ${REHEARSAL_DATABASE}.`);
-}
-console.log(describeDatabaseTarget(adminUrl));
+const targets = rehearsalTargets(adminUrl);
+console.log(describeDatabaseTarget(targets.platformUrl));
+console.log(`Enquiry target: ${targets.enquiry}`);
 
-const maint = new pg.Client({ connectionString: maintenanceUrl(adminUrl) });
-await maint.connect();
-try {
-  await maint.query("select pg_terminate_backend(pid) from pg_stat_activity where datname = $1 and pid <> pg_backend_pid()", [REHEARSAL_DATABASE]);
-  await maint.query(`drop database if exists ${REHEARSAL_DATABASE}`);
-  await maint.query(`create database ${REHEARSAL_DATABASE}`);
-} finally {
-  await maint.end();
+function quoteIdent(name: string): string {
+  if (!/^[a-z_][a-z0-9_]*$/.test(name)) throw new Error("Refusing: the database name is not a plain identifier.");
+  return `"${name}"`;
 }
 
-const pool = new pg.Pool({ connectionString: adminUrl, max: 2 });
+async function replaceDatabase(name: string, allowed: readonly string[]): Promise<void> {
+  assertDropTarget(name, allowed);
+  const maint = new pg.Client({ connectionString: maintenanceUrl(adminUrl) });
+  await maint.connect();
+  try {
+    await maint.query("select pg_terminate_backend(pid) from pg_stat_activity where datname = $1 and pid <> pg_backend_pid()", [name]);
+    await maint.query(`drop database if exists ${quoteIdent(name)} with (force)`);
+    await maint.query(`create database ${quoteIdent(name)}`);
+  } finally {
+    await maint.end();
+  }
+}
+
+await replaceDatabase(targets.platform, [targets.platform]);
+await replaceDatabase(targets.enquiry, [targets.enquiry]);
+
+const pool = new pg.Pool({ connectionString: targets.platformUrl, max: 2 });
 try {
   await ensureAppRole(pool, process.env.APP_DB_PASSWORD || "cg_app_dev");
   const migrations = await runMigrations(pool, (line) => console.log(line));
@@ -69,10 +80,10 @@ try {
   console.log(`Websites: ${hosts.rowCount ?? 0}`);
   console.log(`Migrations applied: ${migrations.applied.length}`);
 
-  const enquiry = await resetEnquiryFixture();
+  const enquiry = await resetEnquiryFixture(targets.enquiryUrl);
   const enquiryClinics = [...enquiry.clinics].sort();
   const expectedClinics = ["meridian-skin"];
-  if (enquiry.database !== "clinic_genie_enquiry_test" || enquiryClinics.join() !== expectedClinics.join()) {
+  if (enquiry.database !== targets.enquiry || enquiry.database === "clinic_genie_enquiry_test" || enquiryClinics.join() !== expectedClinics.join()) {
     throw new Error("Enquiry fixture clinics are not the fictional set.");
   }
   console.log(`Enquiry fixture database: ${enquiry.database}`);

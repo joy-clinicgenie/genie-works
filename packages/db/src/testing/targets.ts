@@ -64,6 +64,78 @@ export function assertLocalWorkerDatabase(url: string): void {
 
 export const ENQUIRY_FIXTURE_DATABASE = "clinic_genie_enquiry_test";
 
+/** Existing databases. Automated drops and the clean rehearsal must not use these names. */
+export const SHARED_DATABASE_NAMES = ["clinic_genie", "clinic_genie_rehearsal", "clinic_genie_enquiry_test", "neondb", "postgres"] as const;
+
+/** One disposable enquiry database per test package, so `npm test` does not share or reset the stored fixture. */
+export const SUITE_ENQUIRY_DATABASES = {
+  db: "clinic_genie_enquiry_test_suite_db",
+  platform: "clinic_genie_enquiry_test_suite_app",
+} as const;
+
+export const ISOLATED_REHEARSAL_DATABASE = "clinic_genie_rehearsal_isolated";
+export const ISOLATED_REHEARSAL_ENQUIRY_DATABASE = "clinic_genie_enquiry_test_isolated";
+
+export function assertDropTarget(name: string, allowed: readonly string[]): void {
+  if (!/^[a-z_][a-z0-9_]*$/.test(name)) throw new Error("Refusing: the database name is not a plain identifier.");
+  if ((SHARED_DATABASE_NAMES as readonly string[]).includes(name)) throw new Error(`Refusing to drop shared database ${name}.`);
+  if (!allowed.includes(name)) throw new Error(`Refusing to drop ${name}: it is not an isolated target.`);
+}
+
+function withDatabase(adminUrl: string, database: string): string {
+  const url = new URL(adminUrl);
+  url.pathname = `/${database}`;
+  return url.toString();
+}
+
+/** The database `npm test` may create and drop. The stored fixture name is refused. */
+export function suiteEnquiryFixtureUrl(adminUrl: string, slot: keyof typeof SUITE_ENQUIRY_DATABASES): string {
+  assertNotProductionEnvironment();
+  const admin = databaseTarget(adminUrl);
+  if (!admin.local) throw new Error("Refusing enquiry fixture: the admin host is not local.");
+  if (admin.port === SIBLING_CLINIC_PORT) throw new Error("Refusing enquiry fixture: port 54329 is the sibling clinic website database.");
+  const database: string = SUITE_ENQUIRY_DATABASES[slot];
+  assertDropTarget(database, [database]);
+  if (database === ENQUIRY_FIXTURE_DATABASE) throw new Error("Refusing enquiry fixture: the suite target is the shared fixture.");
+  const url = withDatabase(adminUrl, database);
+  const checked = assertEnquiryFixtureUrl(url);
+  if (checked.database !== database) throw new Error("Refusing enquiry fixture: the suite target changed.");
+  return url;
+}
+
+/**
+ * Targets for `npm run db:rehearse`. Names are checked before the caller opens a
+ * maintenance connection or drops anything. Shared databases are not targets.
+ */
+export function rehearsalTargets(adminUrl: string): { platformUrl: string; enquiryUrl: string; platform: string; enquiry: string } {
+  assertNotProductionEnvironment();
+  const admin = databaseTarget(adminUrl);
+  if (!admin.local) throw new Error("Refusing rehearsal: the admin host is not local.");
+  if (admin.port === SIBLING_CLINIC_PORT) throw new Error("Refusing rehearsal: port 54329 is the sibling clinic website database.");
+  const platform = ISOLATED_REHEARSAL_DATABASE;
+  const enquiry = ISOLATED_REHEARSAL_ENQUIRY_DATABASE;
+  assertDropTarget(platform, [platform]);
+  assertDropTarget(enquiry, [enquiry]);
+  if (!platform.includes("clinic_genie") || !platform.includes("rehearsal") || !platform.includes("isolated")) {
+    throw new Error("Refusing rehearsal: the platform database is not an isolated rehearsal target.");
+  }
+  if (!enquiry.includes("enquiry") || !enquiry.includes("test") || !enquiry.includes("isolated")) {
+    throw new Error("Refusing rehearsal: the enquiry database is not an isolated fixture target.");
+  }
+  const platformUrl = withDatabase(adminUrl, platform);
+  const enquiryUrl = withDatabase(adminUrl, enquiry);
+  const pattern = process.env.SEED_ALLOWED_DB_PATTERN || "clinic_genie";
+  if (!platform.includes(pattern)) throw new Error(`Refusing rehearsal: database name does not contain "${pattern}".`);
+  const checked = assertEnquiryFixtureUrl(enquiryUrl);
+  if (checked.database !== enquiry || databaseTarget(platformUrl).database !== platform) {
+    throw new Error("Refusing rehearsal: a target changed after it was checked.");
+  }
+  if (admin.database === platform || admin.database === enquiry) {
+    throw new Error("Refusing rehearsal: the admin connection is a database this command replaces.");
+  }
+  return { platformUrl, enquiryUrl, platform, enquiry };
+}
+
 /** Enquiry fixture resets and seeds. Stricter than the platform seed guard. */
 export function assertEnquiryFixtureUrl(url: string): { host: string; port: string; database: string } {
   assertNotProductionEnvironment();

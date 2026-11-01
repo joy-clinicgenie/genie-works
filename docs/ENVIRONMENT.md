@@ -4,7 +4,7 @@ Variable names and purposes only. Do not commit values. The example names live i
 
 ## Local
 
-Used by the embedded database on this machine and by `npm run db:rehearse`.
+Used by the embedded database on this machine. `npm run db:rehearse` creates `clinic_genie_rehearsal_isolated` and `clinic_genie_enquiry_test_isolated` on that local server. It does not replace `clinic_genie`, `clinic_genie_rehearsal` or `clinic_genie_enquiry_test`.
 
 | Name | Purpose |
 | --- | --- |
@@ -22,7 +22,7 @@ Used by the embedded database on this machine and by `npm run db:rehearse`.
 | `AUTH_GOOGLE_HD` | Workspace domain. On a local database, an unknown matching user can be created as admin. A shared database does not create that user. |
 | `APP_ENVIRONMENT_LABEL` | Text shown in the header. It does not by itself enable sign-in shortcuts. |
 | `UPLOADS_DIR` | Private local directory for evidence files. |
-| `ENQUIRY_DATABASE_URL` | Read-only clinic-website enquiry source. Empty means that source stays disconnected. A Wix form binding is separate and does not use this URL. The local fixture database is `clinic_genie_enquiry_test`. |
+| `ENQUIRY_DATABASE_URL` | Read-only clinic-website enquiry source. Empty means that source stays disconnected. A Wix form binding is separate and does not use this URL. The stored local fixture database is `clinic_genie_enquiry_test`. `npm test` and `npm run db:rehearse` use separate disposable databases and do not reset that fixture. |
 | `FORMS_WIX_APP_ID` | Wix app id for reading a form that is bound to a website. Empty leaves those reads unavailable. This is not the analytics app. |
 | `FORMS_WIX_APP_SECRET` | Matching forms app secret. The site instance and form id are stored on the website row, not in these variables. |
 | `FORMS_WIX_NEW_INSTANCE_*` | Wix Forms (new) instance for one website marked Wix: Aqua, Cedar, Joyful, MSDC, SBSN, SDIC, Sunrise, TAC, and Forms test. Empty until that website is identified. This is not the old Forms and Payments instance, and it does not choose the form. |

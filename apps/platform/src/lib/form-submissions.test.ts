@@ -1,8 +1,8 @@
 import { afterAll, describe, expect, it, vi } from "vitest";
 import pg from "pg";
-import { assertEnquiryFixtureUrl, canExport, type AccessProfile } from "@clinic-genie/db";
-import { enquiryFixtureUrlFromAdmin } from "../../../../packages/db/src/testing/targets";
-import { resetEnquiryFixture } from "../../../../packages/db/src/testing/enquiry-fixture";
+import { assertEnquiryFixtureUrl, canExport, loadRootEnv, type AccessProfile } from "@clinic-genie/db";
+import { SUITE_ENQUIRY_DATABASES, suiteEnquiryFixtureUrl } from "../../../../packages/db/src/testing/targets";
+import { disposeSuiteEnquiryDatabase, resetEnquiryFixture } from "../../../../packages/db/src/testing/enquiry-fixture";
 import { formPageHref } from "./form-catalogue";
 import {
   attemptOrigin,
@@ -23,6 +23,8 @@ import {
   submissionStatusCounts,
   type SubmissionListItem,
 } from "./form-submissions";
+
+loadRootEnv();
 
 describe("enquiry comparison and export", () => {
   it("shows a numerical change and no percentage when the previous period is zero", () => {
@@ -153,18 +155,18 @@ describe("isolated enquiry fixture", () => {
   const previousUrl = process.env.ENQUIRY_DATABASE_URL;
 
   afterAll(async () => {
-    if (previousUrl === undefined) delete process.env.ENQUIRY_DATABASE_URL;
-    else process.env.ENQUIRY_DATABASE_URL = previousUrl;
+    delete process.env.ENQUIRY_DATABASE_URL;
     await enquiryConnection();
     const admin = process.env.DATABASE_ADMIN_URL;
-    if (!admin) return;
-    const fixture = enquiryFixtureUrlFromAdmin(admin);
-    try {
-      assertEnquiryFixtureUrl(fixture);
-      await resetEnquiryFixture(fixture);
-    } catch {
-      // A non-local admin URL never reaches the fixture.
+    if (admin) {
+      try {
+        await disposeSuiteEnquiryDatabase(admin, "platform");
+      } catch {
+        // A non-local admin URL never created the suite database.
+      }
     }
+    if (previousUrl === undefined) delete process.env.ENQUIRY_DATABASE_URL;
+    else process.env.ENQUIRY_DATABASE_URL = previousUrl;
   });
 
   it("refuses the platform database and the sibling clinic port before opening a connection", async () => {
@@ -187,9 +189,10 @@ describe("isolated enquiry fixture", () => {
   it("keeps demonstration rows out of production totals and exports", async () => {
     const admin = process.env.DATABASE_ADMIN_URL;
     if (!admin) throw new Error("DATABASE_ADMIN_URL is required for the enquiry fixture.");
-    const fixture = enquiryFixtureUrlFromAdmin(admin);
+    const fixture = suiteEnquiryFixtureUrl(admin, "platform");
     const target = assertEnquiryFixtureUrl(fixture);
-    expect(target.database).toBe("clinic_genie_enquiry_test");
+    expect(target.database).toBe(SUITE_ENQUIRY_DATABASES.platform);
+    expect(target.database).not.toBe("clinic_genie_enquiry_test");
     expect(target.host).toBe("127.0.0.1");
     process.env.ENQUIRY_DATABASE_URL = fixture;
     await resetEnquiryFixture(fixture);

@@ -12,9 +12,12 @@ import pg from "pg";
 import { loadRootEnv, requireEnv } from "../env";
 import {
   ENQUIRY_FIXTURE_DATABASE,
+  SUITE_ENQUIRY_DATABASES,
+  assertDropTarget,
   assertEnquiryFixtureUrl,
   enquiryFixtureUrlFromAdmin,
   maintenanceUrl,
+  suiteEnquiryFixtureUrl,
 } from "./targets";
 
 const SCHEMA = `
@@ -218,14 +221,35 @@ export function resolveEnquiryFixtureUrl(): string {
   return configured;
 }
 
-export async function ensureEnquiryDatabase(adminUrl: string): Promise<void> {
-  const fixtureUrl = enquiryFixtureUrlFromAdmin(adminUrl);
-  assertEnquiryFixtureUrl(fixtureUrl);
+function quoteIdent(name: string): string {
+  if (!/^[a-z_][a-z0-9_]*$/.test(name)) throw new Error("Refusing: the database name is not a plain identifier.");
+  return `"${name}"`;
+}
+
+/** Creates the named fixture database when it is missing. It does not drop an existing database. */
+export async function ensureEnquiryDatabase(adminUrl: string, fixtureUrl = enquiryFixtureUrlFromAdmin(adminUrl)): Promise<void> {
+  const target = assertEnquiryFixtureUrl(fixtureUrl);
   const maint = new pg.Client({ connectionString: maintenanceUrl(adminUrl) });
   await maint.connect();
   try {
-    const exists = await maint.query("select 1 from pg_database where datname = $1", [ENQUIRY_FIXTURE_DATABASE]);
-    if (exists.rowCount === 0) await maint.query(`create database ${ENQUIRY_FIXTURE_DATABASE}`);
+    const exists = await maint.query("select 1 from pg_database where datname = $1", [target.database]);
+    if (exists.rowCount === 0) await maint.query(`create database ${quoteIdent(target.database)}`);
+  } finally {
+    await maint.end();
+  }
+}
+
+/** Drops only the disposable database for one test package. The shared fixture name is refused first. */
+export async function disposeSuiteEnquiryDatabase(adminUrl: string, slot: keyof typeof SUITE_ENQUIRY_DATABASES): Promise<void> {
+  const fixtureUrl = suiteEnquiryFixtureUrl(adminUrl, slot);
+  const database = assertEnquiryFixtureUrl(fixtureUrl).database;
+  assertDropTarget(database, [SUITE_ENQUIRY_DATABASES[slot]]);
+  if (database === ENQUIRY_FIXTURE_DATABASE) throw new Error("Refusing to drop the shared enquiry fixture.");
+  const maint = new pg.Client({ connectionString: maintenanceUrl(adminUrl) });
+  await maint.connect();
+  try {
+    await maint.query("select pg_terminate_backend(pid) from pg_stat_activity where datname = $1 and pid <> pg_backend_pid()", [database]);
+    await maint.query(`drop database if exists ${quoteIdent(database)} with (force)`);
   } finally {
     await maint.end();
   }
@@ -279,7 +303,7 @@ async function insertRows(client: pg.PoolClient): Promise<void> {
 export async function resetEnquiryFixture(url = resolveEnquiryFixtureUrl()): Promise<EnquiryFixtureSummary> {
   const target = assertEnquiryFixtureUrl(url);
   loadRootEnv();
-  await ensureEnquiryDatabase(requireEnv("DATABASE_ADMIN_URL"));
+  await ensureEnquiryDatabase(requireEnv("DATABASE_ADMIN_URL"), url);
   const pool = new pg.Pool({ connectionString: url, max: 1 });
   const client = await pool.connect();
   try {

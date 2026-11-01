@@ -364,7 +364,14 @@ describe("analytics tenant isolation and sync", () => {
     const clinicGenie = await clientBySlug("clinic-genie");
     await asContext(SERVICE, async (db) => {
       const harbourSite = (await db.query<{ id: string }>("select id from websites where client_id = $1 order by created_at limit 1", [harbour])).rows[0]!.id;
-      const clinicGenieSite = (await db.query<{ id: string }>("select id from websites where client_id = $1 order by created_at limit 1", [clinicGenie])).rows[0]!.id;
+      const clinicGenieSite = (await createWebsite(db, {
+        clientId: clinicGenie,
+        name: "Clinic Genie fixture website",
+        url: "https://clinic-genie.example.invalid",
+        platform: "Next.js",
+        environment: "production",
+        notes: "Fictional analytics isolation fixture.",
+      }, admin.id)).id;
       const left = sealedToken({ accessToken: "left", expiresAt: "2100-01-01T00:00:00.000Z" });
       const right = sealedToken({ accessToken: "right", expiresAt: "2100-01-01T00:00:00.000Z" });
       const harbourConnection = await saveConnection(db, {

@@ -15,6 +15,8 @@ Two databases share the local embedded Postgres started by this repository. They
 
 The sibling clinic website database on port `54329` is never a fixture target. Fixture create, check and reset commands throw before opening a connection when the target is that port, when the database is `clinic_genie`, when the host is not local, or when `NODE_ENV` or `VERCEL_ENV` is `production`.
 
+`npm test` creates and drops `clinic_genie_enquiry_test_suite_db` and `clinic_genie_enquiry_test_suite_app`. `npm run db:rehearse` checks its targets first, then replaces only `clinic_genie_rehearsal_isolated` and `clinic_genie_enquiry_test_isolated`. Those commands do not reset `clinic_genie_enquiry_test`. `enquiry:seed`, `enquiry:check`, `enquiry:reset` and `enquiry:link` still refer to that stored fixture.
+
 `ANALYTICS_LIVE_REPORTS` stays off unless an operator turns it on for a non-production sandbox. `ANALYTICS_FIXTURE_MODE=1` makes the analytics worker refuse every non-local provider host, so a fixture run cannot send events to production analytics. Live sandbox calls are a separate step and require that flag to be unset.
 
 Outbound enquiry mail is the `notification_outbox` table. The fixture does not configure an SMTP provider. A retry updates that row and does not insert another enquiry.

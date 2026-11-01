@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { assertMigrationTarget, assertSafeTarget, shouldStripImportedDirectory } from "../src/migrate";
-import { assertEnquiryFixtureUrl, assertFixtureFetch, assertLocalWorkerDatabase } from "../src/testing/targets";
+import { assertDropTarget, assertEnquiryFixtureUrl, assertFixtureFetch, assertLocalWorkerDatabase, rehearsalTargets, suiteEnquiryFixtureUrl } from "../src/testing/targets";
 import { bearerMatches } from "../src/analytics/crypto";
 import { syncIsStale, PROVIDER_FIXTURE_SCENARIOS } from "../src/testing/provider-fixtures";
 import { WEBSITE_CAPABILITIES, capabilityCountsAsPassed } from "../src/testing/consumers";
@@ -44,6 +44,29 @@ describe("fixture target guards", () => {
     expect(() => assertEnquiryFixtureUrl("postgresql://postgres:postgres@127.0.0.1:54329/clinic_genie_enquiry_test")).toThrow(/54329/);
     expect(() => assertEnquiryFixtureUrl("postgresql://postgres:postgres@db.example.com:5432/clinic_genie_enquiry_test")).toThrow(/not local/);
     expect(assertEnquiryFixtureUrl("postgresql://postgres:postgres@127.0.0.1:54339/clinic_genie_enquiry_test").database).toBe("clinic_genie_enquiry_test");
+    const suite = new URL(suiteEnquiryFixtureUrl("postgresql://postgres:postgres@127.0.0.1:54339/clinic_genie_rehearsal", "db"));
+    expect(suite.pathname).toBe("/clinic_genie_enquiry_test_suite_db");
+    expect(() => assertDropTarget("clinic_genie_enquiry_test", ["clinic_genie_enquiry_test_suite_db"])).toThrow(/shared/);
+    expect(() => assertDropTarget("clinic_genie_rehearsal", ["clinic_genie_rehearsal_isolated"])).toThrow(/shared/);
+  });
+
+  it("chooses disposable rehearsal databases and checks them before a drop", () => {
+    const targets = rehearsalTargets("postgresql://postgres:postgres@127.0.0.1:54339/clinic_genie");
+    expect(targets.platform).toBe("clinic_genie_rehearsal_isolated");
+    expect(targets.enquiry).toBe("clinic_genie_enquiry_test_isolated");
+    expect(new URL(targets.platformUrl).pathname).toBe("/clinic_genie_rehearsal_isolated");
+    expect(new URL(targets.enquiryUrl).pathname).toBe("/clinic_genie_enquiry_test_isolated");
+    expect(() => rehearsalTargets("postgresql://postgres:postgres@db.example.com:5432/clinic_genie")).toThrow(/not local/);
+    expect(() => rehearsalTargets("postgresql://postgres:postgres@127.0.0.1:54329/clinic_genie_rehearsal")).toThrow(/54329/);
+    expect(() => rehearsalTargets("postgresql://postgres:postgres@127.0.0.1:54339/clinic_genie_rehearsal_isolated")).toThrow(/replaces/);
+    const nodeEnv = process.env.NODE_ENV;
+    try {
+      process.env.NODE_ENV = "production";
+      expect(() => rehearsalTargets("postgresql://postgres:postgres@127.0.0.1:54339/clinic_genie")).toThrow(/production/);
+    } finally {
+      if (nodeEnv === undefined) delete process.env.NODE_ENV;
+      else process.env.NODE_ENV = nodeEnv;
+    }
   });
 
   it("rejects a remote worker database and a fixture fetch to a provider host", () => {
