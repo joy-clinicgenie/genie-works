@@ -30,31 +30,31 @@ describe("client ownership and shared permissions", () => {
     const specialist = await staffByEmail("specialist-a@example.invalid");
     const reviewer = await staffByEmail("reviewer@example.invalid");
     const readonly = await staffByEmail("readonly@example.invalid");
-    const harbour = await clientBySlug("harbourview-dental");
-    const northgate = await clientBySlug("northgate-physio");
+    const meridian = await clientBySlug("meridian-skin");
+    const other = await clientBySlug("clinic-genie");
     const profile = (user: typeof admin, memberships: AccessProfile["memberships"] = []): AccessProfile => ({
       user: { ...user, email: "synthetic@example.invalid", display_name: "Synthetic", active: true },
       memberships,
     });
-    expect(clientActions.publish(profile(admin), harbour)).toBe(true);
-    expect(clientActions.export(profile(manager), harbour)).toBe(true);
-    expect(clientActions.manageAssignments(profile(admin), harbour)).toBe(true);
-    expect(clientActions.manageAssignments(profile(manager), harbour)).toBe(false);
-    const member = profile(specialist, [{ client_id: harbour, client_name: "Harbour", client_slug: "harbourview-dental" }]);
-    expect(clientActions.view(member, harbour)).toBe(true);
-    expect(clientActions.edit(member, harbour)).toBe(true);
-    expect(clientActions.submitForReview(member, harbour)).toBe(true);
-    expect(clientActions.publish(member, harbour)).toBe(false);
-    expect(clientActions.export(member, harbour)).toBe(false);
-    expect(clientActions.view(member, northgate)).toBe(false);
-    const reviewerMember = profile(reviewer, [{ client_id: harbour, client_name: "Harbour", client_slug: "harbourview-dental" }]);
-    expect(clientActions.review(reviewerMember, harbour)).toBe(true);
-    expect(clientActions.edit(reviewerMember, harbour)).toBe(false);
-    expect(clientActions.publish(reviewerMember, harbour)).toBe(false);
-    const reader = profile(readonly, [{ client_id: harbour, client_name: "Harbour", client_slug: "harbourview-dental" }]);
-    expect(clientActions.view(reader, harbour)).toBe(true);
-    expect(clientActions.edit(reader, harbour)).toBe(false);
-    expect(clientActions.review(reader, harbour)).toBe(false);
+    expect(clientActions.publish(profile(admin), meridian)).toBe(true);
+    expect(clientActions.export(profile(manager), meridian)).toBe(true);
+    expect(clientActions.manageAssignments(profile(admin), meridian)).toBe(true);
+    expect(clientActions.manageAssignments(profile(manager), meridian)).toBe(false);
+    const member = profile(specialist, [{ client_id: meridian, client_name: "Meridian", client_slug: "meridian-skin" }]);
+    expect(clientActions.view(member, meridian)).toBe(true);
+    expect(clientActions.edit(member, meridian)).toBe(true);
+    expect(clientActions.submitForReview(member, meridian)).toBe(true);
+    expect(clientActions.publish(member, meridian)).toBe(false);
+    expect(clientActions.export(member, meridian)).toBe(false);
+    expect(clientActions.view(member, other)).toBe(false);
+    const reviewerMember = profile(reviewer, [{ client_id: meridian, client_name: "Meridian", client_slug: "meridian-skin" }]);
+    expect(clientActions.review(reviewerMember, meridian)).toBe(true);
+    expect(clientActions.edit(reviewerMember, meridian)).toBe(false);
+    expect(clientActions.publish(reviewerMember, meridian)).toBe(false);
+    const reader = profile(readonly, [{ client_id: meridian, client_name: "Meridian", client_slug: "meridian-skin" }]);
+    expect(clientActions.view(reader, meridian)).toBe(true);
+    expect(clientActions.edit(reader, meridian)).toBe(false);
+    expect(clientActions.review(reader, meridian)).toBe(false);
   });
 
   it("drops a client or website that is outside the stored relationship", () => {
@@ -73,11 +73,11 @@ describe("client ownership and shared permissions", () => {
     const admin = await staffByEmail("admin@example.invalid");
     const specA = await staffByEmail("specialist-a@example.invalid");
     const specB = await staffByEmail("specialist-b@example.invalid");
-    const harbour = await clientBySlug("harbourview-dental");
     const meridian = await clientBySlug("meridian-skin");
+    const other = await clientBySlug("clinic-genie");
     await asContext(staffCtx(admin), async (db) => {
-      const before = (await getClient(db, harbour))!;
-      await updateClient(db, harbour, {
+      const before = (await getClient(db, meridian))!;
+      await updateClient(db, meridian, {
         name: before.name,
         ownerUserId: before.owner_user_id,
         channels: before.channels,
@@ -95,26 +95,26 @@ describe("client ownership and shared permissions", () => {
         notificationOwnerUserId: before.notification_owner_user_id,
         administrationOwnerUserId: before.administration_owner_user_id,
       }, admin.id);
-      const saved = await getClient(db, harbour);
+      const saved = await getClient(db, meridian);
       expect(saved?.services).toBe("Synthetic service list for the access check");
       expect(saved?.channels).toEqual(before.channels);
-      const link = await createClientFileLink(db, harbour, { title: "Synthetic brief", url: "https://files.example.invalid/brief", notes: "Test link" }, admin.id);
-      expect(await listClientFileLinks(db, harbour)).toEqual([expect.objectContaining({ id: link, title: "Synthetic brief" })]);
+      const link = await createClientFileLink(db, meridian, { title: "Synthetic brief", url: "https://files.example.invalid/brief", notes: "Test link" }, admin.id);
+      expect(await listClientFileLinks(db, meridian)).toEqual([expect.objectContaining({ id: link, title: "Synthetic brief" })]);
       await applyContext(db, staffCtx(specA));
-      expect((await listClientFileLinks(db, harbour)).map((row) => row.id)).toContain(link);
+      expect((await listClientFileLinks(db, meridian)).map((row) => row.id)).toContain(link);
       await db.query("savepoint specialist_file");
-      await expect(createClientFileLink(db, harbour, { title: "No", url: "https://files.example.invalid/no", notes: null }, specA.id)).rejects.toThrow();
+      await expect(createClientFileLink(db, meridian, { title: "No", url: "https://files.example.invalid/no", notes: null }, specA.id)).rejects.toThrow();
       await db.query("rollback to savepoint specialist_file");
       await applyContext(db, staffCtx(specB));
-      expect(await listClientFileLinks(db, harbour)).toEqual([]);
+      expect(await listClientFileLinks(db, meridian)).toEqual([]);
       await applyContext(db, staffCtx(specA));
-      await expect(updateClient(db, harbour, {
+      await expect(updateClient(db, meridian, {
         name: before.name, ownerUserId: before.owner_user_id, channels: before.channels, services: "changed", notes: before.notes,
       }, specA.id)).rejects.toBeInstanceOf(RegistryRuleError);
       const sites = await listWebsites(db, meridian);
-      await expect(requireWebsiteForClient(db, sites[0]!.id, harbour)).rejects.toBeInstanceOf(RegistryRuleError);
-      const ownSites = await listWebsites(db, harbour);
-      await expect(saveSeoPageSetting(db, harbour, ownSites[0]!.id, {
+      await expect(requireWebsiteForClient(db, sites[0]!.id, other)).rejects.toBeInstanceOf(RegistryRuleError);
+      const ownSites = await listWebsites(db, meridian);
+      await expect(saveSeoPageSetting(db, meridian, ownSites[0]!.id, {
         pagePath: "/synthetic-access", title: "Synthetic", description: "Synthetic description for the access check.", canonicalPath: null, indexable: true,
       }, specA.id)).rejects.toBeInstanceOf(PermissionDeniedError);
     });
@@ -126,7 +126,7 @@ describe("client ownership and shared permissions", () => {
   it("makes an assignment cover the client websites and removes that access when revoked", async () => {
     const admin = await staffByEmail("admin@example.invalid");
     const specB = await staffByEmail("specialist-b@example.invalid");
-    const harbour = await clientBySlug("harbourview-dental");
+    const harbour = await clientBySlug("meridian-skin");
     await asContext(SERVICE, async (db) => {
       await applyContext(db, staffCtx(admin));
       const membershipId = await grantMembership(db, { userId: specB.id, clientId: harbour }, admin.id);
@@ -147,7 +147,7 @@ describe("client ownership and shared permissions", () => {
 
   it("keeps an authorised service, note and file link in a later transaction", async () => {
     const admin = await staffByEmail("admin@example.invalid");
-    const harbour = await clientBySlug("harbourview-dental");
+    const harbour = await clientBySlug("meridian-skin");
     const before = await asContext(staffCtx(admin), async (db) => (await getClient(db, harbour))!);
     const profile = {
       name: before.name,

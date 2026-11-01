@@ -26,6 +26,7 @@ try {
   console.log(`Sign-in tables left empty: ${JSON.stringify(v.invalidated)}`);
   console.log(`RLS enabled: ${v.rlsEnabled}`);
   console.log(`Isolation check: ${JSON.stringify(v.isolationCheck)}`);
+  console.log(`Report files: ${v.reportArtifacts.restored}`);
   if (v.mismatches.length) {
     console.error(`FAILED: ${v.mismatches.join("; ")}`);
     process.exit(1);

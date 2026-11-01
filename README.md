@@ -25,7 +25,7 @@ Reports can be saved as **draft** or **saved**. **Save draft** updates the worki
 These have not been verified in this workspace:
 
 - A live GA4, Search Console or Wix sync (DEP-01). Analytics screens can show stored fixture or seed figures. An empty provider result is not a live zero.
-- Delivery of enquiry email (DEP-03). This app does not send mail. **Sent** means a sender accepted the message, and no sender is connected.
+- Production enquiry email. This app does not send mail. Labelled test DEP03-8E4DC5 was accepted by Resend and confirmed in the test inbox. The outbox row for DEP03-8E4DC5 stays `sent`. DEP03D-A72CDF was accepted from `hello@clinic-genie.com`, and its inbox receipt is not confirmed. The saved dispatcher from-address remains `onboarding@resend.dev`. Production mail is unchanged, and the connected-pilot mail gate stays open.
 - A clinic website calling the blog or SEO settings API (DEP-07).
 - A named clinic owner, content approver, security reviewer or release approver. Those roles are still unnamed.
 
@@ -50,10 +50,10 @@ Sign in at `http://localhost:3400/sign-in` with a seeded address such as `admin@
 | --- | --- | --- |
 | admin@example.invalid | admin | Every client, plus Admin |
 | manager@example.invalid | manager | Every client. Cannot write connection secrets |
-| specialist-a@example.invalid | specialist | Harbourview Dental, Meridian Skin |
-| specialist-b@example.invalid | specialist | Northgate Physio |
-| reviewer@example.invalid | reviewer | Harbourview Dental, Meridian Skin (review only) |
-| readonly@example.invalid | read_only | Harbourview Dental (view only) |
+| specialist-a@example.invalid | specialist | Meridian Skin |
+| specialist-b@example.invalid | specialist | No client |
+| reviewer@example.invalid | reviewer | Meridian Skin (review only) |
+| readonly@example.invalid | read_only | No client |
 
 ## Commands
 
@@ -129,7 +129,7 @@ Names and purposes only. Copy `.env.example` and fill values locally. Never comm
 | `AUTH_GOOGLE_HD` | Workspace domain for the first local Google sign-in. A shared database never creates that administrator |
 | `APP_ENVIRONMENT_LABEL` | Text shown in the header so staff can see which environment they are in |
 | `UPLOADS_DIR` | Private evidence files. Served only after a permission check |
-| `ENQUIRY_DATABASE_URL` | Read-only connection to a clinic website enquiry database. Leave empty to keep enquiry screens disconnected. Not a copy of the messages, and not verified against a live source |
+| `ENQUIRY_DATABASE_URL` | Read-only connection to a vibe-coded website’s enquiry database. It does not cover a Wix form. Leave empty until that connection is approved. Not a copy of the messages |
 | `ANALYTICS_GOOGLE_CLIENT_ID` | Google OAuth client for GA4 and Search Console. Leave empty until the account owner grants access |
 | `ANALYTICS_GOOGLE_CLIENT_SECRET` | Secret for that Google client |
 | `ANALYTICS_WIX_APP_ID` | Wix app id. Leave empty until access is granted |

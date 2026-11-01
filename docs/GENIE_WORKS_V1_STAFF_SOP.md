@@ -6,7 +6,7 @@
 
 Genie Works is the internal operations platform for Clinic Genie. The launch menu has nine modules: Dashboard (Agency Overview), Clients, Website analytics, SEO performance, Blog, Leads and forms, Reports, Settings, and Admin. Staff use those modules to keep clinic records, follow up enquiries that arrive from clinic websites, prepare website analytics and reports, and draft and publish blog articles on native websites. Tasks, approvals, Google Ads, issues, HCSA wording and the timeline still open from a client or from their own address. They are not separate items in the launch menu, and they were not removed.
 
-Enquiry messages stay in the clinic website’s own records. Genie Works reads them when an enquiry source is connected. It does not keep a second copy of the person’s name, telephone, email or message as its own enquiry system. If the source is not connected, the enquiry page says none are available. That is not a count of zero enquiries. All demonstration clinics in a training database are fictional. A record marked **Demonstration data** is for practice. It is not a live clinic result.
+Enquiry messages stay at the website. A Wix website is read through the Wix Forms API. A vibe-coded website is read from that website’s enquiry database. Both appear in Enquiries, mapped to the client, website and form. Genie Works does not keep a second copy of the person’s name, telephone, email or message, and it does not send the clinic email. Each website keeps its own sender. If one connection is not available, that website’s enquiries are not available. That is not a count of zero enquiries, and it does not describe the other websites. All demonstration clinics in a training database are fictional. A record marked **Demonstration data** is for practice. It is not a live clinic result.
 
 A few results are not yet verified. Website analytics on screen come from stored figures. A live provider sync has not been confirmed. Clinic email is not sent from Genie Works, so **Sent** is not proof that a mailbox received it. No clinic website has been shown reading the blog or SEO settings from this platform. A report can be a **draft** or a **saved** version. **Saved** is not Approved or Final. The proposed Draft, In review, Approved and Final workflow is not on the screen. Clinic owner, content approver, security reviewer and release approver are not named in the current records.
 
@@ -140,7 +140,7 @@ SEO, Google Ads and HCSA are not on the Dashboard. Open those pages from the men
 
 - Read the sentence under a figure before you treat a dash as zero. **Connection required**, **Not connected**, **Not yet synchronised** and **Unavailable** are not zero.
 - Form starts, contact clicks and confirmed bookings are not enquiry counts.
-- If Analytics cannot be read, Enquiries and Reports still show. If the enquiry database cannot be read, the other sections still show.
+- If Analytics cannot be read, Enquiries and Reports still show. If one enquiry connection cannot be read, the other sections still show, and the other enquiry connection is assessed on its own.
 
 ---
 
@@ -425,7 +425,7 @@ Use the **Review** tab.
 ### 4.6 Leads and forms
 
 **Routes:** `/enquiries`, `/enquiries/[enquiry]`, `/enquiries/notifications`. `/forms` opens Enquiries. An old `/forms/[id]` link opens that enquiry.  
-**Purpose:** Read requests that clinic websites have already stored, update follow-up, and see whether the clinic notification email was accepted by the mail provider. Genie Works does not present a form builder, a routing proposal, or an acknowledgement email to send. Replies are sent from the marketing mailbox, outside this page.  
+**Purpose:** Read requests from both kinds of clinic website, update follow-up, and see the notification state that website actually stores. A Wix website is read through the Wix Forms API. A vibe-coded website is read from that website’s enquiry database. Each row stays with its client, website and form. Each website keeps its own notification sender. Genie Works does not send email and does not require every website to use the same provider. It does not present a form builder, a routing proposal, or an acknowledgement email to send. Replies are sent from that website’s own mailbox, outside this page.  
 **Who uses it:** Anyone who can open the matching clinic. Admins and managers see every submitted form. Other roles see a submission only when the website clinic matches an assignment. Specialists can update follow-up, search by person, and retry a failed notification. Reviewers and read-only staff can read the enquiries they are allowed to see. They cannot search by name, email or telephone, and they cannot retry.
 
 **Enquiries list**
@@ -436,7 +436,7 @@ Filters: **From**, **To** (default is this Singapore month), **Client**, **Websi
 
 The overview compares the selected window with the previous window of the same length. Demonstration submissions stay in the working list and are left out of that comparison. A previous period with zero enquiries shows a numerical change and no percentage. Form starts, contact clicks and confirmed bookings are not added into the enquiry total.
 
-Columns: **Received**, **Reference**, **Client / website**, **Form**, **Name**, **Follow-up status**, **Notification**.
+Columns: **Received**, **Reference**, **Client / website** (the connector is shown under the website), **Form**, **Name**, **Follow-up status**, **Notification**. **Website database** and **Wix Forms** name the connector. They are not the visitor source.
 
 **How to export** (admin or manager)
 
@@ -447,7 +447,7 @@ Columns: **Received**, **Reference**, **Client / website**, **Form**, **Name**, 
 
 **Enquiry detail**
 
-Shows name, telephone, email, reason, preferred time, page, source and message. A preferred time is a request, not a booked appointment. **Demonstration data** is badged when the row is a training submission. Opening the enquiry does not change follow-up status. The view is recorded in the audit log without copying the message into that log.
+Shows the connector, name, telephone, email, reason, preferred time, page, visitor source and message. A preferred time is a request, not a booked appointment. **Demonstration data** is badged when the row is a training submission. Opening the enquiry does not change follow-up status. The view is recorded in the audit log without copying the message into that log.
 
 **How to update follow-up** (someone who can edit the client)
 
@@ -458,7 +458,7 @@ Shows name, telephone, email, reason, preferred time, page, source and message. 
 2. **Internal note** is optional. It stays in Genie Works and is not sent to the clinic or the person who enquired.
 3. Choose **Save follow-up**.
 
-Each change is kept. The history shows who moved the status, and from which status to which. The note does not copy the person’s contact details into Genie Works as a second enquiry record. The status itself is updated on the clinic website’s enquiry row.
+Each change is kept. The history shows who moved the status, and from which status to which. The note does not copy the person’s contact details into Genie Works as a second enquiry record. For a website-database enquiry, the status is updated on that website’s enquiry row. For a Wix form, the follow-up status is stored against that submission. The person’s message is not copied into that record.
 
 **Clinic notification**
 
@@ -468,17 +468,17 @@ Each change is kept. The history shows who moved the status, and from which stat
 - **Not configured** means no clinic mailbox is configured.
 - **No notification recorded** means there is no outbox row.
 
-The panel shows the stored time, the attempt count, the last attempt and the next retry. Attempts are **Automatic** unless a person triggered them. A staff retry is listed separately with the staff name. **Retry** is shown to admins, managers and specialists.
+For a website-database enquiry, the panel shows the stored time, the attempt count, the last attempt and the next retry. Attempts are **Automatic** unless a person triggered them. A staff retry is listed separately with the staff name. **Retry** is shown to admins, managers and specialists. That website’s own sender sends the email. For a Wix form, the notification is **Unavailable**: Wix sends it, Genie Works does not store a delivery record, and there is no retry.
 
 **Notification status page**
 
-Filters by date, client, website and delivery status (Pending, Sent, Failed, Not configured). Use it when the Dashboard shows failed clinic notifications. Retry from the row when you are allowed to.
+This page lists the website-database outbox only. A Wix form keeps its own sender and is not listed here. Filters by date, client, website and delivery status (Pending, Sent, Failed, Not configured). Use it when the Dashboard shows failed clinic notifications. Retry from the row when you are allowed to.
 
 **Rules**
 
-- A missing or unrecognised source is **Unknown / not captured**. The page path stays separate from the source.
-- Two submissions are not merged because they share an email or telephone.
-- If the clinic website database is not connected, the page says no enquiries are available. Nothing was changed.
+- A missing or unrecognised visitor source is **Unknown / not captured**. The page path stays separate from the visitor source, and the visitor source stays separate from the connector.
+- Two submissions are not merged because they share an email or telephone. The same external id on two connectors stays two enquiries.
+- If one connection is not available, that website’s enquiries are not available. One connection does not cover every website. Nothing was changed.
 
 ---
 
@@ -848,7 +848,10 @@ Priority: Low, Medium, High, Critical. The quick add form on My tasks offers Low
 | Failed | The clinic email did not send. The enquiry remains. |
 | Not configured | No clinic mailbox is configured. |
 | No notification recorded | No email row is stored for this enquiry. |
-| Unknown / not captured | The source value is missing or not recognised. |
+| Unavailable | This website sends its own clinic email. Genie Works does not send it and has no delivery record. |
+| Website database | The enquiry was read from that vibe-coded website’s own database. |
+| Wix Forms | The enquiry was read from that website’s Wix form. The message is not copied here. |
+| Unknown / not captured | The visitor attribution is missing or not recognised. It is not the connector. |
 
 ### Issues
 

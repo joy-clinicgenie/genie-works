@@ -71,7 +71,7 @@ try {
 
   const enquiry = await resetEnquiryFixture();
   const enquiryClinics = [...enquiry.clinics].sort();
-  const expectedClinics = ["harbourview-dental", "meridian-skin", "northgate-physio"];
+  const expectedClinics = ["meridian-skin"];
   if (enquiry.database !== "clinic_genie_enquiry_test" || enquiryClinics.join() !== expectedClinics.join()) {
     throw new Error("Enquiry fixture clinics are not the fictional set.");
   }

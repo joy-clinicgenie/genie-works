@@ -1,4 +1,4 @@
-import { canManageAssignments, canManageRegistry, formatDateTime, getClient, listAccountReferences, listActiveStaff, listAuditEvents, listClientContacts, listClientFileLinks, listMemberships, listStaff, listWebsites } from "@clinic-genie/db";
+import { canManageAssignments, canManageRegistry, canManageUsers, formatDateTime, getClient, listAccountReferences, listActiveStaff, listAuditEvents, listClientContacts, listClientFileLinks, listMemberships, listStaff, listWebsites } from "@clinic-genie/db";
 import { requireClientAccess } from "@/lib/session";
 import { staffTx } from "@/lib/db";
 import { Card, CardHeader } from "@/components/ui/Card";
@@ -24,6 +24,9 @@ const HISTORY: Record<string, string> = {
   "membership.revoke": "Removed a staff member",
   "website.create": "Added a website",
   "website.update": "Updated a website",
+  "website.enquiry_key": "Updated the enquiry key",
+  "wix_enquiry.bind": "Connected a Wix form",
+  "wix_enquiry.clear": "Returned a website to its enquiry database",
   "client_file_link.create": "Added a file link",
   "client_file_link.archive": "Removed a file link",
 };
@@ -44,6 +47,7 @@ export default async function ClientProfilePage({ params }: { params: Promise<{ 
     allStaff: assign ? await listStaff(db) : [],
   }));
   const manage = canManageRegistry(access);
+  const admin = canManageUsers(access);
   const nonMembers = data.allStaff.filter((s) => s.active && !data.members.some((m) => m.user_id === s.id));
   const client = data.client;
   return (
@@ -220,10 +224,10 @@ export default async function ClientProfilePage({ params }: { params: Promise<{ 
           {data.websites.length === 0 && <p className="text-sm text-muted">{manage ? "No websites recorded yet. Add a placeholder address below, not a real clinic URL." : "No websites recorded."}</p>}
           {data.websites.map((w) => (
             <div key={w.id} className="border-b border-line pb-5">
-              {manage ? <WebsiteForm clientId={id} values={w} /> : <p className="text-sm">{w.name}{w.url ? ` · ${w.url}` : ""} · {w.platform} · {label(w.environment)} · {label(w.status)}</p>}
+              {manage ? <WebsiteForm clientId={id} clientSlug={client.slug} admin={admin} values={w} /> : <p className="text-sm">{w.name}{w.url ? ` · ${w.url}` : ""} · {w.platform} · {label(w.environment)} · {label(w.status)}{w.enquiry_key ? ` · Enquiry key ${w.enquiry_key}` : ""} · {w.enquiry_source === "wix" ? "Wix form" : "Enquiry database"}</p>}
             </div>
           ))}
-          {manage && <div><h3 className="mb-2 text-sm font-semibold">Add a website</h3><WebsiteForm key={data.websites.map((w) => w.id).join(",") || "none"} clientId={id} /></div>}
+          {manage && <div><h3 className="mb-2 text-sm font-semibold">Add a website</h3><WebsiteForm key={data.websites.map((w) => w.id).join(",") || "none"} clientId={id} clientSlug={client.slug} admin={admin} /></div>}
         </div>
       </Card>
 

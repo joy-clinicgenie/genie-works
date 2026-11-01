@@ -31,7 +31,7 @@ export default async function ClientsPage({ searchParams }: { searchParams: Prom
         <FilterSelect name="specialty" label="Specialty" value={params.specialty} allLabel="All specialties" options={data.specialties.map((specialty) => ({ value: specialty, label: specialty }))} />
         <FilterSelect name="owner" label="Clinic Genie owner" value={params.owner} allLabel="All owners" options={data.staff.map((person) => ({ value: person.id, label: person.display_name }))} />
       </FilterBar>
-      <Card>
+      <Card className="min-w-0 overflow-hidden">
         <Table caption="Clients">
           <thead>
             <tr>

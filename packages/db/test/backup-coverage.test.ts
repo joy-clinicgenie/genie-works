@@ -20,6 +20,7 @@ function tablesCreatedByMigrations(): string[] {
 describe("backup coverage", () => {
   it("copies blog activity and leaves sign-in secrets unrestored", () => {
     expect(BACKUP_TABLES).toContain("blog_activity");
+    expect(BACKUP_TABLES).toContain("enquiry_follow_ups");
     expect(BACKUP_TABLES).toContain("users");
     expect(BACKUP_TABLES).toContain("accounts");
     for (const table of BACKUP_EXCLUDED_TABLES) {

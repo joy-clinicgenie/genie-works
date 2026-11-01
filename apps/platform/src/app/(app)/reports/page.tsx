@@ -49,7 +49,7 @@ export default async function ReportsPage({ searchParams }: { searchParams: Prom
           <tbody>
             {data.reports.map((report) => (
               <tr key={report.id}>
-                <Td><Link href={`/reports/${report.id}`} className="font-medium text-action hover:underline">{report.name}</Link>{report.status === "draft" && <span className="mt-0.5 block text-xs text-muted">Draft</span>}</Td>
+                <Td><Link href={`/reports/${report.id}`} className="font-medium text-action hover:underline">{report.name}</Link><span className="mt-0.5 block text-xs text-muted">{report.status === "draft" ? "Draft" : "Saved"}</span></Td>
                 <Td>{clientLabel({ name: report.client_name, reference_number: report.reference_number })}</Td>
                 <Td className="whitespace-nowrap">{formatPeriod(report.period_start, report.period_end, " to ")}</Td>
                 <Td>{report.creator_name}</Td>

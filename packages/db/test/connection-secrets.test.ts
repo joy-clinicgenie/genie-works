@@ -16,7 +16,7 @@ afterAll(async () => {
 describe("connection credential writes", () => {
   it("lets an administrator store a connection and keeps the secret out of the staff row, list and audit", async () => {
     const admin = await staffByEmail("admin@example.invalid");
-    const harbour = await clientBySlug("harbourview-dental");
+    const harbour = await clientBySlug("meridian-skin");
     const marker = "staff-must-not-see-this";
     await asContext(SERVICE, async (db) => {
       const site = (await db.query<{ id: string }>("select id from websites where client_id = $1 order by created_at limit 1", [harbour])).rows[0]!.id;
@@ -63,7 +63,7 @@ describe("connection credential writes", () => {
     const specialist = await staffByEmail("specialist-a@example.invalid");
     const reviewer = await staffByEmail("reviewer@example.invalid");
     const reader = await staffByEmail("readonly@example.invalid");
-    const harbour = await clientBySlug("harbourview-dental");
+    const harbour = await clientBySlug("meridian-skin");
     await asContext(SERVICE, async (db) => {
       const site = (await db.query<{ id: string; name: string; url: string | null; platform: string; environment: "production" | "staging" | "development"; status: "active" | "archived"; notes: string | null }>(
         "select id, name, url, platform, environment, status, notes from websites where client_id = $1 order by created_at limit 1",

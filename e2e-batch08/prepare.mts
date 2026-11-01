@@ -117,11 +117,11 @@ async function prepare(): Promise<void> {
       `update clients
        set status = 'active', archived_at = null, updated_at = now(), updated_by = $1
        where slug = any($2::text[])`,
-      [adminId, ["harbourview-dental", "meridian-skin", "northgate-physio"]],
+      [adminId, ["meridian-skin"]],
     );
     const clients = await admin.query<{ slug: string; id: string; status: string }>(
       "select slug, id, status from clients where slug = any($1::text[]) order by slug",
-      [["harbourview-dental", "meridian-skin", "northgate-physio"]],
+      [["clinic-genie", "meridian-skin"]],
     );
     const website = await admin.query<{ id: string }>(
       `select w.id
@@ -131,20 +131,20 @@ async function prepare(): Promise<void> {
        limit 1`,
     );
     if (!website.rows[0]?.id) throw new Error("Meridian native website was not found after seed.");
-    if (clients.rows.some((row) => row.status !== "active")) throw new Error("Fictional clinic restore did not leave the three clinics active.");
+    if (clients.rows.some((row) => row.slug === "meridian-skin" && row.status !== "active")) throw new Error("Fictional clinic restore did not leave Meridian active.");
     const bySlug = Object.fromEntries(clients.rows.map((row) => [row.slug, row.id]));
+    if (!bySlug["meridian-skin"] || !bySlug["clinic-genie"]) throw new Error("Meridian or the internal client was not found after seed.");
     await mkdir("e2e-batch08/.run", { recursive: true });
     await writeFile(
       "e2e-batch08/.run/context.json",
       JSON.stringify({
         adminId,
-        harbourId: bySlug["harbourview-dental"],
         meridianId: bySlug["meridian-skin"],
-        northgateId: bySlug["northgate-physio"],
+        clinicGenieId: bySlug["clinic-genie"],
         meridianWebsiteId: website.rows[0].id,
       }, null, 2),
     );
-    console.log(`platform database ${PLATFORM_DB}: restored 3 fictional clinics`);
+    console.log(`platform database ${PLATFORM_DB}: restored Meridian`);
   } finally {
     await admin.end();
   }

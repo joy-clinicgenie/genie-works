@@ -33,7 +33,7 @@ describe("report builder measurement rules", () => {
 
   it("keeps clicks out of the lead total and leaves cost per lead blank without both inputs", async () => {
     const admin = await staffByEmail("admin@example.invalid");
-    const client = await clientBySlug("harbourview-dental");
+    const client = await clientBySlug("meridian-skin");
     const built = await asContext(staffCtx(admin), async (db) => {
       await record(db, client, admin.id, "clinic_records", "enquiries", 4, "2030-04-01", "2030-04-30");
       await record(db, client, admin.id, "manual", "form_submissions", 7, "2030-04-01", "2030-04-30");
@@ -64,7 +64,7 @@ describe("report builder measurement rules", () => {
 
   it("does not calculate cost per lead from clicks when enquiries are absent", async () => {
     const admin = await staffByEmail("admin@example.invalid");
-    const client = await clientBySlug("harbourview-dental");
+    const client = await clientBySlug("meridian-skin");
     const built = await asContext(staffCtx(admin), async (db) => {
       await record(db, client, admin.id, "google_ads_export", "cost", 80, "2030-05-01", "2030-05-31", "sgd");
       await record(db, client, admin.id, "manual", "contact_whatsapp", 6, "2030-05-01", "2030-05-31");
@@ -86,7 +86,7 @@ describe("report builder measurement rules", () => {
   it("saves a draft without a client-review version and hides another client's figures", async () => {
     const admin = await staffByEmail("admin@example.invalid");
     const specialist = await staffByEmail("specialist-b@example.invalid");
-    const client = await clientBySlug("harbourview-dental");
+    const client = await clientBySlug("meridian-skin");
     await adminPool.query(
       `insert into report_snapshots (client_id, source, channel, metric, period_start, period_end, value, unit, entered_by)
        values ($1, 'ga4_export', 'all', 'sessions', '2030-06-01', '2030-06-30', 40, 'count', $2)`,

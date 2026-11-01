@@ -4,10 +4,11 @@
  * into a freshly migrated isolated database. A managed vendor's physical backups are separate and
  * are not claimed here.
  */
-import { mkdirSync, readFileSync, writeFileSync, readdirSync } from "node:fs";
+import { mkdirSync, readFileSync, rmSync, writeFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import pg from "pg";
 import { assertSafeTarget, ensureAppRole, runMigrations } from "./migrate";
+import { defaultReportArtifactDirectory, readSavedReportArtifactCopies, restoreSavedReportArtifactCopies, type SavedReportArtifactCopy } from "./services/report-artifact";
 import { databaseTarget, maintenanceUrl } from "./testing/targets";
 
 /**
@@ -28,6 +29,7 @@ export const BACKUP_TABLES = [
   "websites",
   "website_forms",
   "enquiry_status_events",
+  "enquiry_follow_ups",
   "blog_articles",
   "blog_article_versions",
   "blog_activity",
@@ -120,9 +122,10 @@ export interface BackupFile {
   sourceDatabase: string;
   migrations: string[];
   tables: Record<string, unknown[]>;
+  reportArtifacts?: SavedReportArtifactCopy[];
 }
 
-export async function writeBackup(pool: pg.Pool, outDir: string): Promise<{ file: string; counts: Record<string, number> }> {
+export async function writeBackup(pool: pg.Pool, outDir: string, opts: { artifactDirectory?: string } = {}): Promise<{ file: string; counts: Record<string, number>; reportArtifacts: number }> {
   mkdirSync(outDir, { recursive: true });
   const client = await pool.connect();
   let runId: string | undefined;
@@ -140,16 +143,32 @@ export async function writeBackup(pool: pg.Pool, outDir: string): Promise<{ file
       counts[table] = rows.length;
     }
     await client.query("commit");
+    const savedIds = new Set(
+      ((tables.saved_reports ?? []) as Array<{ id?: string; status?: string }>)
+        .filter((row) => row.status === "saved" && row.id)
+        .map((row) => row.id as string),
+    );
+    const versions = ((tables.saved_report_versions ?? []) as Array<{ report_id?: string; version_number?: number }>)
+      .flatMap((row) => (row.report_id && savedIds.has(row.report_id) && row.version_number ? [{ report_id: row.report_id, version_number: row.version_number }] : []));
+    let artifactDirectory: string | null = opts.artifactDirectory ?? null;
+    if (!artifactDirectory) {
+      try {
+        artifactDirectory = defaultReportArtifactDirectory();
+      } catch {
+        artifactDirectory = null;
+      }
+    }
+    const reportArtifacts = artifactDirectory ? readSavedReportArtifactCopies(artifactDirectory, versions) : [];
     const stamp = new Date().toISOString().replace(/[:.]/g, "-");
     const file = join(outDir, `backup-${stamp}.json`);
-    const body: BackupFile = { format: "clinic-genie-logical-v1", createdAt: new Date().toISOString(), sourceDatabase: "redacted", migrations, tables };
+    const body: BackupFile = { format: "clinic-genie-logical-v1", createdAt: new Date().toISOString(), sourceDatabase: "redacted", migrations, tables, reportArtifacts };
     writeFileSync(file, JSON.stringify(body));
     await client.query("update backup_runs set finished_at = now(), outcome = 'passed', artefact_ref = $2, record_counts = $3 where id = $1", [
       runId,
       file,
       JSON.stringify(counts),
     ]);
-    return { file, counts };
+    return { file, counts, reportArtifacts: reportArtifacts.length };
   } catch (err) {
     await client.query("rollback").catch(() => {});
     if (runId) {
@@ -176,6 +195,7 @@ export interface RestoreVerification {
   migrationsMatch: boolean;
   invalidated: Record<(typeof BACKUP_EXCLUDED_TABLES)[number], number>;
   blog: { articles: number; versions: number; activity: number; activityMissingArticle: number; activityClientMismatch: number };
+  reportArtifacts: { restored: number; mismatches: string[] };
   isolationCheck: { userA: number; userB: number; total: number } | null;
 }
 
@@ -183,7 +203,7 @@ export interface RestoreVerification {
  * Restores a backup file into an isolated database (created fresh), then verifies record counts,
  * relationships and access policies. Records the result in the SOURCE database's backup_runs table.
  */
-export async function restoreTest(sourcePool: pg.Pool, adminUrl: string, backupPath: string, opts: { keep?: boolean; appPassword: string }): Promise<RestoreVerification> {
+export async function restoreTest(sourcePool: pg.Pool, adminUrl: string, backupPath: string, opts: { keep?: boolean; appPassword: string; artifactDirectory?: string }): Promise<RestoreVerification> {
   const sourceDb = assertRecoverySource(adminUrl).database;
   const testDb = recoveryDestinationName(sourceDb);
   const body = JSON.parse(readFileSync(backupPath, "utf8")) as BackupFile;
@@ -226,14 +246,23 @@ export async function restoreTest(sourcePool: pg.Pool, adminUrl: string, backupP
     } finally {
       client.release();
     }
-    const verification = await verifyRestore(testPool, body);
+    let sourceArtifacts = opts.artifactDirectory ?? null;
+    if (!sourceArtifacts) {
+      try {
+        sourceArtifacts = defaultReportArtifactDirectory();
+      } catch {
+        sourceArtifacts = join(outDirFallback(backupPath), "source-report-artifacts");
+      }
+    }
+    const artifactDestination = join(outDirFallback(backupPath), `${testDb}-report-files`);
+    const verification = await verifyRestore(testPool, body, sourceArtifacts, artifactDestination);
     const passed = verification.mismatches.length === 0;
     await sourcePool.query("update backup_runs set finished_at = now(), outcome = $2, record_counts = $3, notes = $4 where id = $1", [
       runId,
       passed ? "passed" : "failed",
       JSON.stringify(verification.counts),
       passed
-        ? `Restored into ${testDb}. Counts, relationships, blog activity and migrations matched. Auth.js sessions, verification tokens and development magic links were left empty.`
+        ? `Restored into ${testDb}. Counts, relationships, follow-ups, blog activity, report files and migrations matched. Auth.js sessions, verification tokens and development magic links were left empty.`
         : `Mismatches: ${verification.mismatches.join("; ")}`.slice(0, 300),
     ]);
     return verification;
@@ -242,12 +271,19 @@ export async function restoreTest(sourcePool: pg.Pool, adminUrl: string, backupP
     throw err;
   } finally {
     await testPool?.end();
-    if (!opts.keep) await maintenance.query(`drop database if exists "${testDb}" with (force)`).catch(() => {});
+    if (!opts.keep) {
+      await maintenance.query(`drop database if exists ${quoteIdent(testDb)} with (force)`).catch(() => {});
+      rmSync(join(outDirFallback(backupPath), `${testDb}-report-files`), { recursive: true, force: true });
+    }
     await maintenance.end();
   }
 }
 
-async function verifyRestore(pool: pg.Pool, body: BackupFile): Promise<RestoreVerification> {
+function outDirFallback(backupPath: string): string {
+  return join(backupPath, "..");
+}
+
+async function verifyRestore(pool: pg.Pool, body: BackupFile, sourceArtifacts: string, artifactDestination: string): Promise<RestoreVerification> {
   const counts: Record<string, number> = {};
   const mismatches: string[] = [];
   for (const table of BACKUP_TABLES) {
@@ -265,6 +301,7 @@ async function verifyRestore(pool: pg.Pool, body: BackupFile): Promise<RestoreVe
     evidence_issue_mismatch: "select count(*) from evidence_items e join issues i on i.id = e.issue_id where i.client_id <> e.client_id",
     wordings_without_claim: "select count(*) from claim_wordings w where not exists (select 1 from medical_claims c where c.id = w.claim_id)",
     memberships_without_user: "select count(*) from memberships m where not exists (select 1 from staff_users u where u.id = m.user_id)",
+    follow_ups_without_wix_website: "select count(*) from enquiry_follow_ups f where not exists (select 1 from websites w where w.id = f.website_id and w.client_id = f.client_id and w.enquiry_source = 'wix')",
   };
   for (const [name, sql] of Object.entries(checks)) {
     orphans[name] = Number((await pool.query<{ count: string }>(sql)).rows[0]!.count);
@@ -320,5 +357,16 @@ async function verifyRestore(pool: pg.Pool, body: BackupFile): Promise<RestoreVe
   } else {
     mismatches.push("isolation: seeded specialists were not found");
   }
-  return { counts, mismatches, orphans, rlsEnabled, migrationsMatch, invalidated, blog, isolationCheck };
+  const copies = body.reportArtifacts ?? [];
+  let reportArtifacts: RestoreVerification["reportArtifacts"] = { restored: 0, mismatches: [] };
+  if (copies.length > 0) {
+    reportArtifacts = await restoreSavedReportArtifactCopies(sourceArtifacts, artifactDestination, copies);
+    mismatches.push(...reportArtifacts.mismatches);
+  }
+  const savedIds = new Set((await pool.query<{ id: string }>("select id from saved_reports where status = 'saved'")).rows.map((row) => row.id.toLowerCase()));
+  for (const copy of copies) {
+    const reportId = copy.fileName.slice(0, 36).toLowerCase();
+    if (!savedIds.has(reportId)) mismatches.push(`report file without saved report: ${copy.fileName}`);
+  }
+  return { counts, mismatches, orphans, rlsEnabled, migrationsMatch, invalidated, blog, reportArtifacts, isolationCheck };
 }

@@ -1,7 +1,7 @@
 import type pg from "pg";
 
 /** Clients a fresh install may keep. Directory rows from historical migrations are not in this list. */
-export const REHEARSAL_CLIENT_SLUGS = ["clinic-genie", "harbourview-dental", "meridian-skin", "northgate-physio"] as const;
+export const REHEARSAL_CLIENT_SLUGS = ["clinic-genie", "meridian-skin"] as const;
 
 export const REHEARSAL_DATABASE = "clinic_genie_rehearsal";
 

@@ -13,6 +13,7 @@ try {
   const result = await writeBackup(getAdminPool(), outDir);
   console.log(`Backup written: ${result.file}`);
   console.log(JSON.stringify(result.counts));
+  console.log(`Report files: ${result.reportArtifacts}`);
 } finally {
   await closePools();
 }

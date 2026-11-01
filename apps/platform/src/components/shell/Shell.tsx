@@ -169,7 +169,7 @@ export function Shell({ workspace, modules, platform, header, account, staffName
         </div>
       )}
       <div className="flex min-h-dvh flex-col min-w-0">
-        <header className="sticky top-0 z-30 flex w-full flex-wrap items-center gap-2 border-b border-line-strong bg-surface px-3 py-2 lg:min-h-16 lg:flex-nowrap lg:gap-3 lg:px-8 lg:py-3">
+        <header className="sticky top-0 z-30 flex w-full min-w-0 flex-wrap items-center gap-2 border-b border-line-strong bg-surface px-3 py-2 md:min-h-16 lg:flex-nowrap lg:gap-3 lg:px-8 lg:py-3">
           <button ref={menuButtonRef} type="button" className="inline-flex size-11 shrink-0 items-center justify-center rounded-xl hover:bg-brand-pale focus-visible:outline focus-visible:outline-[3px] focus-visible:outline-offset-2 focus-visible:outline-action lg:hidden" aria-label="Open menu" aria-expanded={open} onClick={() => setOpen(true)}>
             <Menu className="size-5" aria-hidden="true" />
           </button>

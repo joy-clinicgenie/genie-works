@@ -1,22 +1,24 @@
 # Build status
 
-Updated: 31 October 2026, Asia/Singapore, after Batch 09 local preparation. Latest approved decision is D21. No D22 is recorded.
+Updated: 2 November 2026, Asia/Singapore. Decisions run through D37.
 
 ## Current stage
 
 Genie Works V1 is a local nine-module staff application. The launch menu is Dashboard (Agency Overview), Clients, Website analytics, SEO performance, Blog, Leads and forms, Reports, Settings and Admin.
 
-Migrations are the 36 files in `packages/db/migrations/`, numbered 0001 through 0035. Two applied files share 0034: `0034_client_public_profiles.sql` and `0034_leads_forms.sql`. Do not rename or rewrite them. The runner records the full filename and skips an unchanged file. The newest file is `0035_connection_secret_admin.sql`, which limits connection-secret writes to an administrator.
+Migrations are the 39 files in `packages/db/migrations/`. Two applied files share 0034: `0034_client_public_profiles.sql` and `0034_leads_forms.sql`. Do not rename or rewrite them. The runner records the full filename and skips an unchanged file. The newest file is `0038_enquiry_source_binding.sql`. `0036_wix_enquiry_binding.sql` stores one Wix form's identifiers on a website. `0038_enquiry_source_binding.sql` assigns a missing enquiry key from the client slug and environment, and keeps a Wix identifier change to an administrator. Enquiry answers are not stored. D31 records one source per website. D36 records both connectors on the same Enquiries page, and assesses DEP-02 once per source connection. `0035_connection_secret_admin.sql` still limits connection-secret writes to an administrator. No connection is approved.
 
-Reports in the database are `draft` or `saved`. **Save draft** updates the working copy. **Save for review** stores a version. A saved report is not Approved or Final. The four-state workflow is a proposal in `docs/audits/batches/BATCH_06_HANDOVER.md` and stays blocked on DEP-06.
+D23 is the report-state decision. Reports in the database are `draft` or `saved`. **Save draft** updates the working copy and writes no file. **Save for review** stores a version and one frozen JSON file under `docs/report`. A saved report is not Approved or Final. The four-state workflow in `docs/audits/batches/BATCH_06_HANDOVER.md` is a proposal, not the V1 workflow.
+
+An isolated recovery copies those saved JSON files into a directory beside the restored database. It does not write over the source `docs/report` folder. Hosted disk or object-store durability is not verified. That remaining check is separate from the resolved report-state decision.
 
 ## Completed through Batch 07
 
 - Decisions D1 to D21 in `docs/DECISIONS.md`.
 - Fresh local setup removes imported directory clients. Existing databases are not stripped by a later migrate. The historical SQL remains in git (DEP-05, GW-004).
-- Fictional backup and restore on an isolated local database (GW-007).
+- Fictional backup and restore on an isolated local database (GW-007). `enquiry_follow_ups` is included. Saved report JSON is copied beside the restored database and is not written over `docs/report`. Hosted artifact durability is not verified.
 - Analytics worker, fixture sync and a prepared cron entry. No live provider call (GW-005, DEP-01).
-- Enquiry screens against a local fixture when `ENQUIRY_DATABASE_URL` points at that fixture. The shared setting is empty. No mail is sent (GW-006, DEP-02, DEP-03).
+- Enquiry screens read a vibe-coded website from its enquiry database and a Wix website from the Wix Forms API. Both appear on one page, mapped to the client, website and form. Each website keeps its own sender. Genie Works does not send email (D36). A local fixture is not an approved source, and one connection does not cover every website (DEP-02). Labelled test DEP03-8E4DC5 was accepted by Resend and confirmed in the test inbox at 22:55 Asia/Singapore. The outbox row for DEP03-8E4DC5 stays `sent`. D35 records provider acceptance of DEP03D-A72CDF from `hello@clinic-genie.com` at 23:21:37. Inbox receipt of that message is not confirmed. The saved dispatcher from-address remains `onboarding@resend.dev` (GW-006).
 - Administrator-only connection secrets (GW-011).
 - Repeatable fictional seed against `report_snapshots_current_idx` (GW-009).
 - Header controls that wrap below the desktop breakpoint, one home-page `h1`, and the link and image lint warnings from the earlier scan (GW-012, GW-014, GW-015).
@@ -29,16 +31,17 @@ Reports in the database are `draft` or `saved`. **Save draft** updates the worki
 | Item | What is missing |
 | --- | --- |
 | DEP-01 | A named non-production analytics property and permission to read it |
-| DEP-02 | An enquiry source the source owner approves. The local fixture is not that source |
-| DEP-03 | A sender and an approved test recipient, or a decision that provider acceptance is enough |
+| DEP-02 | Each source connection, assessed on its own. A website enquiry database does not cover a Wix form. One Wix form does not cover another website. The local fixture is not an approval. No connection is approved |
+| DEP-03 | Receipt of DEP03-8E4DC5 is confirmed. DEP03D-A72CDF was accepted from `hello@clinic-genie.com` and its inbox receipt is not confirmed. The saved dispatcher from-address is still `onboarding@resend.dev`. Production mail is still missing |
 | DEP-04 | An authorised staging project |
 | DEP-05 | A repository-owner decision on the historical migration text. No history rewrite was done |
-| DEP-06 | One product-owner choice for report states, and where the final artifact lives |
+| DEP-06 report states | Resolved by D23. The states are draft and saved. Approved and Final are not V1 states |
+| DEP-06 artifact durability | A saved file is written under `docs/report`, and an isolated recovery can copy it beside the restored database. A hosted disk or object store has not been verified |
 | DEP-07 | A staging website that will call the blog or SEO API |
 | DEP-08 | A named rollback owner |
 | Owners | Clinic owner, content approver, security reviewer and release approver are unnamed |
 
-Do not describe live analytics, email delivery or website API consumption as verified. Do not describe a saved report as approved.
+Do not describe live analytics, production mail, or website API consumption as verified. DEP03-8E4DC5 was confirmed in the test inbox. DEP03D-A72CDF was accepted from the verified domain, and its inbox receipt is not confirmed. That does not close the connected-pilot mail gate. Do not describe a saved report as approved.
 
 ## Legacy routes
 

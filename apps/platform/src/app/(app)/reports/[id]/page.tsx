@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { isReportTemplate } from "@clinic-genie/contracts";
-import { canEditClient, canExport, composeReport, formatDateTime, formatPeriod, gatherReportFacts, getSavedReport, listReportWebsites } from "@clinic-genie/db";
+import { canEditClient, canExport, composeReport, formatDateTime, formatPeriod, gatherReportFacts, getSavedReport, listReportWebsites, savedReportArtifactExists, savedReportArtifactFileName } from "@clinic-genie/db";
 import { requireAccess } from "@/lib/session";
 import { staffTx } from "@/lib/db";
 import { PageHeader, Card, CardHeader } from "@/components/ui/Card";
@@ -103,7 +103,7 @@ export default async function SavedReportPage({ params, searchParams }: { params
       <PageHeader
         title={report.name}
         eyebrow={<Link href="/reports" className="text-action hover:underline">Report library</Link>}
-        description={`${clientLabel({ name: report.client_name, reference_number: report.reference_number })} · ${formatPeriod(report.period_start, report.period_end, " to ")} · ${report.creator_name}, ${formatDateTime(report.created_at)}`}
+        description={`${clientLabel({ name: report.client_name, reference_number: report.reference_number })} · ${formatPeriod(report.period_start, report.period_end, " to ")} · ${report.status === "draft" ? "Draft" : "Saved"} · ${report.creator_name}, ${formatDateTime(report.created_at)}`}
         action={
           <div className="flex shrink-0 flex-wrap justify-end gap-2">
             {canDownload && <a className={buttonClass()} href={downloadHref}>Download CSV</a>}
@@ -126,7 +126,12 @@ export default async function SavedReportPage({ params, searchParams }: { params
             <li key={item.id} className="flex flex-wrap items-center justify-between gap-3 py-3 text-sm">
               <span>
                 <span className="font-medium">Version {item.version_number}</span>
-                <span className="block text-xs text-muted">{item.creator_name} · {formatDateTime(item.created_at)} · For client review</span>
+                <span className="block text-xs text-muted">{item.creator_name} · {formatDateTime(item.created_at)} · Saved</span>
+                <span className="block text-xs text-muted">
+                  {savedReportArtifactExists(report.id, item.version_number)
+                    ? `Saved copy stored in docs/report/${savedReportArtifactFileName(report.id, item.version_number)}.`
+                    : "Saved copy is not stored for this version yet."}
+                </span>
               </span>
               <Link href={`/reports/${report.id}?version=${item.id}`} className="font-medium text-action hover:underline">Open this version</Link>
             </li>

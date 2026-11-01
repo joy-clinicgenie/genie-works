@@ -21,12 +21,12 @@ const place = await admin.query<{ client_id: string; website_id: string; user_id
    from clients c
    join websites w on w.client_id = c.id and w.status = 'active'
    join staff_users u on u.email = 'admin@example.invalid' and u.active
-   where c.slug = 'harbourview-dental'
+   where c.slug = 'meridian-skin'
    order by w.created_at
    limit 1`,
 );
 const row = place.rows[0];
-if (!row) throw new Error("Refusing recovery fixture: the fictional Harbourview client is not ready.");
+if (!row) throw new Error("Refusing recovery fixture: the fictional Meridian client is not ready.");
 
 const existing = await admin.query("select 1 from blog_articles where website_id = $1 and slug = 'recovery-check'", [row.website_id]);
 if (existing.rowCount === 0) {

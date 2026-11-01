@@ -91,10 +91,10 @@ export default async function NotificationStatusPage({ searchParams }: { searchP
     <EnquiryTabs>
       <PageHeader
         title="Notification status"
-        description="Each row is a clinic notification for an enquiry that is already stored. Retry requested means a staff retry is waiting. Processing means the source-system sender has the row. Sent means the provider accepted the message. Inbox delivery is not confirmed. Failed and Not configured are not provider acceptance. A retry does not create another enquiry. Genie Works does not send the email."
+        description="This list is the website-database outbox only. A Wix form keeps its own sender and is not listed here. Retry requested means a staff retry is waiting. Processing means that website’s sender has the row. Sent means the provider accepted the message. Inbox delivery is not confirmed. Failed and Not configured are not provider acceptance. A retry does not create another enquiry. Genie Works does not send the email, and another website does not have to use the same provider."
       />
       {denied && <div className="mb-4"><Notice tone="bad" title="Not available">You do not have access to that clinic.</Notice></div>}
-      {!data.connected && <EmptyState title="Notification status is not available">{enquiryUnavailableCopy(source ?? { configured: false, refused: false }, "The clinic website database is not connected. Nothing was changed.")}</EmptyState>}
+      {!data.connected && <EmptyState title="Notification status is not available">{enquiryUnavailableCopy(source ?? { configured: false, refused: false }, "The website enquiry database is not connected, so its notification rows are not available. Wix forms keep their own sender and are not listed here. Nothing was changed.")}</EmptyState>}
       {data.connected && (
         <>
           <FilterBar clearHref="/enquiries/notifications">

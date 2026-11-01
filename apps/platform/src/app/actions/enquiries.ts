@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { canEditClient, getClientBySlug, recordAudit, recordEnquiryStatusEvent } from "@clinic-genie/db";
+import { canEditClient, getClientBySlug, recordAudit, recordEnquiryStatusEvent, setWixEnquiryFollowUp } from "@clinic-genie/db";
 import { requireAccess } from "@/lib/session";
 import { staffTx } from "@/lib/db";
 import { canRetryNotifications, enquiryConnection, enquiryUnavailableCopy, getFormSubmission, retryNotification, submissionClinicScope, submissionEditScope, submissionStatus, updateEnquiryStatus } from "@/lib/form-submissions";
@@ -49,7 +49,7 @@ export async function updateEnquiryStatusAction(_prev: ActionState, form: FormDa
   if (fromStatus === toStatus && !note) return { ok: false, error: "Choose a different status, or add a note.", field: "status" };
   const editScope = submissionEditScope(access);
   if (editScope && editScope.length === 0) return { ok: false, error: "You do not have permission to change follow-up status." };
-  const current = await getFormSubmission(submissionClinicScope(access), id);
+  const current = await getFormSubmission(submissionClinicScope(access), id, access);
   if (current === "unavailable") return { ok: false, error: await sourceError() };
   if (!current) return { ok: false, error: "That enquiry is not available." };
   if (current.status !== fromStatus) return { ok: false, error: "The status changed before this was saved. Reload the enquiry.", field: "status" };
@@ -57,9 +57,21 @@ export async function updateEnquiryStatusAction(_prev: ActionState, form: FormDa
   if (!client || !canEditClient(access, client.id)) return { ok: false, error: "You do not have permission to change follow-up status." };
   if (editScope && !editScope.includes(current.clinicId)) return { ok: false, error: "You do not have permission to change follow-up status." };
   if (fromStatus !== toStatus) {
-    const updated = await updateEnquiryStatus(editScope, id, fromStatus, toStatus);
-    if (updated === "unavailable") return { ok: false, error: await sourceError() };
-    if (!updated) return { ok: false, error: "The status changed before this was saved. Reload the enquiry.", field: "status" };
+    if (current.source === "wix") {
+      if (!current.websiteKey) return { ok: false, error: "That enquiry is not available." };
+      const saved = await staffTx(access, (db) => setWixEnquiryFollowUp(db, {
+        externalId: id,
+        enquiryKey: current.websiteKey,
+        fromStatus,
+        toStatus,
+        scope: editScope,
+      }));
+      if (!saved) return { ok: false, error: "The status changed before this was saved. Reload the enquiry.", field: "status" };
+    } else {
+      const updated = await updateEnquiryStatus(editScope, id, fromStatus, toStatus);
+      if (updated === "unavailable") return { ok: false, error: await sourceError() };
+      if (!updated) return { ok: false, error: "The status changed before this was saved. Reload the enquiry.", field: "status" };
+    }
   }
   try {
     await staffTx(access, async (db) => {
@@ -94,5 +106,5 @@ export async function updateEnquiryStatusAction(_prev: ActionState, form: FormDa
 
 async function sourceError(): Promise<string> {
   const connection = await enquiryConnection();
-  return enquiryUnavailableCopy(connection, "The clinic website database is not connected. Nothing was changed.");
+  return enquiryUnavailableCopy(connection, "This website’s enquiry source could not be read. Another website’s connection is separate. Nothing was changed.");
 }

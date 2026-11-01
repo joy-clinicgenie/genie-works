@@ -8,9 +8,8 @@ export { PROD_ORIGIN, DEV_ORIGIN };
 
 export interface BatchContext {
   adminId: string;
-  harbourId: string;
   meridianId: string;
-  northgateId: string;
+  clinicGenieId: string;
   meridianWebsiteId: string;
 }
 

@@ -9,7 +9,7 @@ import { EmptyState } from "@/components/ui/Notice";
 import { EnquiryTabs } from "@/components/modules/EnquiryTabs";
 import { EnquiryFollowUp } from "@/components/modules/EnquiryFollowUp";
 import { EnquiryNotification } from "@/components/modules/EnquiryNotification";
-import { STATUS_LABEL, canRetryNotifications, enquiryConnection, enquiryUnavailableCopy, formName, getFormSubmission, sourceLabel, submissionClinicScope, type SubmissionStatus } from "@/lib/form-submissions";
+import { STATUS_LABEL, canRetryNotifications, enquiryConnection, enquiryConnectorLabel, enquiryUnavailableCopy, formName, getFormSubmission, sourceLabel, submissionClinicScope, type SubmissionStatus } from "@/lib/form-submissions";
 
 export const dynamic = "force-dynamic";
 
@@ -18,10 +18,10 @@ const STATUS_TONE: Record<SubmissionStatus, "info" | "warn" | "neutral"> = { new
 export default async function EnquiryPage({ params }: { params: Promise<{ id: string }> }) {
   const access = await requireAccess();
   const { id } = await params;
-  const submission = await getFormSubmission(submissionClinicScope(access), id);
+  const submission = await getFormSubmission(submissionClinicScope(access), id, access);
   if (submission === "unavailable") {
     const source = await enquiryConnection();
-    return <EmptyState title="This enquiry could not be loaded">{enquiryUnavailableCopy(source, "The clinic website database is not connected. Nothing was changed.")}</EmptyState>;
+    return <EmptyState title="This enquiry could not be loaded">{enquiryUnavailableCopy(source, "This website’s enquiry source could not be read. Another website’s connection is separate. Nothing was changed.")}</EmptyState>;
   }
   if (!submission) notFound();
   const { client, events, retries } = await staffTx(access, async (db) => ({
@@ -52,12 +52,13 @@ export default async function EnquiryPage({ params }: { params: Promise<{ id: st
       />
       <div className="grid gap-4 lg:grid-cols-[minmax(0,1.4fr)_minmax(18rem,1fr)]">
         <Card className="p-5">
-          <p className="mb-4 text-sm text-muted">{submission.clinicName} · {formName(submission.formKey)} · {formatDateTime(submission.submittedAt)} · {submission.reference}</p>
+          <p className="mb-4 text-sm text-muted">{submission.clinicName} · {submission.websiteKey ?? "Website not recorded"} · {formName(submission.formKey)} · {enquiryConnectorLabel(submission.source)} · {formatDateTime(submission.submittedAt)} · {submission.reference}</p>
           <KeyValue items={[
+            { label: "Connector", value: enquiryConnectorLabel(submission.source) },
             { label: "Name", value: submission.submitterName },
-            { label: "Telephone", value: submission.contactNumber },
+            { label: "Telephone", value: submission.contactNumber || null },
             { label: "Email", value: submission.email },
-            { label: "Reason", value: submission.reason },
+            { label: "Reason", value: submission.reason || null },
             { label: "Preferred time", value: preference || null },
             { label: "Page", value: submission.pagePath },
             { label: "Source", value: sourceLabel(submission.attributionSource) },
@@ -72,13 +73,15 @@ export default async function EnquiryPage({ params }: { params: Promise<{ id: st
             status={submission.notificationStatus}
             notification={submission.notification}
             manualRetries={[...retries].reverse().map((retry) => ({ id: retry.id, at: retry.occurred_at, actor: retry.actor_name ?? "Staff" }))}
-            canRetry={canRetryNotifications(access)}
+            canRetry={submission.source !== "wix" && canRetryNotifications(access)}
+            delivery={submission.notificationDelivery}
           />
         </Card>
         <Card className="p-5">
           <h2 className="text-base font-semibold">Follow-up</h2>
           <p className="mt-2 text-sm text-muted">
-            {latest ? <>Last updated {formatDateTime(latest.occurred_at)} by {latest.actor_name}.</> : "This status was recorded on the website. This platform has no staff change yet."}
+            {submission.source === "wix" && "Follow-up is stored in Genie Works. The Wix submission stays as it was received. "}
+            {latest ? <>Last updated {formatDateTime(latest.occurred_at)} by {latest.actor_name}.</> : submission.source === "wix" ? "No staff change is recorded. Follow-up starts at New." : "This status was recorded on the website. This platform has no staff change yet."}
           </p>
           <div className="mt-4">
             {canEdit ? <EnquiryFollowUp enquiryId={submission.id} status={submission.status} /> : <p className="text-sm">You can view this enquiry. Changing follow-up status needs edit access for the client.</p>}

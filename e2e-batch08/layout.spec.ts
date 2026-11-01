@@ -14,6 +14,24 @@ test("desktop, tablet and mobile layouts keep the header readable", async ({ bro
       expect(layout.pageOverflow, `${width}px page overflow`).toBeLessThanOrEqual(1);
       expect(layout.headerOverflow, `${width}px header overflow`).toBeLessThanOrEqual(1);
       expect(layout.overlaps, `${width}px overlaps ${layout.overlaps.join("; ")}`).toEqual([]);
+      if (width === 768) {
+        await expect(page.getByPlaceholder("Name, client ID or short code")).toBeVisible();
+        await expect(page.getByLabel("Status")).toBeVisible();
+        const clientLink = page.locator("table a").first();
+        await expect(clientLink).toBeVisible();
+        const tableUsable = await page.evaluate(() => {
+          const table = document.querySelector("table");
+          const scroller = table?.parentElement;
+          const link = document.querySelector("table a");
+          if (!table || !scroller || !link) return false;
+          const overflow = document.documentElement.scrollWidth - document.documentElement.clientWidth;
+          const style = getComputedStyle(scroller);
+          const linkBox = link.getBoundingClientRect();
+          const scrollerBox = scroller.getBoundingClientRect();
+          return overflow <= 1 && style.overflowX === "auto" && linkBox.width > 0 && linkBox.top < window.innerHeight && scrollerBox.width > 0;
+        });
+        expect(tableUsable, "768px table controls").toBe(true);
+      }
       if (width < 1024) await expect(page.getByRole("button", { name: "Open menu" })).toBeVisible();
       else await expect(page.getByRole("link", { name: "Clients" }).first()).toBeVisible();
     }

@@ -1,6 +1,7 @@
 import { createHash, randomBytes } from "node:crypto";
 import { afterAll, describe, expect, it } from "vitest";
 import { applyContext } from "../src/client";
+import { createWebsite } from "../src/services/registry";
 import { adminPool, appPool, asContext, clientBySlug, staffByEmail, staffCtx } from "./helpers";
 import {
   addArticleMedia,
@@ -53,11 +54,12 @@ describe("native blog", () => {
     const reviewer = await staffByEmail("reviewer@example.invalid");
     const specB = await staffByEmail("specialist-b@example.invalid");
     const meridian = await clientBySlug("meridian-skin");
-    const harbour = await clientBySlug("harbourview-dental");
     const native = (await adminPool.query<{ id: string }>("select id from websites where client_id = $1 and platform = 'Next.js on Vercel' and environment = 'production'", [meridian])).rows[0]!;
-    const wix = (await adminPool.query<{ id: string }>("select id from websites where client_id = $1 and platform = 'Wix'", [harbour])).rows[0]!;
 
     await asContext(staffCtx(admin), async (db) => {
+      const wix = await createWebsite(db, {
+        clientId: meridian, name: "Synthetic Wix site", url: "https://synthetic-wix.example.invalid", platform: "Wix", environment: "production", notes: null,
+      }, admin.id);
       await applyContext(db, staffCtx(specA));
       const id = await createArticle(db, {
         clientId: meridian,
@@ -105,7 +107,7 @@ describe("native blog", () => {
 
       await applyContext(db, staffCtx(specA));
       const wixId = await createArticle(db, {
-        clientId: harbour,
+        clientId: meridian,
         websiteId: wix.id,
         title: "Wix draft",
         slug: null,
@@ -291,10 +293,8 @@ describe("native blog", () => {
     const reviewer = await staffByEmail("reviewer@example.invalid");
     const readOnly = await staffByEmail("readonly@example.invalid");
     const meridian = await clientBySlug("meridian-skin");
-    const harbour = await clientBySlug("harbourview-dental");
     const native = (await adminPool.query<{ id: string }>("select id from websites where client_id = $1 and platform = 'Next.js on Vercel' and environment = 'production'", [meridian])).rows[0]!;
     const staging = (await adminPool.query<{ id: string }>("select id from websites where client_id = $1 and platform = 'Next.js on Vercel' and environment = 'staging'", [meridian])).rows[0]!;
-    const otherNative = (await adminPool.query<{ id: string }>("select id from websites where client_id = $1 and platform ilike '%next%' limit 1", [harbour])).rows[0];
 
     await asContext(staffCtx(admin), async (db) => {
       await applyContext(db, staffCtx(specA));
@@ -441,7 +441,7 @@ describe("native blog", () => {
       expect(await listArticleActivity(db, id)).toEqual([]);
       expect((await listArticles(db, { websiteId: native.id })).articles).toEqual([]);
       if (readOnly) expect(readOnly.id).not.toBe(specA.id);
-      expect(otherNative || harbour).toBeTruthy();
+      expect(staging.id).toBeTruthy();
     });
   });
 

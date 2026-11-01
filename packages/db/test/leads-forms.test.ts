@@ -3,6 +3,7 @@ import { listAuditEvents, recordAudit } from "../src/services/audit";
 import { canExport } from "../src/services/auth";
 import { listEnquiryStatusEvents, recordEnquiryStatusEvent, setEnquiryFollowUp } from "../src/services/enquiry-follow-up";
 import { listFormWebsites, listWebsiteForms, markWebsiteFormUnverified, saveWebsiteForm } from "../src/services/website-forms";
+import { grantMembership, revokeMembership } from "../src/services/registry";
 import { adminPool, appPool, asContext, clientBySlug, staffByEmail, staffCtx } from "./helpers";
 
 afterAll(async () => {
@@ -28,12 +29,12 @@ describe("leads and forms records", () => {
     const admin = await staffByEmail("admin@example.invalid");
     const specB = await staffByEmail("specialist-b@example.invalid");
     const readonly = await staffByEmail("readonly@example.invalid");
-    const harbour = await clientBySlug("harbourview-dental");
+    const harbour = await clientBySlug("meridian-skin");
     const saved = await asContext(staffCtx(admin), async (db) => {
       const event = await recordEnquiryStatusEvent(db, {
         enquiryId: ENQUIRY_ID,
-        clinicSlug: "harbourview-dental",
-        websiteKey: "harbourview-dental-wix",
+        clinicSlug: "meridian-skin",
+        websiteKey: "meridian-skin-production",
         fromStatus: "closed",
         toStatus: "new",
         note: "Reopened for a call back",
@@ -51,7 +52,7 @@ describe("leads and forms records", () => {
     expect(saved).toBeTruthy();
     await expect(asContext(staffCtx(specB), (db) => recordEnquiryStatusEvent(db, {
       enquiryId: ENQUIRY_ID,
-      clinicSlug: "harbourview-dental",
+      clinicSlug: "meridian-skin",
       websiteKey: null,
       fromStatus: "new",
       toStatus: "closed",
@@ -60,19 +61,19 @@ describe("leads and forms records", () => {
     }))).rejects.toThrow();
     await expect(asContext(staffCtx(readonly), (db) => recordEnquiryStatusEvent(db, {
       enquiryId: ENQUIRY_ID,
-      clinicSlug: "harbourview-dental",
+      clinicSlug: "meridian-skin",
       websiteKey: null,
       fromStatus: "new",
       toStatus: "acknowledged",
       note: null,
       actorUserId: readonly.id,
     }))).rejects.toThrow();
-    const hidden = await asContext(staffCtx(specB), (db) => db.query("select id from enquiry_status_events where clinic_slug = 'harbourview-dental'"));
+    const hidden = await asContext(staffCtx(specB), (db) => db.query("select id from enquiry_status_events where clinic_slug = 'meridian-skin'"));
     expect(hidden.rows).toHaveLength(0);
 
     const owned = await adminPool.query<{ id: string }>(
       `insert into enquiry_status_events (enquiry_id, client_id, clinic_slug, from_status, to_status, actor_user_id)
-       select $1, c.id, c.slug, 'closed', 'new', $2 from clients c where c.slug = 'harbourview-dental' returning id`,
+       select $1, c.id, c.slug, 'closed', 'new', $2 from clients c where c.slug = 'meridian-skin' returning id`,
       [ENQUIRY_ID, admin.id],
     );
     const ownedId = owned.rows[0]?.id;
@@ -92,14 +93,14 @@ describe("leads and forms records", () => {
     const query = {
       async query(sql: string) {
         calls.push(sql);
-        return { rows: sql.includes("update enquiries") ? [{ id, clinic_id: "harbourview-dental", website_key: "harbourview-dental-wix", public_reference: "TEST-HV-CLOSED-003" }] : [] };
+        return { rows: sql.includes("update enquiries") ? [{ id, clinic_id: "meridian-skin", website_key: "meridian-skin-production", public_reference: "TEST-MS-CLOSED-003" }] : [] };
       },
     };
     const runner = query as unknown as Parameters<typeof setEnquiryFollowUp>[0];
-    expect(await setEnquiryFollowUp(runner, { id, fromStatus: "closed", toStatus: "closed", scope: ["harbourview-dental"] })).toBeNull();
+    expect(await setEnquiryFollowUp(runner, { id, fromStatus: "closed", toStatus: "closed", scope: ["meridian-skin"] })).toBeNull();
     expect(calls).toHaveLength(0);
-    const opened = await setEnquiryFollowUp(runner, { id, fromStatus: "closed", toStatus: "new", scope: ["harbourview-dental"] });
-    expect(opened?.reference).toBe("TEST-HV-CLOSED-003");
+    const opened = await setEnquiryFollowUp(runner, { id, fromStatus: "closed", toStatus: "new", scope: ["meridian-skin"] });
+    expect(opened?.reference).toBe("TEST-MS-CLOSED-003");
     expect(calls[0]).toContain("set status = $1");
     expect(calls[0]).toContain("and status = $3");
     expect(calls[0]).not.toMatch(/name|email|message|contact_number/);
@@ -109,11 +110,10 @@ describe("leads and forms records", () => {
     const admin = await staffByEmail("admin@example.invalid");
     const specA = await staffByEmail("specialist-a@example.invalid");
     const specB = await staffByEmail("specialist-b@example.invalid");
-    const harbour = await clientBySlug("harbourview-dental");
-    const northgate = await clientBySlug("northgate-physio");
+    const harbour = await clientBySlug("meridian-skin");
     await asContext(staffCtx(admin), async (db) => {
       const sites = await listFormWebsites(db, [harbour]);
-      const site = sites.find((item) => item.enquiry_key === "harbourview-dental-wix") ?? sites[0];
+      const site = sites.find((item) => item.enquiry_key === "meridian-skin-production") ?? sites[0];
       expect(site).toBeTruthy();
       const saved = await saveWebsiteForm(db, {
         websiteId: site!.id,
@@ -152,13 +152,14 @@ describe("leads and forms records", () => {
         updatedBy: specA.id,
       });
     })).rejects.toThrow();
-    await asContext(staffCtx(admin), async (db) => {
-      const sites = await listFormWebsites(db, [northgate]);
+    const membershipId = await asContext(staffCtx(admin), async (db) => {
+      const granted = await grantMembership(db, { userId: specB.id, clientId: harbour }, admin.id);
+      const sites = await listFormWebsites(db, [harbour]);
       const site = sites[0];
       expect(site).toBeTruthy();
       await saveWebsiteForm(db, {
         websiteId: site!.id,
-        clientId: northgate,
+        clientId: harbour,
         formKey: "appointment-enquiry",
         displayName: "Appointment enquiry",
         pagePath: "/request-appointment",
@@ -169,20 +170,22 @@ describe("leads and forms records", () => {
         recipientContactId: null,
         updatedBy: admin.id,
       });
+      return granted;
     }, { commit: true });
     try {
       const visible = await asContext(staffCtx(specB), (db) => listWebsiteForms(db, null));
       expect(visible.length).toBeGreaterThan(0);
-      expect(visible.every((row) => row.client_id === northgate)).toBe(true);
+      expect(visible.every((row) => row.client_id === harbour)).toBe(true);
       expect(canExport({ user: { platform_role: specB.platform_role } } as never)).toBe(false);
     } finally {
-      await adminPool.query("delete from website_forms where client_id = $1", [northgate]);
+      await adminPool.query("delete from website_forms where client_id = $1 and form_key = 'appointment-enquiry'", [harbour]);
+      await asContext(staffCtx(admin), (db) => revokeMembership(db, membershipId, admin.id, harbour), { commit: true });
     }
   });
 
   it("lists a manual notification retry without the enquiry body", async () => {
     const admin = await staffByEmail("admin@example.invalid");
-    const harbour = await clientBySlug("harbourview-dental");
+    const harbour = await clientBySlug("meridian-skin");
     const outboxId = "22222222-2222-4222-8222-222222222202";
     await asContext(staffCtx(admin), async (db) => {
       await recordAudit(db, {
@@ -193,7 +196,7 @@ describe("leads and forms records", () => {
         targetId: outboxId,
         clientId: harbour,
         outcome: "success",
-        metadata: { clinicId: "harbourview-dental" },
+        metadata: { clinicId: "meridian-skin" },
       });
       await recordAudit(db, {
         actorType: "staff",
@@ -203,7 +206,7 @@ describe("leads and forms records", () => {
         targetId: outboxId,
         clientId: harbour,
         outcome: "success",
-        metadata: { reference: "TEST-HV" },
+        metadata: { reference: "TEST-MS" },
       });
       const rows = await listAuditEvents(db, { action: "notification.retry", targetIds: [outboxId] });
       expect(rows).toHaveLength(1);

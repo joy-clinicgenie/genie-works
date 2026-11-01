@@ -1,4 +1,5 @@
 import { afterAll, describe, expect, it } from "vitest";
+import { applyContext } from "../src/client";
 import { adminPool, appPool, asContext, clientBySlug, staffByEmail, staffCtx } from "./helpers";
 import { createApproval, decideApproval, getApproval } from "../src/services/approvals";
 import { createTask, transitionTask, TaskRuleError, getTask } from "../src/services/tasks";
@@ -15,7 +16,7 @@ afterAll(async () => {
 describe("tasks (A-09, A-10)", () => {
   it("waiting requires waiting-on and a follow-up date", async () => {
     const specA = await staffByEmail("specialist-a@example.invalid");
-    const harbour = await clientBySlug("harbourview-dental");
+    const harbour = await clientBySlug("meridian-skin");
     await asContext(staffCtx(specA), async (db) => {
       const id = await createTask(db, { clientId: harbour, title: "Rule test", description: null, ownerUserId: specA.id, priority: "medium", dueDate: null, relatedType: null, relatedId: null }, specA.id);
       await expect(transitionTask(db, id, { status: "waiting", note: null, waitingOn: "", followUpDate: null }, specA.id)).rejects.toBeInstanceOf(TaskRuleError);
@@ -29,9 +30,14 @@ describe("tasks (A-09, A-10)", () => {
 
   it("rejects a related record from another client", async () => {
     const specA = await staffByEmail("specialist-a@example.invalid");
-    const harbour = await clientBySlug("harbourview-dental");
-    const { rows } = await adminPool.query("select i.id from issues i join clients c on c.id = i.client_id where c.slug = 'northgate-physio' limit 1");
-    await expect(asContext(staffCtx(specA), (db) => createTask(db, { clientId: harbour, title: "Bad link", description: null, ownerUserId: specA.id, priority: "low", dueDate: null, relatedType: "issue", relatedId: rows[0].id }, specA.id))).rejects.toThrow(/does not belong/);
+    const admin = await staffByEmail("admin@example.invalid");
+    const meridian = await clientBySlug("meridian-skin");
+    const other = await clientBySlug("clinic-genie");
+    await asContext(staffCtx(admin), async (db) => {
+      const issueId = await openIssue(db, other, { title: "Other client", description: null, severity: "low", ownerUserId: admin.id, relatedType: null, relatedId: null }, admin.id);
+      await applyContext(db, staffCtx(specA));
+      await expect(createTask(db, { clientId: meridian, title: "Bad link", description: null, ownerUserId: specA.id, priority: "low", dueDate: null, relatedType: "issue", relatedId: issueId }, specA.id)).rejects.toThrow(/does not belong/);
+    });
   });
 });
 
@@ -39,7 +45,7 @@ describe("approvals are append-only (A-11, A-12)", () => {
   it("a requester cannot decide, a revised decision supersedes and never edits the original", async () => {
     const specA = await staffByEmail("specialist-a@example.invalid");
     const manager = await staffByEmail("manager@example.invalid");
-    const harbour = await clientBySlug("harbourview-dental");
+    const harbour = await clientBySlug("meridian-skin");
     await asContext(staffCtx(manager), async (db) => {
       const id = await createApproval(db, { clientId: harbour, title: "Append-only test", summary: null, requestType: "other", relatedType: null, relatedId: null }, specA.id, true);
       await expect(decideApproval(db, id, { outcome: "approved", note: null }, specA.id)).rejects.toThrow(/cannot decide/);
@@ -65,7 +71,7 @@ describe("issue verification (A-15)", () => {
   it("records verifier, date and result; failed verification reopens", async () => {
     const specA = await staffByEmail("specialist-a@example.invalid");
     const manager = await staffByEmail("manager@example.invalid");
-    const harbour = await clientBySlug("harbourview-dental");
+    const harbour = await clientBySlug("meridian-skin");
     await asContext(staffCtx(manager), async (db) => {
       const id = await openIssue(db, harbour, { title: "Verify me", description: null, severity: "low", ownerUserId: specA.id, relatedType: null, relatedId: null }, specA.id);
       await expect(transitionIssue(db, id, { status: "verified_closed", note: "x" }, manager.id)).rejects.toThrow(/Cannot move/);
@@ -116,21 +122,21 @@ describe("medical review (A-17)", () => {
 describe("report snapshots (A-18)", () => {
   it("re-recording a figure supersedes rather than edits, and null stays unavailable", async () => {
     const specA = await staffByEmail("specialist-a@example.invalid");
-    const northgate = await clientBySlug("harbourview-dental");
+    const meridian = await clientBySlug("meridian-skin");
     await asContext(staffCtx(specA), async (db) => {
-      const a = await addSnapshot(db, northgate, { source: "manual", channel: "all", metric: "clicks", periodStart: "2026-09-01", periodEnd: "2026-09-30", value: 10, note: null }, specA.id);
-      const b = await addSnapshot(db, northgate, { source: "manual", channel: "all", metric: "clicks", periodStart: "2026-09-01", periodEnd: "2026-09-30", value: 12, note: "corrected" }, specA.id);
-      const current = await listSnapshots(db, { clientId: northgate });
+      const a = await addSnapshot(db, meridian, { source: "manual", channel: "all", metric: "clicks", periodStart: "2026-09-01", periodEnd: "2026-09-30", value: 10, note: null }, specA.id);
+      const b = await addSnapshot(db, meridian, { source: "manual", channel: "all", metric: "clicks", periodStart: "2026-09-01", periodEnd: "2026-09-30", value: 12, note: "corrected" }, specA.id);
+      const current = await listSnapshots(db, { clientId: meridian });
       expect(current.find((s) => s.id === b)?.value).toBe(12);
       expect(current.find((s) => s.id === a)).toBeUndefined();
-      const all = await listSnapshots(db, { clientId: northgate, includeSuperseded: true });
+      const all = await listSnapshots(db, { clientId: meridian, includeSuperseded: true });
       expect(all.find((s) => s.id === a)?.superseded_by_id).toBe(b);
       await db.query("savepoint guard");
       await expect(db.query("update report_snapshots set value = 99 where id = $1", [a])).rejects.toThrow(/append-only/);
       await db.query("rollback to savepoint guard");
-      const u = await addSnapshot(db, northgate, { source: "manual", channel: "all", metric: "patients", periodStart: "2026-09-01", periodEnd: "2026-09-30", value: null, note: "not supplied" }, specA.id);
+      const u = await addSnapshot(db, meridian, { source: "manual", channel: "all", metric: "patients", periodStart: "2026-09-01", periodEnd: "2026-09-30", value: null, note: "not supplied" }, specA.id);
       expect(current.length).toBeGreaterThan(0);
-      expect((await listSnapshots(db, { clientId: northgate })).find((s) => s.id === u)?.value).toBeNull();
+      expect((await listSnapshots(db, { clientId: meridian })).find((s) => s.id === u)?.value).toBeNull();
     });
   });
 });
@@ -138,7 +144,7 @@ describe("report snapshots (A-18)", () => {
 describe("timeline idempotency (A-20)", () => {
   it("the same dedupe key never creates a second event", async () => {
     const manager = await staffByEmail("manager@example.invalid");
-    const harbour = await clientBySlug("harbourview-dental");
+    const harbour = await clientBySlug("meridian-skin");
     await asContext(staffCtx(manager), async (db) => {
       const key = `test:${Date.now()}`;
       await recordTimeline(db, { clientId: harbour, eventType: "task_created", title: "once", relatedType: null, relatedId: null, actorUserId: manager.id, dedupeKey: key });

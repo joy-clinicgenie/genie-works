@@ -26,7 +26,7 @@ describe("provider fixtures (not live APIs)", () => {
   it("covers success, empty, expired credentials, errors, rate limits and separate websites", async () => {
     const admin = await staffByEmail("admin@example.invalid");
     const meridian = await clientBySlug("meridian-skin");
-    const harbour = await clientBySlug("harbourview-dental");
+    const harbour = await clientBySlug("meridian-skin");
     await asContext(SERVICE, async (db) => {
       await db.query("update analytics_jobs set next_attempt_at = '2100-01-01T00:00:00.000Z' where state = 'queued'");
       const sites = (await db.query<{ id: string }>("select id from websites where client_id = $1 order by created_at", [meridian])).rows;

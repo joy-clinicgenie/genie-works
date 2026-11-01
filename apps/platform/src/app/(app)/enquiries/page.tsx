@@ -17,13 +17,15 @@ import {
   STATUS_LABEL,
   canSearchEnquiryPerson,
   enquiryConnection,
+  enquiryConnectorLabel,
+  enquiryIdentity,
   enquiryUnavailableCopy,
   enquiryWindow,
   formName,
   listEnquiryBoard,
   listSubmissionForms,
   notificationFilter,
-  notificationLabel,
+  enquiryNotificationLabel,
   submissionClinicScope,
   submissionFormKey,
   submissionStatus,
@@ -69,7 +71,7 @@ export default async function EnquiriesPage({ searchParams }: { searchParams: Pr
   const clinic = denied ? undefined : params.clinic && /^[a-z0-9-]{1,64}$/.test(params.clinic) ? params.clinic : undefined;
   const filters = { clinicId: clinic, websiteKey: website, formKey: form, status, notification, reference, person, from: window.from, to: window.to, page };
   const [board, forms, directory] = await Promise.all([
-    listEnquiryBoard(scope, filters, window),
+    listEnquiryBoard(scope, filters, window, access),
     listSubmissionForms(scope),
     staffTx(access, async (db) => ({ clients: await listClients(db), websites: await listFormWebsites(db, null) })),
   ]);
@@ -94,11 +96,12 @@ export default async function EnquiriesPage({ searchParams }: { searchParams: Pr
     <EnquiryTabs>
       <PageHeader
         title="Enquiries"
-        description="Requests received from clinic websites. This list reads those records. It does not keep a second copy."
+        description="Wix sites are read through the Wix Forms API. Vibe-coded sites are read from that website’s enquiry database. Each row stays with its client, website and form. Each website keeps its own notification sender. Genie Works does not send email and does not require every website to use the same provider. Enquiry messages are not copied here."
       />
       {denied && <div className="mb-4"><Notice tone="bad" title="Not available">You do not have access to that clinic.</Notice></div>}
+      {board.sourceNotice && <div className="mb-4"><Notice tone="warn">{board.sourceNotice}</Notice></div>}
       {personRequested && !personAllowed && <div className="mb-4"><Notice tone="neutral">Search by name, email or telephone is limited to staff who can edit the client. Reference search is available.</Notice></div>}
-      {!board.connected && <EmptyState title="No enquiries are available">{enquiryUnavailableCopy(source ?? { configured: false, refused: false }, "The clinic website database is not connected. Submitted requests stay there until it is.")}</EmptyState>}
+      {!board.connected && <EmptyState title="No enquiries are available">{enquiryUnavailableCopy(source ?? { configured: false, refused: false }, "No website enquiry database is connected, and no Wix form is available to read. One connection does not cover every website. Submitted requests stay at their source.")}</EmptyState>}
       {board.connected && (
         <>
           <EnquiryOverview board={board} window={window} websiteNames={websiteNames} />
@@ -109,7 +112,7 @@ export default async function EnquiriesPage({ searchParams }: { searchParams: Pr
             <FilterSelect name="website" label="Website" value={website} allLabel="All websites" options={[...websiteOptions].map(([value, label]) => ({ value, label }))} />
             <FilterSelect name="form" label="Form" value={form} allLabel="All forms" options={[...formOptions].map(([value, label]) => ({ value, label }))} />
             <FilterSelect name="status" label="Follow-up status" value={status} allLabel="Any status" options={[{ value: "new", label: "New" }, { value: "acknowledged", label: "Acknowledged" }, { value: "closed", label: "Closed" }]} />
-            <FilterSelect name="notification" label="Notification" value={notification} allLabel="Any notification" options={[{ value: "pending", label: "Pending" }, { value: "sent", label: "Sent" }, { value: "failed", label: "Failed" }, { value: "unconfigured", label: "Not configured" }, { value: "none", label: "No notification recorded" }]} />
+            <FilterSelect name="notification" label="Notification" value={notification} allLabel="Any notification" options={[{ value: "pending", label: "Pending" }, { value: "sent", label: "Sent" }, { value: "failed", label: "Failed" }, { value: "unconfigured", label: "Not configured" }, { value: "unavailable", label: "Unavailable" }, { value: "none", label: "No notification recorded" }]} />
             <FilterInput name="q" label="Reference" value={reference} placeholder="Reference" />
             {personAllowed && <FilterInput name="person" label="Name, email or telephone" value={person} placeholder="Restricted search" />}
           </FilterBar>
@@ -143,7 +146,7 @@ export default async function EnquiriesPage({ searchParams }: { searchParams: Pr
               </thead>
               <tbody>
                 {board.items.map((item) => (
-                  <tr key={item.id} className="hover:bg-surface-muted/60">
+                  <tr key={enquiryIdentity(item)} className="hover:bg-surface-muted/60">
                     <Td className="whitespace-nowrap">
                       <Link href={`/enquiries/${item.id}`} className="font-medium text-action hover:underline">{formatDateTime(item.submittedAt)}</Link>
                     </Td>
@@ -151,6 +154,7 @@ export default async function EnquiriesPage({ searchParams }: { searchParams: Pr
                     <Td>
                       {item.clinicName}
                       <div className="text-xs text-muted">{item.websiteKey ? websiteNames.get(item.websiteKey) ?? item.websiteKey : "Website not recorded"}</div>
+                      <div className="text-xs text-muted">{enquiryConnectorLabel(item.source)}</div>
                     </Td>
                     <Td>{formName(item.formKey)}</Td>
                     <Td>
@@ -158,7 +162,7 @@ export default async function EnquiriesPage({ searchParams }: { searchParams: Pr
                       {item.isSynthetic && <div className="text-xs text-muted">Demonstration data</div>}
                     </Td>
                     <Td><Badge tone={STATUS_TONE[item.status]}>{STATUS_LABEL[item.status]}</Badge></Td>
-                    <Td><Badge tone={item.notificationStatus ? NOTIFICATION_TONE[item.notificationStatus] : "neutral"}>{notificationLabel(item.notificationStatus)}</Badge></Td>
+                    <Td><Badge tone={item.notificationDelivery === "unavailable" ? "neutral" : item.notificationStatus ? NOTIFICATION_TONE[item.notificationStatus] : "neutral"}>{enquiryNotificationLabel(item)}</Badge></Td>
                   </tr>
                 ))}
                 {board.items.length === 0 && (

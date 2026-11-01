@@ -2,7 +2,7 @@
 
 31 October 2026, Asia/Singapore. Candidate `85b99c7d11a11feae4d5da93068d754a9dfcd5b4`. The original audit remains **NO-GO, 53 / 100** at `audits/V1_GO_NO_GO.md`. This file is the follow-up. The retest score is **62 / 100** under the same rubric, recorded in `docs/audits/V1_RELEASE_RETEST.md`. The number does not approve a pilot or a production release.
 
-No person is named. Clinic owner, content approver, security reviewer and release approver remain unnamed. Latest approved decision is D21.
+Joy is the hosting owner, product owner, website owner and named rollback owner. Repository owner is `joy.clinicgenie`. Clinic owner, content approver and security reviewer remain unnamed. Latest approved decisions are D22 through D29. The rollback owner is Joy. The rollback procedure is not accepted.
 
 ## Supervised fictional-data rehearsal
 
@@ -24,18 +24,16 @@ This recommendation is for fictional data on the engineer’s machine. It is not
 
 **No-go.**
 
-Three P1 findings remain partially fixed: GW-004, GW-005 and GW-006. GW-008 remains blocked. DEP-01 through DEP-08 remain open. A passing local suite does not establish live provider sync, mail delivery, clinic website consumption or hosted operations.
+GW-004, GW-005 and GW-006 remain partially fixed. GW-008 is fixed for the local saved copy under `docs/report`. DEP-05 is decided in D22. DEP-06’s local copy is implemented. DEP-03’s labelled test was confirmed in the inbox. DEP-01, DEP-04, DEP-07 and DEP-08 remain open. DEP-02 remains open for each source connection (D36). A passing local suite does not establish live provider sync, production mail, clinic website consumption or hosted operations. `clinic-genie.com` is verified for sending. DEP03D-A72CDF was accepted from that domain, and its inbox receipt is not confirmed. The connected-pilot mail gate stays open.
 
 | Still required | Role | Next action |
 | --- | --- | --- |
-| DEP-04 staging project, team, and permission to connect this repository | Hosting owner | Name the project. Then deploy this candidate with separate variables and observe one cron invocation. |
-| DEP-01 non-production GA4, Search Console and Wix property | Account owner | Name the property and compare one sync window without copying secrets. |
-| DEP-02 approved enquiry source | Enquiry-source owner | Approve a non-production source that is not the local fixture. |
-| DEP-03 sender, recipient, and the acceptance rule | Sender owner | Name the operator and recipient, or record that provider acceptance is enough. |
-| DEP-05 historical migration choice | Repository owner | Record, in `docs/DECISIONS.md`, whether the three historical files stay as history or a rewrite is authorised outside this pack. |
-| DEP-06 report states and final artifact | Product owner | Choose the four D14 states or accept draft and saved, and say where the final artifact lives. |
-| DEP-07 clinic website that will call the APIs | Website owner | Name the site. It must render one published article and one saved SEO setting. |
-| DEP-08 rollback owner | Release owner | Name the person and the path they accept. |
+| DEP-04 deployment of candidate `85b99c7d11a11feae4d5da93068d754a9dfcd5b4` on project `clinic-works`, team Clinic Genie | Hosting owner Joy | The connection is authorised. Deploy that SHA with separate variables and observe one scheduled worker call. |
+| DEP-01 GA4 property, Search Console site, Wix site, and a start and end date | Account owner Marketing Clinic Genie | D25 records the aliases Wix and Google, the timezone Singapore, and OAuth authorisation. No provider has been called. |
+| DEP-02 each source connection | Enquiry-source owner | A website enquiry database and each Wix form are assessed separately. None is approved. The local fixture is not an approval. |
+| Production mail from the verified domain | Dispatcher operator resend | D35 records provider acceptance of DEP03D-A72CDF from `hello@clinic-genie.com`. Inbox receipt of that message is not confirmed. D33 remains the receipt of DEP03-8E4DC5. The saved dispatcher from-address remains `onboarding@resend.dev`. Company and production mail are unchanged. |
+| DEP-07 token use on `https://genie-works-ashen.vercel.app/sign-in` | Website owner Joy | Token authorisation is blank. Then the site renders one article and one SEO setting. |
+| DEP-08 accepted rollback procedure | Release owner Joy | Joy is named. The procedure field is blank. |
 
 The exact variable names for a future project are in `docs/STAGING_ACTIVATION.md`. No values are stored there.
 
@@ -43,4 +41,4 @@ The exact variable names for a future project are in `docs/STAGING_ACTIVATION.md
 
 **Not approved.**
 
-Hosted staging has not started. The live analytics, enquiry, mail and website gates are open. There is no named rollback owner. Production remains a separate decision after a connected pilot, not an extension of this local re-audit.
+Hosted staging has not started. The live analytics, enquiry, mail and website gates are open. Rollback owner Joy is named in D29, and no rollback procedure is accepted. Production remains a separate decision after a connected pilot, not an extension of this local re-audit.

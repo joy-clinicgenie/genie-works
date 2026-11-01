@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { isReportTemplate, isReportType, REPORT_TYPE_LABELS } from "@clinic-genie/contracts";
-import { canAccessClient, canEditClient, composeReport, createSavedReport, duplicateSavedReport, getSavedReport, saveSavedReport, type ReportBlock } from "@clinic-genie/db";
+import { canAccessClient, canEditClient, composeReport, createSavedReport, defaultReportArtifactDirectory, duplicateSavedReport, getSavedReport, saveSavedReport, storeSavedReportArtifact, type ReportBlock } from "@clinic-genie/db";
 import { requireAccess } from "@/lib/session";
 import { staffTx } from "@/lib/db";
 import { clientLabel } from "@/lib/client-label";
@@ -49,6 +49,15 @@ function revalidate() {
   revalidatePath("/timeline");
 }
 
+async function keepSavedCopy(access: Awaited<ReturnType<typeof requireAccess>>, reportId: string): Promise<ActionState> {
+  try {
+    await staffTx(access, (db) => storeSavedReportArtifact(db, reportId, defaultReportArtifactDirectory()));
+    return null;
+  } catch (err) {
+    return toActionError(err);
+  }
+}
+
 export async function createSavedReportAction(_prev: ActionState, form: FormData): Promise<ActionState> {
   const access = await requireAccess();
   const input = inputFrom(form);
@@ -60,6 +69,8 @@ export async function createSavedReportAction(_prev: ActionState, form: FormData
   } catch (err) {
     return toActionError(err);
   }
+  const stored = await keepSavedCopy(access, id);
+  if (stored) return stored;
   revalidate();
   redirect(`/reports/${id}`);
 }
@@ -78,6 +89,8 @@ export async function saveSavedReportAction(_prev: ActionState, form: FormData):
   revalidate();
   revalidatePath(`/reports/${id}`);
   if (version === null) return { ok: true, message: "Draft saved." };
+  const stored = await keepSavedCopy(access, id);
+  if (stored) return stored;
   return { ok: true, message: `Saved as version ${version}. That version is kept for client review.` };
 }
 
@@ -172,6 +185,10 @@ export async function submitReportBuilder(_prev: BuilderState, form: FormData): 
   } catch (err) {
     return toActionError(err);
   }
+  if (review) {
+    const stored = await keepSavedCopy(access, id);
+    if (stored) return stored;
+  }
   revalidate();
   revalidatePath(`/reports/${id}`);
   redirect(intent === "pdf" ? `/reports/${id}/print` : `/reports/${id}`);
@@ -192,6 +209,8 @@ export async function duplicateSavedReportAction(_prev: ActionState, form: FormD
     return toActionError(err);
   }
   if (!copyId) return { ok: false, error: "You cannot duplicate that report." };
+  const stored = await keepSavedCopy(access, copyId);
+  if (stored) return stored;
   revalidate();
   redirect(`/reports/${copyId}`);
 }

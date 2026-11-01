@@ -9,6 +9,9 @@ import {
   enquiryChange,
   enquiryConnection,
   enquiryCsv,
+  enquiryConnectorLabel,
+  enquiryIdentity,
+  enquiryNotificationLabel,
   enquiryPage,
   enquiryWindow,
   getFormSubmission,
@@ -120,6 +123,18 @@ describe("enquiry comparison and export", () => {
     expect(csv).not.toMatch(/(^|,)@/);
   });
 
+  it("labels a Wix clinic email as unavailable", () => {
+    expect(enquiryNotificationLabel({ notificationStatus: null, notificationDelivery: "unavailable" })).toBe("Unavailable");
+    expect(enquiryNotificationLabel({ notificationStatus: "sent" })).toBe("Sent");
+  });
+
+  it("keeps a website database and a Wix form as separate enquiries", () => {
+    expect(enquiryConnectorLabel("database")).toBe("Website database");
+    expect(enquiryConnectorLabel("wix")).toBe("Wix Forms");
+    expect(enquiryConnectorLabel(undefined)).toBe("Website database");
+    expect(enquiryIdentity({ id: "same", source: "database" })).not.toBe(enquiryIdentity({ id: "same", source: "wix" }));
+  });
+
   it("limits export to admins and managers", () => {
     expect(canExport(profile("admin"))).toBe(true);
     expect(canExport(profile("manager"))).toBe(true);
@@ -129,7 +144,7 @@ describe("enquiry comparison and export", () => {
   });
 
   it("builds a website form address from the site URL and path", () => {
-    expect(formPageHref("https://harbourview-dental.example.invalid", "/request-appointment")).toBe("https://harbourview-dental.example.invalid/request-appointment");
+    expect(formPageHref("https://meridian-skin.example.invalid", "/request-appointment")).toBe("https://meridian-skin.example.invalid/request-appointment");
     expect(formPageHref(null, "/contact")).toBeNull();
   });
 });
@@ -190,11 +205,11 @@ describe("isolated enquiry fixture", () => {
     expect(board.breakdowns.source).toEqual([]);
     expect(board.items.every((item) => item.isSynthetic)).toBe(true);
     expect(board.items.map((item) => item.reference).sort()).toEqual([
-      "TEST-HV-ACK-002",
-      "TEST-HV-NEW-001",
+      "TEST-MS-ACK-002",
       "TEST-MS-ACK-005",
+      "TEST-MS-NEW-001",
       "TEST-MS-NEW-004",
-      "TEST-NG-NEW-006",
+      "TEST-MS-NEW-006",
     ]);
     const bySource = board.items.reduce<Record<string, number>>((counts, item) => {
       counts[item.attributionSource] = (counts[item.attributionSource] ?? 0) + 1;
@@ -202,12 +217,12 @@ describe("isolated enquiry fixture", () => {
     }, {});
     expect(bySource).toEqual({ campaign: 1, direct: 2, organic: 2 });
 
-    expect((await listEnquiryBoard(null, { clinicId: "harbourview-dental" }, october)).total).toBe(2);
+    expect((await listEnquiryBoard(null, { clinicId: "meridian-skin" }, october)).total).toBe(5);
     expect((await listEnquiryBoard(null, { websiteKey: "meridian-skin-staging" }, october)).items.map((item) => item.reference)).toEqual(["TEST-MS-ACK-005"]);
     expect((await listEnquiryBoard(null, { formKey: "contact" }, october)).total).toBe(2);
     expect((await listEnquiryBoard(null, { status: "new" }, october)).total).toBe(3);
-    expect((await listEnquiryBoard(["northgate-physio"], {}, october)).total).toBe(1);
-    expect((await listEnquiryBoard(["northgate-physio"], { clinicId: "harbourview-dental" }, october)).total).toBe(0);
+    expect((await listEnquiryBoard(["clinic-genie"], {}, october)).total).toBe(0);
+    expect((await listEnquiryBoard(["meridian-skin"], { clinicId: "clinic-genie" }, october)).total).toBe(0);
 
     const empty = await listEnquiryBoard(null, {}, enquiryWindow("2020-01-01", "2020-01-31", "2026-10-30"));
     expect(empty.connected).toBe(true);
@@ -242,9 +257,9 @@ function sample(reference: string, isSynthetic = false): SubmissionListItem {
   return {
     id: "11111111-1111-4111-8111-111111111101",
     reference,
-    clinicId: "harbourview-dental",
-    clinicName: "Harbourview Dental",
-    websiteKey: "harbourview-dental-wix",
+    clinicId: "meridian-skin",
+    clinicName: "Meridian Skin",
+    websiteKey: "meridian-skin-production",
     formKey: "appointment-enquiry",
     submittedAt: new Date("2026-10-20T02:00:00.000Z"),
     submitterName: "Test Person",

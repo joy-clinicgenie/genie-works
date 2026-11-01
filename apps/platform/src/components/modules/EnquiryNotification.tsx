@@ -23,13 +23,30 @@ export function EnquiryNotification({
   notification,
   manualRetries,
   canRetry,
+  delivery,
 }: {
   storedAt: Date;
   status: NotificationStatus | null;
   notification: ClinicNotification | null;
   manualRetries: Array<{ id: string; at: Date; actor: string }>;
   canRetry: boolean;
+  delivery?: "unavailable";
 }) {
+  if (delivery === "unavailable") {
+    return (
+      <div>
+        <h2 className="text-base font-semibold">Clinic notification</h2>
+        <p className="mt-2 text-sm text-muted">This website sends the clinic email from Wix. Another website may use a different sender. Genie Works does not send the email, store a delivery record, or retry it.</p>
+        <dl className="mt-4 space-y-3 text-sm">
+          <div>
+            <dt className="text-xs font-semibold uppercase tracking-wide text-muted">Clinic notification</dt>
+            <dd className="mt-0.5"><Badge tone="neutral">Unavailable</Badge></dd>
+          </div>
+        </dl>
+        <p className="mt-3 text-xs text-muted">Unavailable means no verified delivery record is stored here.</p>
+      </div>
+    );
+  }
   const tone = notification?.status ?? status;
   const boundary = notificationBoundary({
     status: tone,
@@ -42,7 +59,7 @@ export function EnquiryNotification({
   return (
     <div>
       <h2 className="text-base font-semibold">Clinic notification</h2>
-      <p className="mt-2 text-sm text-muted">The enquiry is already stored. This panel is only the clinic email. A failed email does not remove the enquiry, and a retry does not create another one.</p>
+      <p className="mt-2 text-sm text-muted">This website’s own sender sends the clinic email. Genie Works does not send it, and another website does not have to use the same provider. A failed email does not remove the enquiry, and a retry does not create another one.</p>
       <dl className="mt-4 space-y-3 text-sm">
         <div>
           <dt className="text-xs font-semibold uppercase tracking-wide text-muted">Enquiry stored</dt>

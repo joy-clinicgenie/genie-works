@@ -27,9 +27,7 @@ All of these records are synthetic. Addresses use `example.invalid`.
 
 | Client slug | Websites | Platform | Staff who can open the client |
 |---|---|---|---|
-| `harbourview-dental` | Harbourview Dental website (`harbourview-dental-wix`) | Wix, production placeholder | Admin, manager, specialist A, reviewer, read-only |
 | `meridian-skin` | Meridian Skin website (`meridian-skin-production`) and Meridian Skin staging (`meridian-skin-staging`) | Next.js on Vercel | Admin, manager, specialist A, reviewer |
-| `northgate-physio` | Northgate Physio website (`northgate-physio-wix`) | Wix, production placeholder | Admin, manager, specialist B |
 
 Stable staff sign-in addresses, all fictional:
 
@@ -37,10 +35,10 @@ Stable staff sign-in addresses, all fictional:
 |---|---|---|
 | `admin@example.invalid` | admin | all |
 | `manager@example.invalid` | manager | all |
-| `specialist-a@example.invalid` | specialist | Harbourview and Meridian |
-| `specialist-b@example.invalid` | specialist | Northgate only |
-| `reviewer@example.invalid` | reviewer | Harbourview and Meridian |
-| `readonly@example.invalid` | read-only | Harbourview only |
+| `specialist-a@example.invalid` | specialist | Meridian |
+| `specialist-b@example.invalid` | specialist | No client |
+| `reviewer@example.invalid` | reviewer | Meridian |
+| `readonly@example.invalid` | read-only | No client |
 
 Enquiry rows use fixed ids `11111111-1111-4111-8111-111111111101` through `…1106`. Notification rows use `22222222-2222-4222-8222-222222222201` through `…2206`. Statuses are New, Acknowledged and Closed. Attribution values are `direct`, `organic`, `referral` and `campaign`. Forms are `appointment-enquiry` and `contact`. Notification states are sent, failed, exhausted, pending and unconfigured.
 
@@ -129,6 +127,8 @@ On 2026-10-28 the local `.env` had empty values for the Google client, Wix app, 
 ## Mail sink
 
 Enquiry notifications stay in `notification_outbox` on `clinic_genie_enquiry_test`. The fixture provider name is `fixture-sink`. Nothing is handed to an external mail system. Sign-in links in local development continue to use the existing magic-link table and `/dev/magic-links`, which does not send mail.
+
+On 1 November 2026, D30 records the test delivery choice. A separate Resend account is for testing only. The test sender is `onboarding@resend.dev`. The recipient is the email on that test account. The address and the API key are not written in this repository, and company and production configuration are unchanged. D32 records that the clinic-website dispatcher later sent one labelled fictional notification, DEP03-8E4DC5, and Resend accepted it. D33 records that the user confirmed its arrival at 22:55 Asia/Singapore. The outbox row stays `sent`. D34 records that Resend later verified `clinic-genie.com` for sending. D35 records provider acceptance of one later fictional notification, DEP03D-A72CDF, from `hello@clinic-genie.com`. Its inbox receipt is not confirmed. The saved dispatcher from-address remains `onboarding@resend.dev`. Inbound mail stays disabled. The fixture harness still does not call Resend. The connected-pilot mail gate stays open.
 
 ## Website capability matrix
 

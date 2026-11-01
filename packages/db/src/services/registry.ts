@@ -47,6 +47,12 @@ export interface WebsiteRow {
   status: "active" | "archived";
   notes: string | null;
   enquiry_key: string | null;
+  enquiry_source: "database" | "wix";
+  wix_instance_id: string | null;
+  wix_form_id: string | null;
+  wix_form_namespace: string | null;
+  wix_form_key: string | null;
+  wix_counts_in_totals: boolean;
   blog_requirements: { author: boolean; category: boolean; featuredImage: boolean; seo: boolean; social: boolean };
   created_at: Date;
   archived_at: Date | null;
@@ -276,9 +282,13 @@ export async function createWebsite(
   input: { clientId: string; name: string; url: string | null; platform: string; environment: WebsiteRow["environment"]; notes: string | null },
   actorUserId: string,
 ): Promise<WebsiteRow> {
+  const client = (await db.query<{ slug: string }>("select slug from clients where id = $1", [input.clientId])).rows[0];
+  if (!client) throw new RegistryRuleError("Website was not saved. You may not have permission to change it.");
+  const taken = new Set((await db.query<{ enquiry_key: string }>("select enquiry_key from websites where enquiry_key is not null")).rows.map((row) => row.enquiry_key));
+  const enquiryKey = enquiryKeyForClient(client.slug, input.environment, taken);
   const { rows } = await db.query<WebsiteRow>(
-    "insert into websites (client_id, name, url, platform, environment, notes) values ($1, $2, $3, $4, $5, $6) returning *",
-    [input.clientId, input.name, input.url, input.platform, input.environment, input.notes],
+    "insert into websites (client_id, name, url, platform, environment, notes, enquiry_key) values ($1, $2, $3, $4, $5, $6, $7) returning *",
+    [input.clientId, input.name, input.url, input.platform, input.environment, input.notes, enquiryKey],
   );
   const site = rows[0];
   if (!site) throw new RegistryRuleError("Website was not saved. You may not have permission to change it.");
@@ -302,6 +312,19 @@ export async function updateWebsite(
   const site = rows[0];
   if (!site) throw new RegistryRuleError("Website was not saved. You may not have permission to change it.");
   await recordAudit(db, { actorType: "staff", actorUserId, action: "website.update", targetType: "website", targetId: id, clientId: site.client_id, outcome: "success", metadata: { status: input.status } });
+}
+
+/** Staff who manage the registry can point this website at its own enquiry rows. */
+export async function setWebsiteEnquiryKey(db: Queryable, websiteId: string, clientId: string, enquiryKey: string, actorUserId: string): Promise<void> {
+  await requireWebsiteForClient(db, websiteId, clientId);
+  const client = (await db.query<{ slug: string }>("select slug from clients where id = $1", [clientId])).rows[0];
+  if (!client) throw new RegistryRuleError("That website is not available for this client.", "enquiryKey");
+  assertEnquiryKeyForSlug(client.slug, enquiryKey);
+  const clash = (await db.query<{ id: string }>("select id from websites where enquiry_key = $1 and id <> $2", [enquiryKey, websiteId])).rows[0];
+  if (clash) throw new RegistryRuleError("That enquiry key is already used by another website.", "enquiryKey");
+  const { rowCount } = await db.query("update websites set enquiry_key = $2 where id = $1 and client_id = $3", [websiteId, enquiryKey, clientId]);
+  if (!rowCount) throw new RegistryRuleError("Website was not saved. You may not have permission to change it.", "enquiryKey");
+  await recordAudit(db, { actorType: "staff", actorUserId, action: "website.enquiry_key", targetType: "website", targetId: websiteId, clientId, outcome: "success", metadata: { enquiryKey } });
 }
 
 // --- Account references -----------------------------------------------------
@@ -331,9 +354,33 @@ export interface AccountReferenceInput {
 const SECRET_LIKE = /(password|passwd|secret|api[-_ ]?key|token)\s*[:=]/i;
 
 export class RegistryRuleError extends Error {
-  constructor(message: string) {
+  field?: string;
+  constructor(message: string, field?: string) {
     super(message);
     this.name = "RegistryRuleError";
+    this.field = field;
+  }
+}
+
+const ENQUIRY_KEY = /^[a-z0-9-]{1,64}$/;
+
+/** The key is `{slug}-{environment}`. It names this website's enquiry rows. It is not a message. */
+export function enquiryKeyForClient(slug: string, environment: string, taken: ReadonlySet<string>): string {
+  const base = `${slug}-${environment}`.toLowerCase().slice(0, 64);
+  if (!ENQUIRY_KEY.test(base)) throw new RegistryRuleError("A website key could not be chosen.");
+  if (!taken.has(base)) return base;
+  for (let n = 2; n < 1000; n += 1) {
+    const suffix = `-${n}`;
+    const key = `${base.slice(0, 64 - suffix.length)}${suffix}`;
+    if (!taken.has(key)) return key;
+  }
+  throw new RegistryRuleError("A website key could not be chosen.");
+}
+
+/** A key may name only the website's own client. Another clinic's key is refused. */
+export function assertEnquiryKeyForSlug(slug: string, key: string): void {
+  if (!ENQUIRY_KEY.test(key) || (key !== slug && !key.startsWith(`${slug}-`))) {
+    throw new RegistryRuleError("The enquiry key has to start with this client's slug.", "enquiryKey");
   }
 }
 

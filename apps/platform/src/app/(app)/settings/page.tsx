@@ -69,7 +69,7 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
   const formsTone: Tone = !forms.configured ? "neutral" : forms.reachable ? "good" : "warn";
   const formsDetail = forms.refused
     ? "The enquiry target was refused before any read or write. Enquiry messages stay in their source database."
-    : "Read from the clinic website database. A submission is not copied into Genie Works. Demonstration submissions stay out of production totals. A contact click is not an enquiry.";
+    : "Read from the clinic website database or from a Wix form bound to a website. A submission is not copied into Genie Works. A Wix clinic email stays on Wix and is shown as Unavailable. Demonstration submissions stay out of production totals. A contact click is not an enquiry.";
   const latest = admin?.events[0];
   const restore = admin?.status.lastRestoreTest;
   const activeStaff = admin?.staff.filter((person) => person.active).length ?? 0;

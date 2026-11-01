@@ -5,6 +5,7 @@ import { bindConnectionFromState, createOAuthState, disconnectConnection, exchan
 import { dueWindow, enqueueDue, enqueueJob, executeJob, leaseNext, listConnectionSyncStatus, sealedToken, type FetchLike, type FetchResponse } from "../src/analytics/sync";
 import { publishedReport } from "../src/analytics/read";
 import { encryptSecret } from "../src/analytics/crypto";
+import { createClient, createWebsite, grantMembership } from "../src/services/registry";
 
 process.env.ANALYTICS_TOKEN_KEY = process.env.ANALYTICS_TOKEN_KEY || "analytics-test-key-0123456789";
 
@@ -26,29 +27,34 @@ describe("analytics tenant isolation and sync", () => {
   it("hides another clinic's connection and every secret from staff", async () => {
     const admin = await staffByEmail("admin@example.invalid");
     const specB = await staffByEmail("specialist-b@example.invalid");
-    const harbour = await clientBySlug("harbourview-dental");
-    const northgate = await clientBySlug("northgate-physio");
+    const hidden = await clientBySlug("meridian-skin");
     await asContext(SERVICE, async (db) => {
-      const harbourSite = (await db.query<{ id: string }>("select id from websites where client_id = $1 order by created_at limit 1", [harbour])).rows[0]!.id;
-      const northgateSite = (await db.query<{ id: string }>("select id from websites where client_id = $1 order by created_at limit 1", [northgate])).rows[0]!.id;
-      const harbourToken = sealedToken({ accessToken: "harbour-token", expiresAt: "2100-01-01T00:00:00.000Z" });
-      const northToken = sealedToken({ accessToken: "north-token", expiresAt: "2100-01-01T00:00:00.000Z" });
+      const hiddenSite = (await db.query<{ id: string }>("select id from websites where client_id = $1 order by created_at limit 1", [hidden])).rows[0]!.id;
+      const owned = await createClient(db, {
+        slug: "fixture-owned-clinic", name: "Fixture owned clinic", ownerUserId: admin.id, channels: ["website"], isSynthetic: true, notes: null,
+      }, admin.id);
+      const ownedSite = (await createWebsite(db, {
+        clientId: owned.id, name: "Fixture owned site", url: "https://fixture-owned.example.invalid", platform: "Next.js", environment: "production", notes: null,
+      }, admin.id)).id;
+      await grantMembership(db, { userId: specB.id, clientId: owned.id }, admin.id);
+      const hiddenToken = sealedToken({ accessToken: "hidden-token", expiresAt: "2100-01-01T00:00:00.000Z" });
+      const ownedToken = sealedToken({ accessToken: "owned-token", expiresAt: "2100-01-01T00:00:00.000Z" });
       await saveConnection(db, {
-        clientId: harbour, websiteId: harbourSite, provider: "ga4", externalPropertyId: "1001", streamOrSiteRef: null,
-        providerTimezone: "Asia/Singapore", tokenCiphertext: harbourToken.ciphertext, tokenNonce: harbourToken.nonce, actorUserId: admin.id,
+        clientId: hidden, websiteId: hiddenSite, provider: "ga4", externalPropertyId: "1001", streamOrSiteRef: null,
+        providerTimezone: "Asia/Singapore", tokenCiphertext: hiddenToken.ciphertext, tokenNonce: hiddenToken.nonce, actorUserId: admin.id,
       });
       await saveConnection(db, {
-        clientId: northgate, websiteId: northgateSite, provider: "ga4", externalPropertyId: "2002", streamOrSiteRef: null,
-        providerTimezone: "Asia/Singapore", tokenCiphertext: northToken.ciphertext, tokenNonce: northToken.nonce, actorUserId: admin.id,
+        clientId: owned.id, websiteId: ownedSite, provider: "ga4", externalPropertyId: "2002", streamOrSiteRef: null,
+        providerTimezone: "Asia/Singapore", tokenCiphertext: ownedToken.ciphertext, tokenNonce: ownedToken.nonce, actorUserId: admin.id,
       });
       await applyContext(db, staffCtx(admin));
       expect((await db.query("select count(*)::int as n from analytics_secrets")).rows[0].n).toBe(0);
       await applyContext(db, staffCtx(specB));
-      expect(await listConnections(db, harbour)).toHaveLength(0);
-      expect((await listConnections(db, northgate)).map((row) => row.external_property_id)).toEqual(["2002"]);
+      expect(await listConnections(db, hidden)).toHaveLength(0);
+      expect((await listConnections(db, owned.id)).map((row) => row.external_property_id)).toEqual(["2002"]);
       await expect(db.query(
         "insert into analytics_connections (client_id, website_id, provider, external_property_id, provider_timezone) values ($1, $2, 'ga4', '9', 'UTC')",
-        [northgate, northgateSite],
+        [owned.id, ownedSite],
       )).rejects.toThrow(/row-level security/);
     });
   });
@@ -56,7 +62,7 @@ describe("analytics tenant isolation and sync", () => {
   it("rejects a forged, replayed or empty property binding", async () => {
     const admin = await staffByEmail("admin@example.invalid");
     const specA = await staffByEmail("specialist-a@example.invalid");
-    const harbour = await clientBySlug("harbourview-dental");
+    const harbour = await clientBySlug("meridian-skin");
     await asContext(SERVICE, async (db) => {
       const site = (await db.query<{ id: string }>("select id from websites where client_id = $1 order by created_at limit 1", [harbour])).rows[0]!.id;
       await expect(exchangeOAuthState(db, { state: "forged-state", token: { accessToken: "x" } })).rejects.toThrow(/expired/);
@@ -88,6 +94,7 @@ describe("analytics tenant isolation and sync", () => {
     const clientId = await clientBySlug("meridian-skin");
     await asContext(SERVICE, async (db) => {
       const site = (await db.query<{ id: string }>("select id from websites where client_id = $1 order by created_at limit 1", [clientId])).rows[0]!.id;
+      await db.query("update analytics_jobs set state = 'cancelled', lease_owner = null, lease_until = null where state in ('queued', 'leased')");
       const sealed = sealedToken({ accessToken: "gsc-token", expiresAt: "2100-01-01T00:00:00.000Z" });
       const connection = await saveConnection(db, {
         clientId, websiteId: site, provider: "gsc", externalPropertyId: "sc-domain:meridian.example", streamOrSiteRef: null,
@@ -120,9 +127,10 @@ describe("analytics tenant isolation and sync", () => {
 
   it("leases one job and stops on rate limits or invalid_grant", async () => {
     const admin = await staffByEmail("admin@example.invalid");
-    const clientId = await clientBySlug("harbourview-dental");
+    const clientId = await clientBySlug("meridian-skin");
     await asContext(SERVICE, async (db) => {
       const site = (await db.query<{ id: string }>("select id from websites where client_id = $1 order by created_at limit 1", [clientId])).rows[0]!.id;
+      await db.query("update analytics_jobs set state = 'cancelled', lease_owner = null, lease_until = null where state in ('queued', 'leased')");
       const sealed = sealedToken({ accessToken: "old", refreshToken: "refresh", expiresAt: "2020-01-01T00:00:00.000Z" });
       const connection = await saveConnection(db, {
         clientId, websiteId: site, provider: "ga4", externalPropertyId: "3030", streamOrSiteRef: null,
@@ -154,6 +162,7 @@ describe("analytics tenant isolation and sync", () => {
     const clientId = await clientBySlug("meridian-skin");
     await asContext(SERVICE, async (db) => {
       const site = (await db.query<{ id: string }>("select id from websites where client_id = $1 order by created_at limit 1", [clientId])).rows[0]!.id;
+      await db.query("update analytics_jobs set state = 'cancelled', lease_owner = null, lease_until = null where state in ('queued', 'leased')");
       const sealed = sealedToken({ accessToken: "ga4", expiresAt: "2100-01-01T00:00:00.000Z" });
       const connection = await saveConnection(db, {
         clientId, websiteId: site, provider: "ga4", externalPropertyId: "4040", streamOrSiteRef: null,
@@ -194,7 +203,7 @@ describe("analytics tenant isolation and sync", () => {
 
   it("rejects an overlapping source policy and allows reconnect after disconnect", async () => {
     const admin = await staffByEmail("admin@example.invalid");
-    const clientId = await clientBySlug("northgate-physio");
+    const clientId = await clientBySlug("meridian-skin");
     await asContext(SERVICE, async (db) => {
       const site = (await db.query<{ id: string }>("select id from websites where client_id = $1 order by created_at limit 1", [clientId])).rows[0]!.id;
       const first = encryptSecret(JSON.stringify({ accessToken: "a", expiresAt: "2100-01-01T00:00:00.000Z" }));
@@ -234,7 +243,7 @@ describe("analytics tenant isolation and sync", () => {
 
   it("queues the provider-timezone window and reuses a queued job", async () => {
     const admin = await staffByEmail("admin@example.invalid");
-    const clientId = await clientBySlug("harbourview-dental");
+    const clientId = await clientBySlug("meridian-skin");
     await asContext(SERVICE, async (db) => {
       const site = (await db.query<{ id: string }>("select id from websites where client_id = $1 order by created_at limit 1", [clientId])).rows[0]!.id;
       const sealed = sealedToken({ accessToken: "window", expiresAt: "2100-01-01T00:00:00.000Z" });
@@ -307,8 +316,8 @@ describe("analytics tenant isolation and sync", () => {
   it("reports the last succeeded sync and hides another clinic's queue", async () => {
     const admin = await staffByEmail("admin@example.invalid");
     const specB = await staffByEmail("specialist-b@example.invalid");
-    const harbour = await clientBySlug("harbourview-dental");
-    const northgate = await clientBySlug("northgate-physio");
+    const harbour = await clientBySlug("meridian-skin");
+    const clinicGenie = await clientBySlug("clinic-genie");
     await asContext(SERVICE, async (db) => {
       const site = (await db.query<{ id: string }>("select id from websites where client_id = $1 order by created_at limit 1", [harbour])).rows[0]!.id;
       const sealed = sealedToken({ accessToken: "status", expiresAt: "2100-01-01T00:00:00.000Z" });
@@ -345,25 +354,25 @@ describe("analytics tenant isolation and sync", () => {
 
       await applyContext(db, staffCtx(specB));
       expect(await listConnectionSyncStatus(db, harbour)).toEqual([]);
-      expect((await listConnectionSyncStatus(db, northgate)).some((row) => row.connectionId === connection.id)).toBe(false);
+      expect((await listConnectionSyncStatus(db, clinicGenie)).some((row) => row.connectionId === connection.id)).toBe(false);
     });
   });
 
   it("keeps fixture sessions inside one website and replaces a repeat without adding the previous value", async () => {
     const admin = await staffByEmail("admin@example.invalid");
-    const harbour = await clientBySlug("harbourview-dental");
-    const northgate = await clientBySlug("northgate-physio");
+    const harbour = await clientBySlug("meridian-skin");
+    const clinicGenie = await clientBySlug("clinic-genie");
     await asContext(SERVICE, async (db) => {
       const harbourSite = (await db.query<{ id: string }>("select id from websites where client_id = $1 order by created_at limit 1", [harbour])).rows[0]!.id;
-      const northgateSite = (await db.query<{ id: string }>("select id from websites where client_id = $1 order by created_at limit 1", [northgate])).rows[0]!.id;
+      const clinicGenieSite = (await db.query<{ id: string }>("select id from websites where client_id = $1 order by created_at limit 1", [clinicGenie])).rows[0]!.id;
       const left = sealedToken({ accessToken: "left", expiresAt: "2100-01-01T00:00:00.000Z" });
       const right = sealedToken({ accessToken: "right", expiresAt: "2100-01-01T00:00:00.000Z" });
       const harbourConnection = await saveConnection(db, {
         clientId: harbour, websiteId: harbourSite, provider: "ga4", externalPropertyId: "1001", streamOrSiteRef: null,
         providerTimezone: "Asia/Singapore", tokenCiphertext: left.ciphertext, tokenNonce: left.nonce, actorUserId: admin.id,
       });
-      const northgateConnection = await saveConnection(db, {
-        clientId: northgate, websiteId: northgateSite, provider: "ga4", externalPropertyId: "2002", streamOrSiteRef: null,
+      const clinicGenieConnection = await saveConnection(db, {
+        clientId: clinicGenie, websiteId: clinicGenieSite, provider: "ga4", externalPropertyId: "2002", streamOrSiteRef: null,
         providerTimezone: "UTC", tokenCiphertext: right.ciphertext, tokenNonce: right.nonce, actorUserId: admin.id,
       });
       await db.query("update analytics_jobs set state = 'cancelled', lease_owner = null, lease_until = null where state in ('queued', 'leased')");
@@ -378,7 +387,7 @@ describe("analytics tenant isolation and sync", () => {
       const now = new Date("2099-09-01T00:00:00.000Z");
       for (const item of [
         { clientId: harbour, websiteId: harbourSite, connectionId: harbourConnection.id },
-        { clientId: northgate, websiteId: northgateSite, connectionId: northgateConnection.id },
+        { clientId: clinicGenie, websiteId: clinicGenieSite, connectionId: clinicGenieConnection.id },
       ]) {
         await enqueueJob(db, { ...item, templateKey: "ga4.traffic_daily", start: "2026-10-01", end: "2026-10-01" });
         const job = await leaseNext(db, "fixture-worker", now);
@@ -386,9 +395,9 @@ describe("analytics tenant isolation and sync", () => {
         expect((await executeJob(db, job!, { fetch: fetchReport, now })).result).toBe("succeeded");
       }
       const harbourReport = await publishedReport(db, { clientId: harbour, websiteId: harbourSite, templateKey: "ga4.traffic_daily", start: "2026-10-01", end: "2026-10-01" });
-      const northgateReport = await publishedReport(db, { clientId: northgate, websiteId: northgateSite, templateKey: "ga4.traffic_daily", start: "2026-10-01", end: "2026-10-01" });
+      const clinicGenieReport = await publishedReport(db, { clientId: clinicGenie, websiteId: clinicGenieSite, templateKey: "ga4.traffic_daily", start: "2026-10-01", end: "2026-10-01" });
       expect(harbourReport?.rows[0]?.metrics.find((metric) => metric.key === "sessions")?.value).toBe(4);
-      expect(northgateReport?.rows[0]?.metrics.find((metric) => metric.key === "sessions")?.value).toBe(9);
+      expect(clinicGenieReport?.rows[0]?.metrics.find((metric) => metric.key === "sessions")?.value).toBe(9);
 
       const repeat: FetchLike = async () => jsonResponse(200, {
         dimensionHeaders: [{ name: "date" }],

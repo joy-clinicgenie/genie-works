@@ -63,11 +63,12 @@ export function TopBar({
   }
 
   return (
-    <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2 lg:flex-nowrap lg:gap-3">
-      <p className="hidden min-w-0 shrink text-lg font-semibold tracking-tight text-ink lg:block lg:text-[1.35rem]">
+    <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2 lg:flex-nowrap lg:justify-between lg:gap-8">
+      <p className="hidden min-w-0 max-w-full truncate text-lg font-semibold tracking-tight text-ink md:block lg:shrink-0 lg:text-[1.35rem]">
         Hey {staffName}, glad to have you back
       </p>
-      <div className="relative min-w-0 w-full max-w-full flex-1 basis-full sm:basis-52 lg:max-w-md lg:basis-0">
+      <div className="flex min-w-0 w-full flex-1 flex-wrap items-center gap-2 lg:ml-auto lg:w-auto lg:flex-none lg:shrink-0 lg:flex-nowrap lg:justify-end lg:gap-3">
+      <div className="relative min-w-0 w-full basis-full sm:basis-52 sm:w-auto lg:w-56 xl:w-72">
         <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted" aria-hidden="true" />
         <input
           ref={inputRef}
@@ -130,6 +131,7 @@ export function TopBar({
         </div>
       )}
       {environment ? <span className="lg:hidden">{environment}</span> : null}
+      </div>
       </div>
     </div>
   );

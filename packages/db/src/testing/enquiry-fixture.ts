@@ -97,21 +97,19 @@ export interface EnquiryFixtureSummary {
 }
 
 const CLINICS = [
-  { id: "harbourview-dental", display_name: "Harbourview Dental (fictional test)" },
   { id: "meridian-skin", display_name: "Meridian Skin (fictional test)" },
-  { id: "northgate-physio", display_name: "Northgate Physio (fictional test)" },
 ] as const;
 
 const ENQUIRIES = [
   {
     id: "11111111-1111-4111-8111-111111111101",
-    public_reference: "TEST-HV-NEW-001",
-    clinic_id: "harbourview-dental",
-    website_key: "harbourview-dental-wix",
+    public_reference: "TEST-MS-NEW-001",
+    clinic_id: "meridian-skin",
+    website_key: "meridian-skin-production",
     form_key: "appointment-enquiry",
-    idempotency_key: "fixture-harbour-new-0001",
-    name: "Test Person Harbour",
-    email: "harbour.person@example.invalid",
+    idempotency_key: "fixture-meridian-new-0001",
+    name: "Test Person Meridian One",
+    email: "meridian.one@example.invalid",
     page_path: "/request-appointment",
     reason: "general-enquiry",
     attribution_source: "direct",
@@ -120,13 +118,13 @@ const ENQUIRIES = [
   },
   {
     id: "11111111-1111-4111-8111-111111111102",
-    public_reference: "TEST-HV-ACK-002",
-    clinic_id: "harbourview-dental",
-    website_key: "harbourview-dental-wix",
+    public_reference: "TEST-MS-ACK-002",
+    clinic_id: "meridian-skin",
+    website_key: "meridian-skin-production",
     form_key: "contact",
-    idempotency_key: "fixture-harbour-ack-0002",
-    name: "Test Person Harbour Two",
-    email: "harbour.two@example.invalid",
+    idempotency_key: "fixture-meridian-ack-0002",
+    name: "Test Person Meridian Four",
+    email: "meridian.four@example.invalid",
     page_path: "/contact",
     reason: "general-enquiry",
     attribution_source: "organic",
@@ -135,12 +133,12 @@ const ENQUIRIES = [
   },
   {
     id: "11111111-1111-4111-8111-111111111103",
-    public_reference: "TEST-HV-CLOSED-003",
-    clinic_id: "harbourview-dental",
-    website_key: "harbourview-dental-wix",
+    public_reference: "TEST-MS-CLOSED-003",
+    clinic_id: "meridian-skin",
+    website_key: "meridian-skin-production",
     form_key: "appointment-enquiry",
-    idempotency_key: "fixture-harbour-closed-0003",
-    name: "Test Person Harbour Three",
+    idempotency_key: "fixture-meridian-closed-0003",
+    name: "Test Person Meridian Three",
     email: null,
     page_path: "/request-appointment",
     reason: "general-enquiry",
@@ -180,13 +178,13 @@ const ENQUIRIES = [
   },
   {
     id: "11111111-1111-4111-8111-111111111106",
-    public_reference: "TEST-NG-NEW-006",
-    clinic_id: "northgate-physio",
-    website_key: "northgate-physio-wix",
+    public_reference: "TEST-MS-NEW-006",
+    clinic_id: "meridian-skin",
+    website_key: "meridian-skin-production",
     form_key: "appointment-enquiry",
-    idempotency_key: "fixture-northgate-new-0006",
-    name: "Test Person Northgate",
-    email: "northgate.person@example.invalid",
+    idempotency_key: "fixture-meridian-new-0006",
+    name: "Test Person Meridian Six",
+    email: "meridian.six@example.invalid",
     page_path: "/request-appointment",
     reason: "general-enquiry",
     attribution_source: "organic",
@@ -196,17 +194,17 @@ const ENQUIRIES = [
 ] as const;
 
 const OUTBOX = [
-  { id: "22222222-2222-4222-8222-222222222201", enquiry_id: ENQUIRIES[0].id, clinic_id: "harbourview-dental", status: "sent", attempts: 1, error: null },
-  { id: "22222222-2222-4222-8222-222222222202", enquiry_id: ENQUIRIES[1].id, clinic_id: "harbourview-dental", status: "failed", attempts: 2, error: "sink_rejected" },
-  { id: "22222222-2222-4222-8222-222222222203", enquiry_id: ENQUIRIES[2].id, clinic_id: "harbourview-dental", status: "exhausted", attempts: 5, error: "sink_rejected" },
+  { id: "22222222-2222-4222-8222-222222222201", enquiry_id: ENQUIRIES[0].id, clinic_id: "meridian-skin", status: "sent", attempts: 1, error: null },
+  { id: "22222222-2222-4222-8222-222222222202", enquiry_id: ENQUIRIES[1].id, clinic_id: "meridian-skin", status: "failed", attempts: 2, error: "sink_rejected" },
+  { id: "22222222-2222-4222-8222-222222222203", enquiry_id: ENQUIRIES[2].id, clinic_id: "meridian-skin", status: "exhausted", attempts: 5, error: "sink_rejected" },
   { id: "22222222-2222-4222-8222-222222222204", enquiry_id: ENQUIRIES[3].id, clinic_id: "meridian-skin", status: "pending", attempts: 0, error: null },
   { id: "22222222-2222-4222-8222-222222222205", enquiry_id: ENQUIRIES[4].id, clinic_id: "meridian-skin", status: "sent", attempts: 1, error: null },
-  { id: "22222222-2222-4222-8222-222222222206", enquiry_id: ENQUIRIES[5].id, clinic_id: "northgate-physio", status: "unconfigured", attempts: 0, error: "mailbox_unconfigured" },
+  { id: "22222222-2222-4222-8222-222222222206", enquiry_id: ENQUIRIES[5].id, clinic_id: "meridian-skin", status: "unconfigured", attempts: 0, error: "mailbox_unconfigured" },
 ] as const;
 
 export const RETRY_SUCCESS_OUTBOX_ID = OUTBOX[1].id;
 export const RETRY_FAILURE_OUTBOX_ID = OUTBOX[0].id;
-export const HARBOUR_DUPLICATE_KEY = ENQUIRIES[0].idempotency_key;
+export const FIXTURE_DUPLICATE_KEY = ENQUIRIES[0].idempotency_key;
 
 export function resolveEnquiryFixtureUrl(): string {
   loadRootEnv();
@@ -285,6 +283,11 @@ export async function resetEnquiryFixture(url = resolveEnquiryFixtureUrl()): Pro
   const pool = new pg.Pool({ connectionString: url, max: 1 });
   const client = await pool.connect();
   try {
+    const clinics = await client.query<{ clinics: string | null }>("select to_regclass('public.clinics')::text as clinics");
+    if (clinics.rows[0]?.clinics) {
+      const stored = await client.query("select 1 from enquiries where public_reference not like 'TEST-%' limit 1");
+      if ((stored.rowCount ?? 0) > 0) throw new Error("Refusing enquiry fixture reset: stored enquiries are outside the fixture.");
+    }
     await client.query("begin");
     await applySchema(client);
     await insertRows(client);
