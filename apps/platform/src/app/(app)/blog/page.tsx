@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import { canEditClient, listActiveStaff, listArticles, listBlogWebsites, listClientsForRequest, scopeWorkspace, type BlogStatus } from "@clinic-genie/db";
 import { requireAccess } from "@/lib/session";
 import { staffTx } from "@/lib/db";
@@ -8,6 +9,8 @@ import { Badge, type Tone } from "@/components/ui/Badge";
 import { Table, Td, Th } from "@/components/ui/Table";
 import { EmptyState, Notice } from "@/components/ui/Notice";
 import { FilterBar, FilterInput, FilterSelect } from "@/components/ui/Filters";
+import { BlogClientFields } from "@/components/modules/blog/BlogClientFields";
+import { chooseClientWebsite } from "@/lib/blog-workspace";
 import { InnerNavFrame, InnerNavGroup, InnerNavLink } from "@/components/shell/InnerNav";
 
 export const dynamic = "force-dynamic";
@@ -66,10 +69,13 @@ export default async function BlogPage({ searchParams }: { searchParams: Promise
       clients,
       websites: websites.map((site) => ({ id: site.id, clientId: site.client_id })),
     });
-    const list = selection.websiteId
+    const resolvedWebsiteId = selection.clientId && !selection.denied
+      ? chooseClientWebsite(selection.clientId, websites.map((site) => ({ id: site.id, name: site.name, clientId: site.client_id })), selection.websiteId) || null
+      : null;
+    const list = resolvedWebsiteId
       ? await listArticles(db, {
           clientId: selection.clientId ?? undefined,
-          websiteId: selection.websiteId,
+          websiteId: resolvedWebsiteId,
           status,
           authorUserId: params.author && UUID.test(params.author) ? params.author : undefined,
           query: params.q,
@@ -77,11 +83,14 @@ export default async function BlogPage({ searchParams }: { searchParams: Promise
           page,
         })
       : null;
-    return { list, websites, clients, staff: await listActiveStaff(db), selection };
+    return { list, websites, clients, staff: await listActiveStaff(db), selection, resolvedWebsiteId };
   });
-  const website = data.websites.find((site) => site.id === data.selection.websiteId);
+  if (data.selection.clientId && data.resolvedWebsiteId && params.website !== data.resolvedWebsiteId) {
+    redirect(queryHref({ client: data.selection.clientId, website: data.resolvedWebsiteId, status, author: params.author, q: params.q, sort: sort === "published" ? "published" : undefined }));
+  }
+  const website = data.websites.find((site) => site.id === data.resolvedWebsiteId);
   const canCreate = Boolean(website && canEditClient(access, website.client_id));
-  const base = { client: data.selection.clientId ?? undefined, website: data.selection.websiteId ?? undefined, author: params.author, q: params.q, sort: sort === "published" ? "published" : undefined };
+  const base = { client: data.selection.clientId ?? undefined, website: data.resolvedWebsiteId ?? undefined, author: params.author, q: params.q, sort: sort === "published" ? "published" : undefined };
   const newHref = website ? `/blog/new?client=${website.client_id}&website=${website.id}` : "/blog";
   const clientsById = new Map(data.clients.map((client) => [client.id, client.name]));
   for (const site of data.websites) clientsById.set(site.client_id, site.client_name);
@@ -108,16 +117,19 @@ export default async function BlogPage({ searchParams }: { searchParams: Promise
     >
       <PageHeader title="Blog" description="Draft, review and publish articles for native clinic websites. Article performance is not part of this version." action={canCreate ? <LinkButton href={newHref}>+ New article</LinkButton> : undefined} />
       {data.selection.denied && <div className="mb-4"><Notice tone="neutral">That client is not available.</Notice></div>}
-      {data.selection.websiteReplaced && <div className="mb-4"><Notice tone="neutral">That website is not part of the selected client.</Notice></div>}
-      <FilterBar clearHref={queryHref({ client: base.client, website: base.website })}>
+      <FilterBar formKey={`${base.client ?? ""}:${base.website ?? ""}`} clearHref={queryHref({ client: base.client, website: base.website })}>
         {status && <input type="hidden" name="status" value={status} />}
-        <FilterSelect name="client" label="Client" value={data.selection.clientId ?? undefined} allLabel="Choose a client" options={[...clientsById.entries()].map(([value, label]) => ({ value, label })).sort((a, b) => a.label.localeCompare(b.label))} />
-        <FilterSelect name="website" label="Website" value={data.selection.websiteId ?? undefined} allLabel="Choose a website" options={data.websites.filter((site) => !data.selection.clientId || site.client_id === data.selection.clientId).map((site) => ({ value: site.id, label: site.name }))} />
+        <BlogClientFields
+          clients={[...clientsById.entries()].map(([value, label]) => ({ value, label })).sort((a, b) => a.label.localeCompare(b.label))}
+          websites={data.websites.map((site) => ({ id: site.id, name: site.name, clientId: site.client_id }))}
+          clientId={data.selection.clientId ?? undefined}
+          websiteId={data.resolvedWebsiteId ?? undefined}
+        />
         <FilterSelect name="author" label="Author" value={params.author} allLabel="All authors" options={data.staff.map((person) => ({ value: person.id, label: person.display_name }))} />
         <FilterSelect name="sort" label="Sort" value={sort} allLabel="Last updated" options={[{ value: "updated", label: "Last updated" }, { value: "published", label: "Published on" }]} />
         <FilterInput name="q" label="Search title" value={params.q} placeholder="Article title" />
       </FilterBar>
-      {!website && <EmptyState title="Select a client and website">Articles are listed for one website. Choose both above before creating an article.</EmptyState>}
+      {!website && <EmptyState title={data.selection.clientId ? "No website for this client" : "Choose a client"}>{data.selection.clientId ? "This client has no active website." : "Choosing a client selects that client's website and lists its articles."}</EmptyState>}
       {website && (
         <>
           <div className="mb-4 flex flex-wrap items-center justify-between gap-3">

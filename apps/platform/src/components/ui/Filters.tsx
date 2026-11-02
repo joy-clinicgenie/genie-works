@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import type { ChangeEvent, ReactNode } from "react";
 import Link from "next/link";
 import { Button, buttonClass } from "./Button";
 import { PillSelect } from "./PillSelect";
@@ -14,11 +14,11 @@ export function FilterBar({ children, action, clearHref, formKey }: { children: 
   );
 }
 
-export function FilterSelect({ name, label, value, options, allLabel = "All" }: { name: string; label: string; value?: string; options: Array<{ value: string; label: string }>; allLabel?: string }) {
+export function FilterSelect({ name, label, value, options, allLabel = "All", onChange }: { name: string; label: string; value?: string; options: Array<{ value: string; label: string }>; allLabel?: string; onChange?: (event: ChangeEvent<HTMLSelectElement>) => void }) {
   return (
     <label className="flex min-w-0 max-w-full flex-col gap-1 text-xs font-medium text-muted">
       {label}
-      <PillSelect name={name} defaultValue={value ?? ""} className="w-full min-w-0 max-w-full sm:min-w-40">
+      <PillSelect name={name} defaultValue={value ?? ""} onChange={onChange} className="w-full min-w-0 max-w-full sm:min-w-40">
         <option value="">{allLabel}</option>
         {options.map((o) => (
           <option key={o.value} value={o.value}>{o.label}</option>
