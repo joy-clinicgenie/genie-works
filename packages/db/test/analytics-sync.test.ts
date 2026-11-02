@@ -241,11 +241,11 @@ describe("analytics tenant isolation and sync", () => {
 
   it("uses the provider timezone for the due window", () => {
     const instant = new Date("2026-10-30T16:30:00.000Z");
-    expect(dueWindow("ga4", instant, "Asia/Singapore")).toEqual({ start: "2026-10-24", end: "2026-10-31" });
-    expect(dueWindow("ga4", instant, "UTC")).toEqual({ start: "2026-10-23", end: "2026-10-30" });
+    expect(dueWindow("ga4", instant, "Asia/Singapore")).toEqual({ start: "2026-10-02", end: "2026-10-31" });
+    expect(dueWindow("ga4", instant, "UTC")).toEqual({ start: "2026-10-01", end: "2026-10-30" });
     expect(dueWindow("wix", instant, "Asia/Singapore").end).toBe("2026-10-31");
     expect(dueWindow("wix", instant, "UTC").end).toBe("2026-10-30");
-    expect(dueWindow("gsc", instant, "Asia/Singapore")).toEqual({ start: "2026-10-18", end: "2026-10-27" });
+    expect(dueWindow("gsc", instant, "Asia/Singapore")).toEqual({ start: "2026-09-28", end: "2026-10-27" });
   });
 
   it("queues the provider-timezone window and reuses a queued job", async () => {
@@ -266,8 +266,8 @@ describe("analytics tenant isolation and sync", () => {
         [connection.id],
       );
       expect(queued.rows.map((row) => row.end_date)).toEqual(["2026-10-31"]);
-      const first = await enqueueJob(db, { clientId, websiteId: site, connectionId: connection.id, templateKey: "ga4.traffic_daily", start: "2026-10-24", end: "2026-10-31" });
-      const second = await enqueueJob(db, { clientId, websiteId: site, connectionId: connection.id, templateKey: "ga4.traffic_daily", start: "2026-10-24", end: "2026-10-31" });
+      const first = await enqueueJob(db, { clientId, websiteId: site, connectionId: connection.id, templateKey: "ga4.traffic_daily", start: "2026-10-02", end: "2026-10-31" });
+      const second = await enqueueJob(db, { clientId, websiteId: site, connectionId: connection.id, templateKey: "ga4.traffic_daily", start: "2026-10-02", end: "2026-10-31" });
       expect(second).toEqual({ id: first.id, reused: true });
     });
   });

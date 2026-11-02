@@ -33,7 +33,7 @@ Set these on the staging project, not in this repository. Use staging values, no
 | `AUTH_GOOGLE_ID`, `AUTH_GOOGLE_SECRET`, `AUTH_GOOGLE_HD` | Only after the identity client is approved. Preview does not create an admin. |
 | `AUTH_DEV_MAGIC_LINKS` | Leave unset. Preview and production ignore it. |
 | `APP_ENVIRONMENT_LABEL` | A visible label such as `staging`. The label does not change permissions. |
-| `ENQUIRY_DATABASE_URL` | Leave empty until the source owner approves that website’s enquiry database. It does not approve a Wix form. |
+| `ENQUIRY_DATABASE_URL` | Staff role on `clinic_genie_enquiry_staging` for the Clinic Genie website. It does not approve a Wix form. |
 | `ANALYTICS_GOOGLE_CLIENT_ID`, `ANALYTICS_GOOGLE_CLIENT_SECRET`, `ANALYTICS_WIX_APP_ID`, `ANALYTICS_WIX_APP_SECRET`, `ANALYTICS_TOKEN_KEY` | Leave empty until DEP-01 names the property. |
 | `ANALYTICS_WORKER_SECRET` or `CRON_SECRET` | One non-empty bearer so the cron can authenticate. |
 | `ANALYTICS_LIVE_REPORTS` | Off until a sync window has been compared with the provider. |

@@ -2,7 +2,7 @@ import { requireAccess } from "@/lib/session";
 import { Button, LinkButton } from "@/components/ui/Button";
 import { SeoFrame, Unavailable } from "@/components/modules/seo/SeoFrame";
 import { AiPanel, AssistantPanel, GooglePanel, QuickActions, RecentChanges } from "@/components/modules/seo/OverviewPanels";
-import { loadSeoOverview, readGoogleControls, seoHref, type SeoSearch } from "@/lib/seo-workspace";
+import { loadSearchPerformance, loadSeoOverview, readGoogleControls, seoHref, type SeoSearch } from "@/lib/seo-workspace";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "SEO" };
@@ -12,6 +12,9 @@ export default async function SeoOverviewPage({ searchParams }: { searchParams: 
   const query = await searchParams;
   const { ctx, bundle } = await loadSeoOverview(access, query);
   const controls = readGoogleControls(query);
+  const performance = bundle?.searchConsole?.status === "connected" && ctx.selected
+    ? await loadSearchPerformance(access, ctx.selected.clientId, ctx.selected.id, controls)
+    : null;
   const drafts = bundle?.changes.filter((change) => !change.verification_on).length ?? 0;
   return (
     <SeoFrame
@@ -30,7 +33,7 @@ export default async function SeoOverviewPage({ searchParams }: { searchParams: 
         <p id="check-unavailable" className="text-xs text-muted">Run website check is unavailable because no crawler is connected.</p>
         <AssistantPanel ctx={ctx} bundle={bundle} />
         <div className="grid items-start gap-4 xl:grid-cols-3">
-          <div className="xl:col-span-2"><GooglePanel ctx={ctx} controls={controls} search={bundle?.searchConsole} /></div>
+          <div className="xl:col-span-2"><GooglePanel ctx={ctx} controls={controls} search={bundle?.searchConsole} performance={performance} /></div>
           <AiPanel ctx={ctx} />
         </div>
         <div className="grid items-start gap-4 lg:grid-cols-2">

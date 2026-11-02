@@ -126,14 +126,17 @@ export function civilDate(timeZone: string, now: Date): string {
   return new Intl.DateTimeFormat("en-CA", { timeZone, year: "numeric", month: "2-digit", day: "2-digit" }).format(now);
 }
 
+/** Thirty Pacific days ending three days ago. Search Console has not published the newer days. */
+export function gscDueWindow(now: Date): { start: string; end: string } {
+  const end = addDays(civilDate(GSC_TIME_ZONE, now), -3);
+  return { start: addDays(end, -29), end };
+}
+
 export function dueWindow(provider: AnalyticsProvider, now: Date, timezone: string | null): { start: string; end: string } {
-  if (provider === "gsc") {
-    const end = addDays(civilDate(GSC_TIME_ZONE, now), -3);
-    return { start: addDays(end, -9), end };
-  }
+  if (provider === "gsc") return gscDueWindow(now);
   const today = civilDate(timezone || "Asia/Singapore", now);
   if (provider === "wix") return wixDueWindow(today);
-  return { start: addDays(today, -7), end: today };
+  return { start: addDays(today, -29), end: today };
 }
 
 export function dateChunks(start: string, end: string, size: number): Array<{ start: string; end: string }> {

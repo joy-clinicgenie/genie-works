@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { pickSearchConsole, searchConsoleCapability, setupChecks } from "@/lib/seo-workspace";
+import { gscDueWindow } from "@clinic-genie/db";
+import { pickSearchConsole, searchConsoleCapability, searchConsoleWindow, setupChecks } from "@/lib/seo-workspace";
 
 const property = "https://www.example.invalid/";
 
@@ -26,6 +27,13 @@ describe("Search Console connection status", () => {
       profiles: [],
     }).find((item) => item.title === "Google Search Console");
     expect(check?.status).toBe("attention");
+  });
+
+  it("reads the previous 30 published Search Console days", () => {
+    const now = new Date("2026-10-30T16:30:00.000Z");
+    const controls = { range: "30" as const, metric: "clicks" as const, record: "pages" as const, direction: "decreased" as const, changeMetric: "clicks" as const };
+    expect(searchConsoleWindow(controls, now)).toEqual({ start: "2026-09-28", end: "2026-10-27" });
+    expect(searchConsoleWindow(controls, now)).toEqual(gscDueWindow(now));
   });
 
   it("marks a connected property ready on the setup checklist", () => {

@@ -5,7 +5,7 @@ import { Card, CardHeader } from "@/components/ui/Card";
 import { Drawer } from "@/components/ui/Drawer";
 import { Button, LinkButton, buttonClass } from "@/components/ui/Button";
 import { todaySgt } from "@clinic-genie/db";
-import { completedSince, googleQuery, seoHref, type GoogleControls, type SearchConsoleConnection, type SeoContext, type WebsiteSeoBundle } from "@/lib/seo-workspace";
+import { completedSince, googleQuery, seoHref, type GoogleControls, type SearchConsoleConnection, type SearchPerformance, type SeoContext, type WebsiteSeoBundle } from "@/lib/seo-workspace";
 import { HiddenSeoContext, Unavailable } from "@/components/modules/seo/SeoFrame";
 
 const RANGES = [
@@ -21,6 +21,17 @@ const METRICS = [
   ["ctr", "CTR"],
   ["position", "Average position"],
 ] as const;
+
+export function formatSearchMetric(metric: (typeof METRICS)[number][0], performance: SearchPerformance): string {
+  const value = performance[metric];
+  if (value === null) return "Unavailable";
+  if (metric === "ctr") {
+    const percent = value <= 1 ? value * 100 : value;
+    return `${new Intl.NumberFormat("en-SG", { minimumFractionDigits: 1, maximumFractionDigits: 1 }).format(percent)}%`;
+  }
+  if (metric === "position") return new Intl.NumberFormat("en-SG", { minimumFractionDigits: 1, maximumFractionDigits: 1 }).format(value);
+  return new Intl.NumberFormat("en-SG", { maximumFractionDigits: 0 }).format(value);
+}
 
 function controlHref(ctx: SeoContext, controls: GoogleControls, patch: Partial<GoogleControls>) {
   return seoHref("/seo", ctx, googleQuery({ ...controls, ...patch }));
@@ -67,21 +78,22 @@ export function AssistantPanel({ ctx, bundle }: { ctx: SeoContext; bundle: Websi
   );
 }
 
-export function GooglePanel({ ctx, controls, search = null }: { ctx: SeoContext; controls: GoogleControls; search?: SearchConsoleConnection | null }) {
+export function GooglePanel({ ctx, controls, search = null, performance = null }: { ctx: SeoContext; controls: GoogleControls; search?: SearchConsoleConnection | null; performance?: SearchPerformance | null }) {
   const report = seoHref("/seo/reports", ctx, { tab: "google-search", ...googleQuery(controls) });
   const consoleHref = "https://search.google.com/search-console";
   const metricLabel = METRICS.find(([id]) => id === controls.metric)?.[1] ?? "Clicks";
   const chip = (active: boolean) => buttonClass(active ? "primary" : "secondary", "sm");
   const property = search?.status === "connected" ? search.propertyId : null;
+  const reportingDate = performance ? performance.end : null;
   return (
     <Card>
       <CardHeader
         title="Site performance on Google"
-        description={property ? `Connected to ${property}. Controls choose the report context. Stored search figures appear after a sync.` : "Search Console is not connected. Controls choose the report context and do not invent results."}
+        description={property ? `Connected to ${property}. Figures are the stored Search Console total for this range.` : "Search Console is not connected. Controls choose the report context and do not invent results."}
         action={<Badge tone={property ? "good" : "neutral"}>{property ? "Connected" : "Not connected"}</Badge>}
       />
       <div className="space-y-4 px-5 pb-5">
-        <p className="text-xs text-muted">{property ? `Verified property: ${property}.` : "Verified property: not connected."} Latest Google reporting date: unavailable.</p>
+        <p className="text-xs text-muted">{property ? `Verified property: ${property}.` : "Verified property: not connected."} Latest Google reporting date: {reportingDate ?? "unavailable"}.</p>
         <div className="flex flex-wrap gap-2">
           {RANGES.map(([id, label]) => <Link key={id} href={controlHref(ctx, controls, { range: id })} aria-current={controls.range === id ? "true" : undefined} className={chip(controls.range === id)}>{label}</Link>)}
         </div>
@@ -97,13 +109,15 @@ export function GooglePanel({ ctx, controls, search = null }: { ctx: SeoContext;
           {METRICS.map(([id, label]) => (
             <Link key={id} href={controlHref(ctx, controls, { metric: id })} aria-current={controls.metric === id ? "true" : undefined} className={`rounded-2xl border p-3 ${controls.metric === id ? "border-action bg-brand-pale" : "border-line"}`}>
               <div className="text-xs font-semibold uppercase tracking-[0.12em] text-muted">{label}</div>
-              <div className="mt-1 text-xl font-semibold">Unavailable</div>
+              <div className="mt-1 text-xl font-semibold">{performance ? formatSearchMetric(id, performance) : "Unavailable"}</div>
               <p className="mt-1 text-xs text-muted">{id === "position" ? "A lower average position usually means a better ranking. It does not use the same rise-and-fall rule as clicks." : "No comparison with the previous equivalent period is available."}</p>
             </Link>
           ))}
         </div>
         <div className="rounded-2xl border border-dashed border-line p-4 text-sm text-muted">
-          {`No ${metricLabel.toLowerCase()} trend is available. Google has not provided a reporting date.`}
+          {performance
+            ? `${metricLabel} for ${performance.start} to ${performance.end}, Pacific time. Google has not published the latest three days. A daily trend is not stored for this total.`
+            : `No ${metricLabel.toLowerCase()} trend is available. This range has not been synchronised.`}
         </div>
         <div className="flex flex-wrap gap-2">
           {(["pages", "queries"] as const).map((record) => <Link key={record} href={controlHref(ctx, controls, { record })} aria-current={controls.record === record ? "true" : undefined} className={chip(controls.record === record)}>{record === "pages" ? "Pages" : "Queries"}</Link>)}

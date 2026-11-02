@@ -165,6 +165,43 @@ export function assertEnquiryFixtureUrl(url: string): { host: string; port: stri
   return { host: target.hostname, port: target.port, database };
 }
 
+/** The live Clinic Genie website enquiry database. Fixture commands never use it. */
+export const ENQUIRY_STAFF_ROLE = "cg_enquiry_staff";
+
+/**
+ * Application read of ENQUIRY_DATABASE_URL.
+ * The live database is remote, named clinic_genie_enquiry_staging, and uses the staff role.
+ * A local database whose name contains enquiry and test remains the fixture and is refused in production.
+ */
+export function assertEnquirySourceUrl(url: string): { host: string; port: string; database: string; live: boolean } {
+  const target = parsed(url);
+  const database = decodeURIComponent(target.pathname.replace(/^\//, ""));
+  if (target.port === SIBLING_CLINIC_PORT) {
+    throw new Error("Refusing enquiry source: port 54329 is the sibling clinic website database.");
+  }
+  if (!/^[a-z0-9_]+$/.test(database)) {
+    throw new Error("Refusing enquiry source: the database name is not a plain identifier.");
+  }
+  if (database === ENQUIRY_STAGING_DATABASE) {
+    if (LOCAL_HOSTS.has(target.hostname)) {
+      throw new Error("Refusing enquiry source: the live enquiry database is not local.");
+    }
+    const user = decodeURIComponent(target.username);
+    if (user !== ENQUIRY_STAFF_ROLE) {
+      throw new Error("Refusing enquiry source: Genie Works uses the staff role on the live enquiry database.");
+    }
+    for (const name of ["DATABASE_URL", "DATABASE_ADMIN_URL"]) {
+      const other = process.env[name];
+      if (other && sameDatabase(other, url)) {
+        throw new Error(`Refusing enquiry source: the target is the same database as ${name}.`);
+      }
+    }
+    return { host: "remote", port: target.port || "default", database, live: true };
+  }
+  const fixture = assertEnquiryFixtureUrl(url);
+  return { host: fixture.host, port: fixture.port, database: fixture.database, live: false };
+}
+
 function sameDatabase(left: string, right: string): boolean {
   try {
     const a = new URL(left);

@@ -22,8 +22,10 @@ Used by the embedded database on this machine. `npm run db:rehearse` creates `cl
 | `AUTH_GOOGLE_HD` | Workspace domain. On a local database, an unknown matching user can be created as admin. A shared database does not create that user. |
 | `APP_ENVIRONMENT_LABEL` | Text shown in the header. It does not by itself enable sign-in shortcuts. |
 | `UPLOADS_DIR` | Private local directory for evidence files. |
-| `ENQUIRY_DATABASE_URL` | Read-only clinic-website enquiry source. Empty means that source stays disconnected. A Wix form binding is separate and does not use this URL. The stored local fixture database is `clinic_genie_enquiry_test`. `npm test` and `npm run db:rehearse` use separate disposable databases and do not reset that fixture. |
+| `ENQUIRY_DATABASE_URL` | Live Clinic Genie website enquiry source. Genie Works uses the staff role on `clinic_genie_enquiry_staging`. Empty means that source stays disconnected. A Wix form binding is separate and does not use this URL. A local database whose name contains `enquiry` and `test` is the fixture and is refused in production. `npm test` and `npm run db:rehearse` use separate disposable databases and do not reset the fixture or the live database. |
 | `ENQUIRY_STAGING_ADMIN_URL` | Owner connection for `clinic_genie_enquiry_staging` only. It creates that schema and its restricted roles. It is not the website or Genie Works credential, and it is not `ENQUIRY_DATABASE_URL`. |
+| `ENQUIRY_STAGING_INTAKE_URL` | Intake role for the Clinic Genie website. The website’s own `ENQUIRY_DATABASE_URL` uses this credential. Genie Works does not. |
+| `ENQUIRY_STAGING_STAFF_URL` | Staff role for Genie Works. `ENQUIRY_DATABASE_URL` in this application uses this credential. |
 | `FORMS_WIX_APP_ID` | Wix app id for reading a form that is bound to a website. Empty leaves those reads unavailable. This is not the analytics app. |
 | `FORMS_WIX_APP_SECRET` | Matching forms app secret. The site instance and form id are stored on the website row, not in these variables. |
 | `FORMS_WIX_NEW_INSTANCE_*` | Wix Forms (new) instance for one website marked Wix: Aqua, Cedar, Joyful, MSDC, SBSN, SDIC, Sunrise, TAC, and Forms test. Empty until that website is identified. This is not the old Forms and Payments instance, and it does not choose the form. |
@@ -65,7 +67,7 @@ Same names as production, with staging values supplied by the hosting project. N
 | `AUTH_GOOGLE_HD` | Workspace domain for existing staff. It does not create an admin. |
 | `AUTH_DEV_MAGIC_LINKS` | Must stay off. The application ignores it in production. |
 | `APP_ENVIRONMENT_LABEL` | Header label, normally `production`. |
-| `ENQUIRY_DATABASE_URL` | Production enquiry source, only when that source is approved. |
+| `ENQUIRY_DATABASE_URL` | Staff role on `clinic_genie_enquiry_staging`, the live Clinic Genie website enquiry source. |
 | `ANALYTICS_*` | Production provider credentials and the worker secret. |
 | `UPLOADS_DIR` | Replaced by the production file store when one is chosen. |
 

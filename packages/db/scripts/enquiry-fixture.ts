@@ -20,6 +20,17 @@ function report(summary: { database: string; host: string; port: string; enquiri
 }
 
 function linkLocalFixture(): void {
+  const current = process.env.ENQUIRY_DATABASE_URL?.trim() ?? "";
+  if (current) {
+    try {
+      const database = decodeURIComponent(new URL(current).pathname.replace(/^\//, ""));
+      if (database === "clinic_genie_enquiry_staging") {
+        throw new Error("Refusing enquiry fixture link: ENQUIRY_DATABASE_URL is the live enquiry database.");
+      }
+    } catch (error) {
+      if (error instanceof Error && error.message.startsWith("Refusing")) throw error;
+    }
+  }
   const url = enquiryFixtureUrlFromAdmin(requireEnv("DATABASE_ADMIN_URL"));
   assertEnquiryFixtureUrl(url);
   const root = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "..");

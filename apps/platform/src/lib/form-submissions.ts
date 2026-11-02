@@ -1,6 +1,6 @@
 import { randomBytes } from "node:crypto";
 import pg from "pg";
-import { assertEnquiryFixtureUrl, canManageRegistry, enquiryStatusCountQuery, formatDateTime, setEnquiryFollowUp, todaySgt, websiteFormConfigPresent, type AccessProfile } from "@clinic-genie/db";
+import { assertEnquirySourceUrl, canManageRegistry, enquiryStatusCountQuery, formatDateTime, setEnquiryFollowUp, todaySgt, websiteFormConfigPresent, type AccessProfile } from "@clinic-genie/db";
 import { customWindow, periodRange } from "@/lib/period-range";
 import { loadWixEnquirySlice, readWixEnquiryDetail, type WixEnquirySlice } from "@/lib/wix-enquiries";
 
@@ -348,26 +348,27 @@ function closeEnquiryPool(): void {
   if (pool) void pool.end().catch(() => undefined);
 }
 
-/** Empty means not configured. Any other target must be the local enquiry fixture before a connection is opened. */
-export async function enquiryConnection(): Promise<{ configured: boolean; reachable: boolean; refused: boolean }> {
+/** Empty means not configured. A live source or the local fixture must pass before a connection is opened. */
+export async function enquiryConnection(): Promise<{ configured: boolean; reachable: boolean; refused: boolean; live: boolean }> {
   const url = process.env.ENQUIRY_DATABASE_URL?.trim();
   if (!url) {
     closeEnquiryPool();
-    return { configured: false, reachable: false, refused: false };
+    return { configured: false, reachable: false, refused: false, live: false };
   }
+  let live = false;
   try {
-    assertEnquiryFixtureUrl(url);
+    live = assertEnquirySourceUrl(url).live;
   } catch {
     closeEnquiryPool();
-    return { configured: true, reachable: false, refused: true };
+    return { configured: true, reachable: false, refused: true, live: false };
   }
   const pool = enquiryPool();
-  if (!pool) return { configured: true, reachable: false, refused: true };
+  if (!pool) return { configured: true, reachable: false, refused: true, live };
   try {
     await pool.query("select 1");
-    return { configured: true, reachable: true, refused: false };
+    return { configured: true, reachable: true, refused: false, live };
   } catch {
-    return { configured: true, reachable: false, refused: false };
+    return { configured: true, reachable: false, refused: false, live };
   }
 }
 
@@ -378,7 +379,7 @@ function enquiryPool(): pg.Pool | null {
     return null;
   }
   try {
-    assertEnquiryFixtureUrl(url);
+    assertEnquirySourceUrl(url);
   } catch {
     closeEnquiryPool();
     return null;
@@ -1041,8 +1042,14 @@ export async function retryNotification(scope: string[] | null, id: string): Pro
   }
 }
 
-/** Stores one labelled synthetic enquiry. Returns the new id and reference, or why it was not stored. */
+/** Stores one labelled synthetic enquiry on the local fixture. The live database is refused. */
 export async function createTestSubmission(clinicId: string): Promise<{ id: string; reference: string } | "not_connected" | "rejected"> {
+  const url = process.env.ENQUIRY_DATABASE_URL?.trim() ?? "";
+  try {
+    if (assertEnquirySourceUrl(url).live) return "rejected";
+  } catch {
+    return "not_connected";
+  }
   const pool = enquiryPool();
   if (!pool) return "not_connected";
   if (!/^[a-z0-9-]{1,64}$/.test(clinicId)) return "rejected";

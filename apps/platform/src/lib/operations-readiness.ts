@@ -18,6 +18,7 @@ export interface OperationsReport {
   database: "missing" | "local" | "shared";
   workerBearer: "missing" | "set";
   enquirySource: EnquirySourceState;
+  enquiryLive: boolean;
   sync: {
     readable: boolean;
     connections: number;
@@ -88,7 +89,7 @@ function freshness(sync: PlatformSyncHealth | null, now: Date): SyncFreshness {
 
 export function assembleOperationsReport(input: {
   env: RuntimeEnv;
-  enquiry: { configured: boolean; reachable: boolean; refused: boolean };
+  enquiry: { configured: boolean; reachable: boolean; refused: boolean; live?: boolean };
   failedNotifications: number | null;
   sync: PlatformSyncHealth | null;
   backupOutcome: string | null;
@@ -125,6 +126,7 @@ export function assembleOperationsReport(input: {
     database: databaseState(input.env.DATABASE_URL),
     workerBearer: input.env.ANALYTICS_WORKER_SECRET?.trim() || input.env.CRON_SECRET?.trim() ? "set" : "missing",
     enquirySource,
+    enquiryLive: input.enquiry.live === true,
     sync: syncView,
     failedNotifications: enquirySource === "reachable" ? input.failedNotifications : null,
     backup: outcomeState(input.backupOutcome),
@@ -161,11 +163,13 @@ function operationSignals(report: OperationsReport, authUrl: "missing" | "local"
   if (report.enquirySource === "not-configured") signals.push("The enquiry database is not connected.");
   if (report.enquirySource === "refused") signals.push("The enquiry database target was refused before a read or write.");
   if (report.enquirySource === "unreachable") signals.push("The enquiry database could not be reached. No messages were copied.");
-  if (report.enquirySource === "reachable") {
+  if (report.enquirySource === "reachable" && report.enquiryLive) {
+    signals.push("The live enquiry database is connected. Messages stay in that database.");
+  } else if (report.enquirySource === "reachable") {
     signals.push("The enquiry source passed the local fixture check. That is not an approved live source.");
-    if (report.failedNotifications !== null) {
-      signals.push(`Failed clinic notifications: ${report.failedNotifications}. A failed row is not mailbox delivery.`);
-    }
+  }
+  if (report.enquirySource === "reachable" && report.failedNotifications !== null) {
+    signals.push(`Failed clinic notifications: ${report.failedNotifications}. A failed row is not mailbox delivery.`);
   }
   if (report.sync.freshness === "unavailable") signals.push("Analytics synchronisation status could not be read.");
   if (report.sync.freshness === "failed") {

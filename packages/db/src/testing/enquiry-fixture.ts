@@ -15,6 +15,7 @@ import {
   SUITE_ENQUIRY_DATABASES,
   assertDropTarget,
   assertEnquiryFixtureUrl,
+  databaseNameFromUrl,
   enquiryFixtureUrlFromAdmin,
   maintenanceUrl,
   suiteEnquiryFixtureUrl,
@@ -214,6 +215,8 @@ export function resolveEnquiryFixtureUrl(): string {
   const derived = enquiryFixtureUrlFromAdmin(requireEnv("DATABASE_ADMIN_URL"));
   const configured = process.env.ENQUIRY_DATABASE_URL?.trim();
   if (!configured) return derived;
+  const configuredDatabase = databaseNameFromUrl(configured);
+  if (configuredDatabase === "clinic_genie_enquiry_staging") return derived;
   const target = assertEnquiryFixtureUrl(configured);
   if (target.database !== ENQUIRY_FIXTURE_DATABASE) {
     throw new Error("Refusing enquiry fixture: ENQUIRY_DATABASE_URL must use the database clinic_genie_enquiry_test.");

@@ -13,8 +13,10 @@ import {
   listSeoPages,
   listSeoRedirects,
   listShellClients,
+  gscDueWindow,
   listTasks,
   listWebsites,
+  publishedReport,
   scopeWorkspace,
   todaySgt,
   type AccessProfile,
@@ -150,6 +152,44 @@ export function readGoogleControls(query: SeoSearch): GoogleControls {
     from: one(query.from),
     to: one(query.to),
   };
+}
+
+export interface SearchPerformance {
+  start: string;
+  end: string;
+  clicks: number | null;
+  impressions: number | null;
+  ctr: number | null;
+  position: number | null;
+}
+
+/** The overview range, ending on the latest Pacific day Search Console has published. */
+export function searchConsoleWindow(controls: GoogleControls, now = new Date()): { start: string; end: string } | null {
+  const end = gscDueWindow(now).end;
+  if (controls.range === "custom") {
+    if (!controls.from || !controls.to || controls.from > controls.to) return null;
+    const boundedEnd = controls.to < end ? controls.to : end;
+    if (controls.from > boundedEnd) return null;
+    return { start: controls.from, end: boundedEnd };
+  }
+  const days = controls.range === "7" ? 7 : controls.range === "90" ? 90 : 30;
+  return { start: addDays(end, 1 - days), end };
+}
+
+/** Reads the stored Search Console total for the selected range. A missing day is not filled in. */
+export async function loadSearchPerformance(access: AccessProfile, clientId: string, websiteId: string, controls: GoogleControls, now = new Date()): Promise<SearchPerformance | null> {
+  const window = searchConsoleWindow(controls, now);
+  if (!window) return null;
+  return staffTx(access, async (db) => {
+    const report = await publishedReport(db, { clientId, websiteId, templateKey: "gsc.totals", start: window.start, end: window.end });
+    if (!report) return null;
+    const row = report.rows.find((item) => item.dimensionKey === "property") ?? report.rows[0];
+    const value = (key: string) => {
+      const metric = row?.metrics.find((item) => item.key === key && item.state === "available" && item.value !== null);
+      return metric?.value ?? null;
+    };
+    return { start: report.start, end: report.end, clicks: value("clicks"), impressions: value("impressions"), ctr: value("ctr"), position: value("position") };
+  });
 }
 
 export function googleQuery(controls: GoogleControls): Record<string, string | undefined> {

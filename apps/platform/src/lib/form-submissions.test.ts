@@ -174,10 +174,10 @@ describe("isolated enquiry fixture", () => {
     const previous = process.env.ENQUIRY_DATABASE_URL;
     try {
       process.env.ENQUIRY_DATABASE_URL = "postgresql://local@127.0.0.1:54339/clinic_genie";
-      expect(await enquiryConnection()).toEqual({ configured: true, reachable: false, refused: true });
+      expect(await enquiryConnection()).toEqual({ configured: true, reachable: false, refused: true, live: false });
       expect((await listEnquiryBoard(null, {})).connected).toBe(false);
       process.env.ENQUIRY_DATABASE_URL = "postgresql://local@127.0.0.1:54329/clinic_genie_enquiry_test";
-      expect(await enquiryConnection()).toEqual({ configured: true, reachable: false, refused: true });
+      expect(await enquiryConnection()).toEqual({ configured: true, reachable: false, refused: true, live: false });
       expect(created).not.toHaveBeenCalled();
     } finally {
       created.mockRestore();

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { assertMigrationTarget, assertSafeTarget, shouldStripImportedDirectory } from "../src/migrate";
-import { assertDropTarget, assertEnquiryFixtureUrl, assertFixtureFetch, assertLocalWorkerDatabase, assertStagingEnquiryAdminUrl, rehearsalTargets, suiteEnquiryFixtureUrl } from "../src/testing/targets";
+import { assertDropTarget, assertEnquiryFixtureUrl, assertEnquirySourceUrl, assertFixtureFetch, assertLocalWorkerDatabase, assertStagingEnquiryAdminUrl, rehearsalTargets, suiteEnquiryFixtureUrl } from "../src/testing/targets";
 import { bearerMatches } from "../src/analytics/crypto";
 import { syncIsStale, PROVIDER_FIXTURE_SCENARIOS } from "../src/testing/provider-fixtures";
 import { WEBSITE_CAPABILITIES, capabilityCountsAsPassed } from "../src/testing/consumers";
@@ -67,6 +67,24 @@ describe("fixture target guards", () => {
       if (nodeEnv === undefined) delete process.env.NODE_ENV;
       else process.env.NODE_ENV = nodeEnv;
     }
+  });
+
+  it("accepts the live enquiry database for the staff role and keeps the fixture out of production", () => {
+    const live = "postgresql://cg_enquiry_staff@db.example.com/clinic_genie_enquiry_staging";
+    expect(assertEnquirySourceUrl(live)).toMatchObject({ database: "clinic_genie_enquiry_staging", live: true, host: "remote" });
+    const nodeEnv = process.env.NODE_ENV;
+    process.env.NODE_ENV = "production";
+    expect(assertEnquirySourceUrl(live).live).toBe(true);
+    expect(() => assertEnquirySourceUrl("postgresql://cg_enquiry_staff@127.0.0.1:54339/clinic_genie_enquiry_test")).toThrow(/production/);
+    if (nodeEnv === undefined) delete process.env.NODE_ENV;
+    else process.env.NODE_ENV = nodeEnv;
+    expect(assertEnquirySourceUrl("postgresql://postgres:postgres@127.0.0.1:54339/clinic_genie_enquiry_test").live).toBe(false);
+    expect(() => assertEnquirySourceUrl("postgresql://cg_enquiry_intake@db.example.com/clinic_genie_enquiry_staging")).toThrow(/staff role/);
+    expect(() => assertEnquirySourceUrl("postgresql://neondb_owner@db.example.com/clinic_genie_enquiry_staging")).toThrow(/staff role/);
+    expect(() => assertEnquirySourceUrl("postgresql://cg_enquiry_staff@127.0.0.1:54339/clinic_genie_enquiry_staging")).toThrow(/not local/);
+    expect(() => assertEnquirySourceUrl("postgresql://cg_enquiry_staff@db.example.com:54329/clinic_genie_enquiry_staging")).toThrow(/54329/);
+    expect(() => assertEnquirySourceUrl("postgresql://cg_enquiry_staff@db.example.com/neondb")).toThrow(/Refusing/);
+    expect(() => assertEnquirySourceUrl("postgresql://cg_enquiry_staff@db.example.com/clinic_genie_enquiry_test")).toThrow(/not local/);
   });
 
   it("accepts only the remote staging enquiry database for setup", () => {

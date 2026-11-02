@@ -129,7 +129,7 @@ Names and purposes only. Copy `.env.example` and fill values locally. Never comm
 | `AUTH_GOOGLE_HD` | Workspace domain for the first local Google sign-in. A shared database never creates that administrator |
 | `APP_ENVIRONMENT_LABEL` | Text shown in the header so staff can see which environment they are in |
 | `UPLOADS_DIR` | Private evidence files. Served only after a permission check |
-| `ENQUIRY_DATABASE_URL` | Read-only connection to a vibe-coded website’s enquiry database. It does not cover a Wix form. Leave empty until that connection is approved. Not a copy of the messages |
+| `ENQUIRY_DATABASE_URL` | Staff connection to the Clinic Genie website enquiry database `clinic_genie_enquiry_staging`. It does not cover a Wix form. Messages stay in that database |
 | `ANALYTICS_GOOGLE_CLIENT_ID` | Google OAuth client for GA4 and Search Console. Leave empty until the account owner grants access |
 | `ANALYTICS_GOOGLE_CLIENT_SECRET` | Secret for that Google client |
 | `ANALYTICS_WIX_APP_ID` | Wix app id. Leave empty until access is granted |
