@@ -23,6 +23,7 @@ Used by the embedded database on this machine. `npm run db:rehearse` creates `cl
 | `APP_ENVIRONMENT_LABEL` | Text shown in the header. It does not by itself enable sign-in shortcuts. |
 | `UPLOADS_DIR` | Private local directory for evidence files. |
 | `ENQUIRY_DATABASE_URL` | Read-only clinic-website enquiry source. Empty means that source stays disconnected. A Wix form binding is separate and does not use this URL. The stored local fixture database is `clinic_genie_enquiry_test`. `npm test` and `npm run db:rehearse` use separate disposable databases and do not reset that fixture. |
+| `ENQUIRY_STAGING_ADMIN_URL` | Owner connection for `clinic_genie_enquiry_staging` only. It creates that schema and its restricted roles. It is not the website or Genie Works credential, and it is not `ENQUIRY_DATABASE_URL`. |
 | `FORMS_WIX_APP_ID` | Wix app id for reading a form that is bound to a website. Empty leaves those reads unavailable. This is not the analytics app. |
 | `FORMS_WIX_APP_SECRET` | Matching forms app secret. The site instance and form id are stored on the website row, not in these variables. |
 | `FORMS_WIX_NEW_INSTANCE_*` | Wix Forms (new) instance for one website marked Wix: Aqua, Cedar, Joyful, MSDC, SBSN, SDIC, Sunrise, TAC, and Forms test. Empty until that website is identified. This is not the old Forms and Payments instance, and it does not choose the form. |

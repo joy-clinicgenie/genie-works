@@ -189,6 +189,25 @@ export function assertFixtureFetch(url: string): void {
   }
 }
 
+/** Owner connection for creating clinic_genie_enquiry_staging. It is not an application credential. */
+export const ENQUIRY_STAGING_DATABASE = "clinic_genie_enquiry_staging";
+
+const REFUSED_STAGING_DATABASES = new Set(["neondb", "clinic_genie", "clinic_genie_rehearsal", "clinic_genie_enquiry_test", "postgres"]);
+
+/** Allows only the remote staging enquiry database. Fixture, platform and sibling databases are refused before a connection. */
+export function assertStagingEnquiryAdminUrl(url: string): { host: string; port: string; database: string } {
+  const target = databaseTarget(url);
+  if (target.local) throw new Error("Refusing staging enquiry setup: the host is local.");
+  if (target.port === SIBLING_CLINIC_PORT) throw new Error("Refusing staging enquiry setup: port 54329 is the sibling clinic website database.");
+  if (REFUSED_STAGING_DATABASES.has(target.database)) throw new Error(`Refusing staging enquiry setup: ${target.database} is not the staging enquiry database.`);
+  if (target.database !== ENQUIRY_STAGING_DATABASE) throw new Error("Refusing staging enquiry setup: the database must be clinic_genie_enquiry_staging.");
+  for (const name of ["DATABASE_URL", "DATABASE_ADMIN_URL", "ENQUIRY_DATABASE_URL"]) {
+    const other = process.env[name];
+    if (other && sameDatabase(other, url)) throw new Error(`Refusing staging enquiry setup: the target is the same database as ${name}.`);
+  }
+  return { host: target.local ? target.database : "remote", port: target.port || "default", database: target.database };
+}
+
 export function enquiryFixtureUrlFromAdmin(adminUrl: string): string {
   const target = new URL(adminUrl);
   target.pathname = `/${ENQUIRY_FIXTURE_DATABASE}`;

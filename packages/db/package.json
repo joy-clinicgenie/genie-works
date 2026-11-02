@@ -22,6 +22,7 @@
     "enquiry:seed": "tsx scripts/enquiry-fixture.ts seed",
     "enquiry:reset": "tsx scripts/enquiry-fixture.ts reset",
     "enquiry:link": "tsx scripts/enquiry-fixture.ts link",
+    "enquiry:staging-prepare": "tsx scripts/prepare-enquiry-staging.ts",
     "consumers:check": "tsx scripts/consumer-readiness.ts"
   },
   "dependencies": {

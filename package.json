@@ -31,6 +31,7 @@
     "enquiry:seed": "npm run enquiry:seed -w @clinic-genie/db",
     "enquiry:reset": "npm run enquiry:reset -w @clinic-genie/db",
     "enquiry:link": "npm run enquiry:link -w @clinic-genie/db",
+    "enquiry:staging-prepare": "npm run enquiry:staging-prepare -w @clinic-genie/db",
     "consumers:check": "npm run consumers:check -w @clinic-genie/db"
   },
   "devDependencies": {

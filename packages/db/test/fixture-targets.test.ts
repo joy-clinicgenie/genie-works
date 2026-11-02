@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { assertMigrationTarget, assertSafeTarget, shouldStripImportedDirectory } from "../src/migrate";
-import { assertDropTarget, assertEnquiryFixtureUrl, assertFixtureFetch, assertLocalWorkerDatabase, rehearsalTargets, suiteEnquiryFixtureUrl } from "../src/testing/targets";
+import { assertDropTarget, assertEnquiryFixtureUrl, assertFixtureFetch, assertLocalWorkerDatabase, assertStagingEnquiryAdminUrl, rehearsalTargets, suiteEnquiryFixtureUrl } from "../src/testing/targets";
 import { bearerMatches } from "../src/analytics/crypto";
 import { syncIsStale, PROVIDER_FIXTURE_SCENARIOS } from "../src/testing/provider-fixtures";
 import { WEBSITE_CAPABILITIES, capabilityCountsAsPassed } from "../src/testing/consumers";
@@ -67,6 +67,15 @@ describe("fixture target guards", () => {
       if (nodeEnv === undefined) delete process.env.NODE_ENV;
       else process.env.NODE_ENV = nodeEnv;
     }
+  });
+
+  it("accepts only the remote staging enquiry database for setup", () => {
+    expect(assertStagingEnquiryAdminUrl("postgresql://owner@db.example.com/clinic_genie_enquiry_staging").database).toBe("clinic_genie_enquiry_staging");
+    expect(() => assertStagingEnquiryAdminUrl("postgresql://owner@127.0.0.1:54339/clinic_genie_enquiry_staging")).toThrow(/local/);
+    expect(() => assertStagingEnquiryAdminUrl("postgresql://owner@db.example.com:54329/clinic_genie_enquiry_staging")).toThrow(/54329/);
+    expect(() => assertStagingEnquiryAdminUrl("postgresql://owner@db.example.com/neondb")).toThrow(/neondb/);
+    expect(() => assertStagingEnquiryAdminUrl("postgresql://owner@db.example.com/clinic_genie_enquiry_test")).toThrow(/clinic_genie_enquiry_test/);
+    expect(() => assertStagingEnquiryAdminUrl("postgresql://owner@127.0.0.1:54339/clinic_genie_enquiry_test")).toThrow(/local/);
   });
 
   it("rejects a remote worker database and a fixture fetch to a provider host", () => {
