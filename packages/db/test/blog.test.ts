@@ -2,7 +2,8 @@ import { createHash, randomBytes } from "node:crypto";
 import { afterAll, describe, expect, it } from "vitest";
 import { applyContext } from "../src/client";
 import { createWebsite } from "../src/services/registry";
-import { adminPool, appPool, asContext, clientBySlug, staffByEmail, staffCtx } from "./helpers";
+import { adminPool, appPool, asContext, staffByEmail, staffCtx } from "./helpers";
+import { provisionClinic } from "./provision";
 import {
   addArticleMedia,
   archiveArticle,
@@ -53,10 +54,10 @@ describe("native blog", () => {
     const specA = await staffByEmail("specialist-a@example.invalid");
     const reviewer = await staffByEmail("reviewer@example.invalid");
     const specB = await staffByEmail("specialist-b@example.invalid");
-    const meridian = await clientBySlug("meridian-skin");
-    const native = (await adminPool.query<{ id: string }>("select id from websites where client_id = $1 and platform = 'Next.js on Vercel' and environment = 'production'", [meridian])).rows[0]!;
-
     await asContext(staffCtx(admin), async (db) => {
+      const clinic = await provisionClinic(db, admin.id, [specA.id, reviewer.id]);
+      const meridian = clinic.clientId;
+      const native = { id: clinic.websiteId };
       const wix = await createWebsite(db, {
         clientId: meridian, name: "Synthetic Wix site", url: "https://synthetic-wix.example.invalid", platform: "Wix", environment: "production", notes: null,
       }, admin.id);
@@ -138,12 +139,7 @@ describe("native blog", () => {
     const specA = await staffByEmail("specialist-a@example.invalid");
     const reviewer = await staffByEmail("reviewer@example.invalid");
     const specB = await staffByEmail("specialist-b@example.invalid");
-    const meridian = await clientBySlug("meridian-skin");
-    const native = (await adminPool.query<{ id: string }>("select id from websites where client_id = $1 and platform = 'Next.js on Vercel' and environment = 'production'", [meridian])).rows[0]!;
-    const staging = (await adminPool.query<{ id: string }>("select id from websites where client_id = $1 and platform = 'Next.js on Vercel' and environment = 'staging'", [meridian])).rows[0]!;
-    const input: ArticleInput = {
-      clientId: meridian,
-      websiteId: native.id,
+    const inputBase = {
       title: "Public care note",
       slug: "public-care-note",
       category: "Care",
@@ -157,6 +153,11 @@ describe("native blog", () => {
     };
 
     await asContext(staffCtx(admin), async (db) => {
+      const clinic = await provisionClinic(db, admin.id, [specA.id, reviewer.id]);
+      const meridian = clinic.clientId;
+      const native = { id: clinic.websiteId };
+      const staging = { id: clinic.stagingId };
+      const input: ArticleInput = { ...inputBase, clientId: meridian, websiteId: native.id };
       await applyContext(db, staffCtx(specA));
       const id = await createArticle(db, input, specA.id);
       const sameSlug = await createArticle(db, { ...input, websiteId: staging.id, title: "Staging care note" }, specA.id);
@@ -190,15 +191,15 @@ describe("native blog", () => {
       const live = await getPublishedBlog(db, native.id, token);
       expect(live?.articles.map((article) => article.slug)).toEqual(["public-care-note"]);
       expect(live?.sitemap).toEqual([expect.objectContaining({ path: "/blog/public-care-note" })]);
-      expect(live?.origin).toBe("https://meridian-skin.example.invalid");
+      expect(live?.origin).toBe("https://check.example.invalid");
       expect(JSON.stringify(live)).not.toContain("javascript:");
       expect(await getPublishedBlogMedia(db, native.id, mediaId, token)).toBeNull();
       const html = renderPublishedArticle(live!.articles[0]!, live!.origin, "/media");
       expect(html).toContain("<h1>Public care note</h1>");
-      expect(html).toContain('rel="canonical" href="https://meridian-skin.example.invalid/blog/public-care-note"');
+      expect(html).toContain('rel="canonical" href="https://check.example.invalid/blog/public-care-note"');
       expect(html).not.toContain("<script");
       const xml = renderPublishedSitemap(live!.articles, live!.origin);
-      expect(xml).toContain("https://meridian-skin.example.invalid/blog/public-care-note");
+      expect(xml).toContain("https://check.example.invalid/blog/public-care-note");
       expect(xml).not.toContain("preview");
 
       await applyContext(db, staffCtx(specA));
@@ -264,7 +265,7 @@ describe("native blog", () => {
     const xml = renderPublishedSitemap([
       { path: "/blog/visible-note", indexable: true, updatedAt: "2026-10-28T00:00:00.000Z" },
       { path: "/blog/hidden-note", indexable: false, updatedAt: "2026-10-28T00:00:00.000Z" },
-    ], "https://meridian-skin.example.invalid");
+    ], "https://check.example.invalid");
     expect(xml).toContain("/blog/visible-note");
     expect(xml).not.toContain("hidden-note");
     expect(xml).not.toContain("/blog/preview");
@@ -279,7 +280,7 @@ describe("native blog", () => {
       indexable: false,
       updatedAt: "2026-10-28T00:00:00.000Z",
       body,
-    }, "https://meridian-skin.example.invalid", "/media");
+    }, "https://check.example.invalid", "/media");
     expect(html).toContain("noindex,nofollow");
     expect(html).toContain("&lt;script&gt;");
     expect(html).not.toContain("<script>");
@@ -292,11 +293,11 @@ describe("native blog", () => {
     const specB = await staffByEmail("specialist-b@example.invalid");
     const reviewer = await staffByEmail("reviewer@example.invalid");
     const readOnly = await staffByEmail("readonly@example.invalid");
-    const meridian = await clientBySlug("meridian-skin");
-    const native = (await adminPool.query<{ id: string }>("select id from websites where client_id = $1 and platform = 'Next.js on Vercel' and environment = 'production'", [meridian])).rows[0]!;
-    const staging = (await adminPool.query<{ id: string }>("select id from websites where client_id = $1 and platform = 'Next.js on Vercel' and environment = 'staging'", [meridian])).rows[0]!;
-
     await asContext(staffCtx(admin), async (db) => {
+      const clinic = await provisionClinic(db, admin.id, [specA.id, reviewer.id]);
+      const meridian = clinic.clientId;
+      const native = { id: clinic.websiteId };
+      const staging = { id: clinic.stagingId };
       await applyContext(db, staffCtx(specA));
       const draftId = await createArticle(db, {
         clientId: meridian,

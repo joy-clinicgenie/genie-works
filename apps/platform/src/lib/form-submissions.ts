@@ -616,7 +616,7 @@ export async function listEnquiryBoard(scope: string[] | null, filters: EnquiryF
   const wix = access ? await loadWixEnquirySlice(access, scope, filters, window) : NO_WIX;
   const sqlPaging = wix.configured ? { limit: null, offset: 0, page: paging.page } : paging;
   const currentDates = window ? { from: window.from, to: window.to } : undefined;
-  const listProduction = filters.productionOnly === true;
+  const listProduction = true;
   const listWhere = enquiryWhere(scope, filters, currentDates, listProduction);
   const limitSql = sqlPaging.limit === null ? "" : ` limit $${listWhere.params.length + 1} offset $${listWhere.params.length + 2}`;
   const listParams = sqlPaging.limit === null ? listWhere.params : [...listWhere.params, sqlPaging.limit, sqlPaging.offset];
@@ -647,7 +647,7 @@ export async function listEnquiryBoard(scope: string[] | null, filters: EnquiryF
   const clinics = await readEnquiry<{ id: string; display_name: string }>(
     `select c.id, c.display_name
      from clinics c
-     where exists (select 1 from enquiries e where e.clinic_id = c.id)
+     where exists (select 1 from enquiries e where e.clinic_id = c.id and e.is_synthetic = false)
        and ($1::text[] is null or c.id = any($1))
      order by c.display_name`,
     [scope],
@@ -656,6 +656,7 @@ export async function listEnquiryBoard(scope: string[] | null, filters: EnquiryF
     `select distinct clinic_id, website_key
      from enquiries
      where website_key is not null
+       and is_synthetic = false
        and ($1::text[] is null or clinic_id = any($1))
      order by website_key`,
     [scope],
@@ -732,6 +733,7 @@ export async function getFormSubmission(scope: string[] | null, id: string, acce
      join clinics c on c.id = e.clinic_id
      ${NOTIFICATION_JOIN}
      where e.id = $1
+       and e.is_synthetic = false
        and ($2::text[] is null or e.clinic_id = any($2))`,
     [submissionId, scope],
   );
@@ -904,7 +906,7 @@ export interface NotificationFilters {
 
 function notificationWhere(scope: string[] | null, filters: NotificationFilters): { sql: string; params: unknown[] } {
   const params: unknown[] = [scope];
-  const clauses = ["o.event_type = 'clinic_notification'", "($1::text[] is null or o.clinic_id = any($1))"];
+  const clauses = ["o.event_type = 'clinic_notification'", "e.is_synthetic = false", "($1::text[] is null or o.clinic_id = any($1))"];
   const add = (value: unknown) => {
     params.push(value);
     return `$${params.length}`;
@@ -987,7 +989,9 @@ export async function listNotifications(scope: string[] | null, filters: Notific
     `select distinct c.id, c.display_name
      from notification_outbox o
      join clinics c on c.id = o.clinic_id
+     join enquiries e on e.id = o.enquiry_id
      where o.event_type = 'clinic_notification'
+       and e.is_synthetic = false
        and ($1::text[] is null or o.clinic_id = any($1))
      order by c.display_name`,
     [scope],
@@ -998,6 +1002,7 @@ export async function listNotifications(scope: string[] | null, filters: Notific
      join enquiries e on e.id = o.enquiry_id
      where o.event_type = 'clinic_notification'
        and e.website_key is not null
+       and e.is_synthetic = false
        and ($1::text[] is null or o.clinic_id = any($1))
      order by e.website_key`,
     [scope],

@@ -3,12 +3,13 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import {
-  archiveSeoPage, canEditClient, canPublishClient, canWriteConnectionSecrets, createSeoPage, getSeoPage, issueSeoSiteToken, recordSeoChange,
-  saveGoogleSiteVerification, saveSeoBusinessProfile, saveSeoPageSetting, saveSeoRedirect,
+  archiveSeoPage, canEditClient, canPublishClient, canWriteConnectionSecrets, createSeoPage, getSeoPage, inspectNext, issueSeoSiteToken, recordSeoChange,
+  refreshIndexInventory, requireWebsiteForClient, saveGoogleSiteVerification, saveSeoBusinessProfile, saveSeoPageSetting, saveSeoRedirect,
   updateSeoPage, verifySeoChange, type SeoBusinessProfileRow, type SeoPageInput,
 } from "@clinic-genie/db";
 import { requireAccess } from "@/lib/session";
-import { staffTx } from "@/lib/db";
+import { providerFetch } from "@/lib/provider-fetch";
+import { serviceTx, staffTx } from "@/lib/db";
 import { bool, optional, str, toActionError, type ActionState } from "@/lib/actions";
 
 function revalidate(id?: string) {
@@ -201,4 +202,37 @@ export async function rotateSeoSiteTokenAction(_prev: { ok: true; message?: stri
     const state = toActionError(err);
     return { ok: false as const, error: state && !state.ok ? state.error : "Could not create a website token." };
   }
+}
+
+export async function runSiteCheck(formData: FormData): Promise<void> {
+  const access = await requireAccess();
+  const clientId = str(formData, "clientId");
+  const websiteId = str(formData, "websiteId");
+  const tab = str(formData, "tab");
+  const params = new URLSearchParams();
+  if (clientId) params.set("client", clientId);
+  if (websiteId) params.set("website", websiteId);
+  if (tab === "indexing" || tab === "speed" || tab === "crawl" || tab === "checks") params.set("tab", tab);
+  const back = `/seo/site-health?${params.toString()}`;
+  if (!clientId || !websiteId || !canEditClient(access, clientId)) redirect(back);
+  try {
+    await staffTx(access, (db) => requireWebsiteForClient(db, websiteId, clientId));
+  } catch {
+    redirect(back);
+  }
+  const deps = {
+    fetch: providerFetch(),
+    now: new Date(),
+    googleClientId: process.env.ANALYTICS_GOOGLE_CLIENT_ID,
+    googleClientSecret: process.env.ANALYTICS_GOOGLE_CLIENT_SECRET,
+    pageSpeedKey: process.env.PAGESPEED_API_KEY,
+  };
+  await serviceTx((db) => refreshIndexInventory(db, websiteId));
+  for (let count = 0; count < 3; count += 1) {
+    const step = await serviceTx((db) => inspectNext(db, { ...deps, now: new Date() }, websiteId));
+    if (step !== "done") break;
+  }
+  revalidatePath("/seo/site-health");
+  revalidatePath("/seo/pages", "layout");
+  redirect(back);
 }

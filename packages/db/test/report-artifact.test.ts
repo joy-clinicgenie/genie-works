@@ -2,7 +2,9 @@ import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
-import { adminPool, appPool, asContext, clientBySlug, staffByEmail, staffCtx } from "./helpers";
+import { applyContext } from "../src/client";
+import { adminPool, appPool, asContext, staffByEmail, staffCtx } from "./helpers";
+import { provisionClinic } from "./provision";
 import { addSnapshot } from "../src/services/reports";
 import { createSavedReport, saveSavedReport, type SavedReportInput } from "../src/services/saved-reports";
 import {
@@ -26,7 +28,7 @@ function sample(reportId = "00000000-0000-4000-8000-000000000001"): SavedReportA
     versionId: "00000000-0000-4000-8000-000000000002",
     versionNumber: 1,
     clientId: "00000000-0000-4000-8000-000000000003",
-    clientName: "Meridian Skin Clinic",
+    clientName: "Check clinic",
     name: "October saved",
     periodStart: "2030-08-01",
     periodEnd: "2030-08-31",
@@ -106,9 +108,9 @@ describe("saved report copies", () => {
     const directory = mkdtempSync(join(tmpdir(), "cg-report-"));
     const admin = await staffByEmail("admin@example.invalid");
     const specialist = await staffByEmail("specialist-b@example.invalid");
-    const client = await clientBySlug("meridian-skin");
     try {
       await asContext(staffCtx(admin), async (db) => {
+        const { clientId: client } = await provisionClinic(db, admin.id);
         await addSnapshot(db, client, { source: "ga4_export", channel: "all", metric: "sessions", periodStart: "2030-08-01", periodEnd: "2030-08-31", value: 40, note: null }, admin.id);
         const id = await createSavedReport(db, input(client, "August saved"), admin.id);
         const stored = await storeSavedReportArtifact(db, id, directory);
@@ -129,9 +131,12 @@ describe("saved report copies", () => {
         const draftId = await createSavedReport(db, input(client, "August draft"), admin.id, { draft: true });
         expect(await storeSavedReportArtifact(db, draftId, directory)).toBeNull();
         expect(await storeSavedReportArtifact(db, "00000000-0000-4000-8000-000000000099", directory)).toBeNull();
+        await applyContext(db, staffCtx(specialist));
+        await db.query("savepoint outsider_report");
+        await expect(createSavedReport(db, input(client, "Not allowed"), specialist.id)).rejects.toThrow();
+        await db.query("rollback to savepoint outsider_report");
+        expect(await storeSavedReportArtifact(db, "00000000-0000-4000-8000-000000000099", directory)).toBeNull();
       });
-      await expect(asContext(staffCtx(specialist), (db) => createSavedReport(db, input(client, "Not allowed"), specialist.id))).rejects.toThrow();
-      expect(await asContext(staffCtx(specialist), (db) => storeSavedReportArtifact(db, "00000000-0000-4000-8000-000000000099", directory))).toBeNull();
     } finally {
       rmSync(directory, { recursive: true, force: true });
     }

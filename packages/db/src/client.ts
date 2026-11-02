@@ -23,10 +23,20 @@ export type DbContext =
 let appPool: pg.Pool | undefined;
 let adminPool: pg.Pool | undefined;
 
+export const APP_POOL_OPTIONS = {
+  max: 8,
+  connectionTimeoutMillis: 10_000,
+  idleTimeoutMillis: 60_000,
+  allowExitOnIdle: true,
+} satisfies pg.PoolConfig;
+
 export function getPool(): pg.Pool {
   if (!appPool) {
     loadRootEnv();
-    appPool = new Pool({ connectionString: requireEnv("DATABASE_URL"), max: 8 });
+    appPool = new Pool({
+      connectionString: requireEnv("DATABASE_URL"),
+      ...APP_POOL_OPTIONS,
+    });
   }
   return appPool;
 }
@@ -66,8 +76,7 @@ export async function withContext<T>(ctx: DbContext, fn: (client: pg.PoolClient)
     throw new DbUnavailableError(err);
   }
   try {
-    await client.query("begin");
-    await applyContext(client, ctx);
+    await beginWithContext(client, ctx);
     const result = await fn(client);
     await client.query("commit");
     return result;
@@ -81,6 +90,18 @@ export async function withContext<T>(ctx: DbContext, fn: (client: pg.PoolClient)
   } finally {
     client.release();
   }
+}
+
+/** Starts the transaction and applies its RLS context in one network round trip. */
+export async function beginWithContext(client: pg.PoolClient, ctx: DbContext): Promise<void> {
+  const userId = ctx.kind === "staff" ? ctx.userId : "";
+  const role = ctx.kind === "staff" ? ctx.role : "";
+  await client.query(
+    `begin;
+     select set_config('app.context', ${pg.escapeLiteral(ctx.kind)}, true),
+            set_config('app.user_id', ${pg.escapeLiteral(userId)}, true),
+            set_config('app.platform_role', ${pg.escapeLiteral(role)}, true)`,
+  );
 }
 
 export async function applyContext(client: pg.PoolClient, ctx: DbContext): Promise<void> {

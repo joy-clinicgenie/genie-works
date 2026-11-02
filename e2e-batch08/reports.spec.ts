@@ -5,10 +5,10 @@ test("specialist can save a draft and a review copy without a final state", asyn
   const { page, close } = await openAs(browser, "specialist-a@example.invalid");
   try {
     await page.goto("/reports/new");
-    const clientValue = await page.locator("#clientId option", { hasText: "Meridian Skin" }).getAttribute("value");
+    const clientValue = await page.locator("#clientId option", { hasText: "Clinic Genie" }).getAttribute("value");
     await page.locator("#clientId").selectOption(clientValue ?? "");
-    await expect(page.locator("#websiteId option", { hasText: "Meridian Skin website" })).toHaveCount(1);
-    const websiteValue = await page.locator("#websiteId option", { hasText: "Meridian Skin website" }).getAttribute("value");
+    await expect(page.locator("#websiteId option", { hasText: "Clinic Genie website" })).toHaveCount(1);
+    const websiteValue = await page.locator("#websiteId option", { hasText: "Clinic Genie website" }).getAttribute("value");
     await page.locator("#websiteId").selectOption(websiteValue ?? "");
     await page.getByRole("button", { name: "Save draft" }).click();
     await expect(page).toHaveURL(/\/reports\/[0-9a-f-]{36}$/);

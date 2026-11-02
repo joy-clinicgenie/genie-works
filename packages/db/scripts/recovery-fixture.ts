@@ -16,17 +16,26 @@ if (databaseNameFromUrl(appUrl) !== databaseNameFromUrl(adminUrl)) {
 console.log(describeDatabaseTarget(adminUrl));
 
 const admin = getAdminPool();
-const place = await admin.query<{ client_id: string; website_id: string; user_id: string }>(
+const place = await admin.query<{ client_id: string; website_id: string | null; user_id: string }>(
   `select c.id as client_id, w.id as website_id, u.id as user_id
    from clients c
-   join websites w on w.client_id = c.id and w.status = 'active'
    join staff_users u on u.email = 'admin@example.invalid' and u.active
-   where c.slug = 'meridian-skin'
-   order by w.created_at
+   left join websites w on w.client_id = c.id and w.status = 'active'
+   where c.slug = 'clinic-genie'
+   order by w.created_at nulls last
    limit 1`,
 );
-const row = place.rows[0];
-if (!row) throw new Error("Refusing recovery fixture: the fictional Meridian client is not ready.");
+const found = place.rows[0];
+if (!found) throw new Error("Refusing recovery fixture: the internal agency client is not ready.");
+const row = found.website_id
+  ? { client_id: found.client_id, website_id: found.website_id, user_id: found.user_id }
+  : (await admin.query<{ client_id: string; website_id: string; user_id: string }>(
+      `insert into websites (client_id, name, url, platform, environment, notes)
+       values ($1, 'Clinic Genie website', 'https://clinic-genie.example.invalid', 'Next.js on Vercel', 'production', 'Recovery fixture website.')
+       returning client_id, id as website_id, $2::uuid as user_id`,
+      [found.client_id, found.user_id],
+    )).rows[0];
+if (!row) throw new Error("Refusing recovery fixture: the internal agency website was not saved.");
 
 const existing = await admin.query("select 1 from blog_articles where website_id = $1 and slug = 'recovery-check'", [row.website_id]);
 if (existing.rowCount === 0) {

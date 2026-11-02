@@ -2,7 +2,8 @@ import { afterAll, describe, expect, it } from "vitest";
 import { applyContext } from "../src/client";
 import { grantMembership } from "../src/services/registry";
 import { listWixFollowUpStatuses, setWixEnquiryFollowUp } from "../src/services/wix-enquiry-binding";
-import { adminPool, appPool, asContext, clientBySlug, staffByEmail, staffCtx } from "./helpers";
+import { randomBytes } from "node:crypto";
+import { adminPool, appPool, asContext, staffByEmail, staffCtx } from "./helpers";
 
 const EXTERNAL_ID = "22222222-2222-4222-8222-222222222222";
 const INSTANCE_ID = "00000000-0000-4000-8000-0000000000a1";
@@ -26,12 +27,27 @@ describe("Wix enquiry follow-up", () => {
     expect(names).not.toContain("contact_number");
     expect(names).not.toContain("phone");
 
-    const site = (await adminPool.query<{ id: string; enquiry_source: string; wix_instance_id: string | null; wix_form_id: string | null; wix_form_namespace: string | null; wix_form_key: string | null; wix_counts_in_totals: boolean }>(
-      `select id, enquiry_source, wix_instance_id, wix_form_id, wix_form_namespace, wix_form_key, wix_counts_in_totals
-       from websites where enquiry_key = 'meridian-skin-production'`,
-    )).rows[0];
-    expect(site).toBeTruthy();
     const admin = await staffByEmail("admin@example.invalid");
+    const slug = `check-${randomBytes(3).toString("hex")}`;
+    const enquiryKey = `${slug}-site`;
+    const created = (await adminPool.query<{ client_id: string; id: string }>(
+      `with clinic as (
+         insert into clients (slug, name, owner_user_id, channels, is_synthetic, created_by, updated_by)
+         select $1, 'Check clinic', id, array['website'], true, id, id
+         from staff_users where email = 'admin@example.invalid'
+         returning id
+       )
+       insert into websites (client_id, name, url, platform, environment, enquiry_key)
+       select id, 'Check website', 'https://check.example.invalid', 'Wix', 'production', $2
+       from clinic
+       returning client_id, id`,
+      [slug, enquiryKey],
+    )).rows[0]!;
+    const site = { id: created.id, enquiry_source: "manual", wix_instance_id: null, wix_form_id: null, wix_form_namespace: null, wix_form_key: null, wix_counts_in_totals: false };
+    const membershipId = (await adminPool.query<{ id: string }>(
+      "insert into memberships (user_id, client_id, granted_by) values ($1, $2, $3) returning id",
+      [(await staffByEmail("specialist-a@example.invalid")).id, created.client_id, admin.id],
+    )).rows[0]!.id;
     const specA = await staffByEmail("specialist-a@example.invalid");
     const specB = await staffByEmail("specialist-b@example.invalid");
     const readonly = await staffByEmail("readonly@example.invalid");
@@ -61,31 +77,31 @@ describe("Wix enquiry follow-up", () => {
       const saved = await asContext(staffCtx(specA), async (db) => {
         const opened = await setWixEnquiryFollowUp(db, {
           externalId: EXTERNAL_ID,
-          enquiryKey: "meridian-skin-production",
+          enquiryKey,
           fromStatus: "new",
           toStatus: "acknowledged",
-          scope: ["meridian-skin"],
+          scope: [slug],
         });
         const stale = await setWixEnquiryFollowUp(db, {
           externalId: EXTERNAL_ID,
-          enquiryKey: "meridian-skin-production",
+          enquiryKey,
           fromStatus: "new",
           toStatus: "closed",
-          scope: ["meridian-skin"],
+          scope: [slug],
         });
         const closed = await setWixEnquiryFollowUp(db, {
           externalId: EXTERNAL_ID,
-          enquiryKey: "meridian-skin-production",
+          enquiryKey,
           fromStatus: "acknowledged",
           toStatus: "closed",
-          scope: ["meridian-skin"],
+          scope: [slug],
         });
         const visible = await listWixFollowUpStatuses(db, [EXTERNAL_ID]);
         return { opened, stale, closed, visible };
       });
-      expect(saved.opened).toEqual({ id: EXTERNAL_ID, clinicId: "meridian-skin", websiteKey: "meridian-skin-production" });
+      expect(saved.opened).toEqual({ id: EXTERNAL_ID, clinicId: slug, websiteKey: enquiryKey });
       expect(saved.stale).toBeNull();
-      expect(saved.closed?.clinicId).toBe("meridian-skin");
+      expect(saved.closed?.clinicId).toBe(slug);
       expect(saved.visible).toEqual([{ externalId: EXTERNAL_ID, status: "closed" }]);
 
       await adminPool.query(
@@ -99,22 +115,21 @@ describe("Wix enquiry follow-up", () => {
       expect(owned).toEqual([{ externalId: EXTERNAL_ID, status: "new" }]);
       const outsider = await asContext(staffCtx(specB), (db) => setWixEnquiryFollowUp(db, {
         externalId: EXTERNAL_ID,
-        enquiryKey: "meridian-skin-production",
+        enquiryKey,
         fromStatus: "new",
         toStatus: "acknowledged",
         scope: ["clinic-genie"],
       }));
       expect(outsider).toBeNull();
-      const meridian = await clientBySlug("meridian-skin");
       await expect(asContext(staffCtx(admin), async (db) => {
-        await grantMembership(db, { userId: readonly.id, clientId: meridian }, admin.id);
+        await grantMembership(db, { userId: readonly.id, clientId: created.client_id }, admin.id);
         await applyContext(db, staffCtx(readonly));
         await setWixEnquiryFollowUp(db, {
           externalId: EXTERNAL_ID,
-          enquiryKey: "meridian-skin-production",
+          enquiryKey,
           fromStatus: "new",
           toStatus: "acknowledged",
-          scope: ["meridian-skin"],
+          scope: [slug],
         });
       })).rejects.toThrow();
       await expect(asContext(staffCtx(admin), (db) => db.query("delete from enquiry_follow_ups where external_id = $1", [EXTERNAL_ID]))).rejects.toThrow(/permission denied/);
@@ -124,13 +139,18 @@ describe("Wix enquiry follow-up", () => {
       )).rejects.toThrow(/cannot change/);
     } finally {
       await adminPool.query("delete from enquiry_follow_ups where external_id = $1", [EXTERNAL_ID]);
-      await adminPool.query(
-        `update websites
-         set enquiry_source = $2, wix_instance_id = $3, wix_form_id = $4,
-             wix_form_namespace = $5, wix_form_key = $6, wix_counts_in_totals = $7
-         where id = $1`,
-        [site!.id, site!.enquiry_source, site!.wix_instance_id, site!.wix_form_id, site!.wix_form_namespace, site!.wix_form_key, site!.wix_counts_in_totals],
-      );
+      await adminPool.query("delete from memberships where client_id = $1", [created.client_id]);
+      await adminPool.query("delete from websites where id = $1", [created.id]);
+      for (const table of ["audit_events", "timeline_events"]) {
+        await adminPool.query(`alter table ${table} disable trigger user`);
+      }
+      await adminPool.query("delete from audit_events where client_id = $1", [created.client_id]);
+      await adminPool.query("delete from timeline_events where client_id = $1", [created.client_id]);
+      await adminPool.query("delete from clients where id = $1", [created.client_id]);
+      for (const table of ["audit_events", "timeline_events"]) {
+        await adminPool.query(`alter table ${table} enable trigger user`);
+      }
+      void membershipId;
     }
   });
 });

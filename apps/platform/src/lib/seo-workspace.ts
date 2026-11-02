@@ -4,18 +4,21 @@ import {
   canPublishClient,
   getGoogleSiteVerification,
   hasActiveSeoSiteToken,
-  listClientsForRequest,
+  getClient,
+  listActiveWebsiteSummaries,
   listConnections,
   listSeoBusinessProfiles,
   listSeoChanges,
   listSeoPageSettings,
   listSeoPages,
   listSeoRedirects,
+  listShellClients,
   listTasks,
   listWebsites,
   scopeWorkspace,
   todaySgt,
   type AccessProfile,
+  type PoolClient,
   type SeoBusinessProfileRow,
   type SeoChangeRow,
   type SeoPageRow,
@@ -25,7 +28,7 @@ import {
   type WebsiteRow,
 } from "@clinic-genie/db";
 import { TASK_STATUSES } from "@clinic-genie/contracts";
-import { serviceTx, staffTx } from "@/lib/db";
+import { staffTx } from "@/lib/db";
 import { clientLabel } from "@/lib/client-label";
 
 export type SeoSearch = Record<string, string | string[] | undefined>;
@@ -90,9 +93,9 @@ export function pickSearchConsole(
 
 export function searchConsoleCapability(search: SearchConsoleConnection | null, verification: string | null): string {
   const tag = verification ? " Can publish an HTML verification tag." : "";
-  if (search?.status === "connected") return `Connected to ${search.propertyId}. Can read search reports. Cannot inspect URLs.${tag}`;
-  if (search?.status === "reconnect_required") return `Reconnect required for ${search.propertyId}. Cannot read search reports until the account is connected again. Cannot inspect URLs.${tag}`;
-  return `Not connected. Cannot read search reports or inspect URLs.${tag}`;
+  if (search?.status === "connected") return `Connected to ${search.propertyId}. Can read search reports and check whether a known page is indexed.${tag}`;
+  if (search?.status === "reconnect_required") return `Reconnect required for ${search.propertyId}. Cannot read search reports or check index status until the account is connected again.${tag}`;
+  return `Not connected. Cannot read search reports or check index status.${tag}`;
 }
 
 export interface GoogleControls {
@@ -162,27 +165,59 @@ export function googleQuery(controls: GoogleControls): Record<string, string | u
 }
 
 export async function loadSeoContext(access: AccessProfile, query: SeoSearch): Promise<SeoContext> {
+  return staffTx(access, (db) => loadSeoContextWithDb(db, query));
+}
+
+async function loadSeoContextWithDb(db: PoolClient, query: SeoSearch): Promise<SeoContext> {
   const client = one(query.client);
   const website = one(query.website);
-  const demo = one(query.demo) === "1";
-  const loaded = await staffTx(access, async (db) => {
-    const records = await listClientsForRequest(db, client);
-    const clients = records.map((item) => ({ id: item.id, name: clientLabel(item) }));
-    const groups = await Promise.all(records.map(async (item) => {
-      const websites = await listWebsites(db, item.id);
-      return websites.filter((site) => site.status === "active").map((site): SeoSite => ({
+  const demo = false;
+  const records = await listShellClients(db);
+  if (client && !records.some((item) => item.id === client)) {
+    const extra = await getClient(db, client);
+    if (extra) records.unshift({
+      id: extra.id,
+      name: extra.name,
+      slug: extra.slug,
+      reference_number: extra.reference_number,
+      short_code: extra.short_code,
+      public_name: extra.public_name,
+      legal_name: extra.legal_name,
+      specialty: extra.specialty,
+    });
+  }
+  const websites = await listActiveWebsiteSummaries(db);
+  const sites = websites.map((site): SeoSite => ({
+    id: site.id,
+    clientId: site.client_id,
+    clientName: clientLabel({ name: site.client_name, reference_number: site.reference_number }),
+    name: site.name,
+    url: site.url,
+    platform: site.platform,
+    environment: site.environment,
+    status: site.status,
+  }));
+  const extraClient = client ? records.find((item) => item.id === client) : undefined;
+  if (extraClient && !sites.some((site) => site.clientId === extraClient.id)) {
+    const extras = await listWebsites(db, extraClient.id);
+    for (const site of extras) {
+      if (site.status !== "active") continue;
+      sites.push({
         id: site.id,
-        clientId: item.id,
-        clientName: clientLabel(item),
+        clientId: extraClient.id,
+        clientName: clientLabel(extraClient),
         name: site.name,
         url: site.url,
         platform: site.platform,
         environment: site.environment,
         status: site.status,
-      }));
-    }));
-    return { clients, sites: groups.flat() };
-  });
+      });
+    }
+  }
+  const loaded = {
+    clients: records.map((item) => ({ id: item.id, name: clientLabel(item) })),
+    sites,
+  };
   const demoConflict = demo && Boolean(client || website);
   const selection = scopeWorkspace({
     requestedClientId: client,
@@ -246,7 +281,7 @@ export function setupChecks(input: {
     {
       title: "Google Search Console",
       detail: input.searchConsole?.status === "connected"
-        ? `Connected to ${input.searchConsole.propertyId}. Search reports can be read. URL inspection is not available.${input.verification ? " An HTML verification token is saved for publishing." : ""}`
+        ? `Connected to ${input.searchConsole.propertyId}. Search reports can be read. Site Health can check whether a known page is indexed.${input.verification ? " An HTML verification token is saved for publishing." : ""}`
         : input.verification
           ? "An HTML verification token is saved for publishing. Ownership still has to be confirmed in Google Search Console. Search reports are not connected."
           : "No Search Console property is connected.",
@@ -269,25 +304,31 @@ export function setupChecks(input: {
 }
 
 export async function loadWebsiteSeo(access: AccessProfile, site: SeoSite): Promise<WebsiteSeoBundle> {
-  const loaded = await staffTx(access, async (db) => {
-    const [pages, changes, tasks, settings, redirects, profiles, verification, connections] = await Promise.all([
-      listSeoPages(db, { clientId: site.clientId }),
-      listSeoChanges(db, { clientId: site.clientId, limit: 100 }),
-      listTasks(db, { clientId: site.clientId, statuses: [...TASK_STATUSES], limit: 300 }),
-      listSeoPageSettings(db, { websiteId: site.id }),
-      listSeoRedirects(db, { clientId: site.clientId, websiteId: site.id, includeInactive: true }),
-      listSeoBusinessProfiles(db, site.clientId),
-      getGoogleSiteVerification(db, site.id),
-      listConnections(db, site.clientId),
-    ]);
-    return { pages, changes, tasks, settings, redirects, profiles, verification, searchConsole: pickSearchConsole(connections, site.id) };
-  });
-  const connected = await serviceTx((db) => hasActiveSeoSiteToken(db, site.id));
-  const pages = loaded.pages.filter((page) => page.website_id === site.id);
-  const pageIds = new Set(pages.map((page) => page.id));
+  const loaded = await staffTx(access, (db) => loadWebsiteSeoData(db, site));
+  return websiteSeoBundle(access, site, loaded);
+}
+
+async function loadWebsiteSeoData(db: PoolClient, site: SeoSite) {
+  // A pg client executes one statement at a time. Keep these ordered rather
+  // than starting unsupported concurrent queries on the same transaction.
+  const pages = await listSeoPages(db, { clientId: site.clientId });
+  const changes = await listSeoChanges(db, { clientId: site.clientId, limit: 100 });
+  const tasks = await listTasks(db, { clientId: site.clientId, statuses: [...TASK_STATUSES], limit: 300 });
+  const settings = await listSeoPageSettings(db, { websiteId: site.id });
+  const redirects = await listSeoRedirects(db, { clientId: site.clientId, websiteId: site.id, includeInactive: true });
+  const profiles = await listSeoBusinessProfiles(db, site.clientId);
+  const verification = await getGoogleSiteVerification(db, site.id);
+  const connections = await listConnections(db, site.clientId);
+  const connected = await hasActiveSeoSiteToken(db, site.id);
+  return { pages, changes, tasks, settings, redirects, profiles, verification, searchConsole: pickSearchConsole(connections, site.id), connected };
+}
+
+function websiteSeoBundle(access: AccessProfile, site: SeoSite, loaded: Awaited<ReturnType<typeof loadWebsiteSeoData>>): WebsiteSeoBundle {
+  const selectedPages = loaded.pages.filter((page) => page.website_id === site.id);
+  const pageIds = new Set(selectedPages.map((page) => page.id));
   const codeManaged = site.platform.toLowerCase().includes("next");
   return {
-    pages,
+    pages: selectedPages,
     unassignedPages: loaded.pages.filter((page) => page.website_id !== site.id).length,
     changes: loaded.changes.filter((change) => pageIds.has(change.seo_page_id)),
     tasks: loaded.tasks.filter((task) => task.related_type === "seo_page" || task.related_type === "seo_change"),
@@ -296,10 +337,10 @@ export async function loadWebsiteSeo(access: AccessProfile, site: SeoSite): Prom
     profiles: loaded.profiles,
     verification: loaded.verification,
     searchConsole: loaded.searchConsole,
-    connected,
+    connected: loaded.connected,
     checks: setupChecks({
       codeManaged,
-      connected,
+      connected: loaded.connected,
       pageSettingCount: loaded.settings.length,
       redirectCount: loaded.redirects.filter((rule) => rule.active).length,
       verification: loaded.verification,
@@ -309,6 +350,17 @@ export async function loadWebsiteSeo(access: AccessProfile, site: SeoSite): Prom
     canEdit: canEditClient(access, site.clientId),
     canPublish: canPublishClient(access, site.clientId),
   };
+}
+
+/** Loads the SEO overview in one staff transaction after access is resolved. */
+export async function loadSeoOverview(access: AccessProfile, query: SeoSearch): Promise<{ ctx: SeoContext; bundle: WebsiteSeoBundle | null }> {
+  const loaded = await staffTx(access, async (db) => {
+    const ctx = await loadSeoContextWithDb(db, query);
+    const data = ctx.selected ? await loadWebsiteSeoData(db, ctx.selected) : null;
+    return { ctx, data };
+  });
+  if (!loaded.ctx.selected || !loaded.data) return { ctx: loaded.ctx, bundle: null };
+  return { ctx: loaded.ctx, bundle: websiteSeoBundle(access, loaded.ctx.selected, loaded.data) };
 }
 
 export function completedSince(today = todaySgt()): string {

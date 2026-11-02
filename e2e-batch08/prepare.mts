@@ -113,38 +113,49 @@ async function prepare(): Promise<void> {
     const actor = await admin.query<{ id: string }>("select id from staff_users where email = 'admin@example.invalid'");
     const adminId = actor.rows[0]?.id;
     if (!adminId) throw new Error("Seeded admin staff record was not found.");
-    await admin.query(
-      `update clients
-       set status = 'active', archived_at = null, updated_at = now(), updated_by = $1
-       where slug = any($2::text[])`,
-      [adminId, ["meridian-skin"]],
-    );
     const clients = await admin.query<{ slug: string; id: string; status: string }>(
-      "select slug, id, status from clients where slug = any($1::text[]) order by slug",
-      [["clinic-genie", "meridian-skin"]],
+      "select slug, id, status from clients where slug = 'clinic-genie'",
+    );
+    const clinicId = clients.rows[0]?.id;
+    if (!clinicId || clients.rows[0]?.status !== "active") throw new Error("The internal agency client was not found after seed.");
+    await admin.query(
+      `insert into websites (client_id, name, url, platform, environment, notes)
+       select $1, 'Clinic Genie website', 'https://clinic-genie.example.invalid', 'Next.js on Vercel', 'production', 'Isolated journey website.'
+       where not exists (
+         select 1 from websites where client_id = $1 and environment = 'production' and platform = 'Next.js on Vercel'
+       )`,
+      [clinicId],
+    );
+    await admin.query(
+      `insert into memberships (user_id, client_id, granted_by)
+       select u.id, $1, $2
+       from staff_users u
+       where u.email = any($3::text[])
+         and not exists (
+           select 1 from memberships m where m.user_id = u.id and m.client_id = $1 and m.active
+         )`,
+      [clinicId, adminId, ["specialist-a@example.invalid", "reviewer@example.invalid"]],
     );
     const website = await admin.query<{ id: string }>(
-      `select w.id
-       from websites w
-       join clients c on c.id = w.client_id
-       where c.slug = 'meridian-skin' and w.environment = 'production' and w.platform = 'Next.js on Vercel'
+      `select id from websites
+       where client_id = $1 and environment = 'production' and platform = 'Next.js on Vercel'
        limit 1`,
+      [clinicId],
     );
-    if (!website.rows[0]?.id) throw new Error("Meridian native website was not found after seed.");
-    if (clients.rows.some((row) => row.slug === "meridian-skin" && row.status !== "active")) throw new Error("Fictional clinic restore did not leave Meridian active.");
-    const bySlug = Object.fromEntries(clients.rows.map((row) => [row.slug, row.id]));
-    if (!bySlug["meridian-skin"] || !bySlug["clinic-genie"]) throw new Error("Meridian or the internal client was not found after seed.");
+    if (!website.rows[0]?.id) throw new Error("The isolated website was not saved.");
+    const removed = await admin.query("select 1 from clients where slug = 'meridian-skin'");
+    if ((removed.rowCount ?? 0) > 0) throw new Error("Meridian Skin is still present after seed.");
     await mkdir("e2e-batch08/.run", { recursive: true });
     await writeFile(
       "e2e-batch08/.run/context.json",
       JSON.stringify({
         adminId,
-        meridianId: bySlug["meridian-skin"],
-        clinicGenieId: bySlug["clinic-genie"],
+        meridianId: clinicId,
+        clinicGenieId: clinicId,
         meridianWebsiteId: website.rows[0].id,
       }, null, 2),
     );
-    console.log(`platform database ${PLATFORM_DB}: restored Meridian`);
+    console.log(`platform database ${PLATFORM_DB}: clinic-genie website ready`);
   } finally {
     await admin.end();
   }

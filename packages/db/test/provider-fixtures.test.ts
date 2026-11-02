@@ -4,7 +4,8 @@ import { classifyImport } from "../src/analytics/measure";
 import { enqueueJob, executeJob, leaseNext, sealedToken, type FetchLike } from "../src/analytics/sync";
 import { saveConnection } from "../src/analytics/connections";
 import { publishedReport } from "../src/analytics/read";
-import { adminPool, appPool, asContext, clientBySlug, staffByEmail } from "./helpers";
+import { adminPool, appPool, asContext, staffByEmail } from "./helpers";
+import { provisionClinic } from "./provision";
 
 process.env.ANALYTICS_TOKEN_KEY = process.env.ANALYTICS_TOKEN_KEY || "analytics-test-key-0123456789";
 
@@ -25,13 +26,14 @@ function jsonResponse(status: number, body: unknown, headers: Record<string, str
 describe("provider fixtures (not live APIs)", () => {
   it("covers success, empty, expired credentials, errors, rate limits and separate websites", async () => {
     const admin = await staffByEmail("admin@example.invalid");
-    const meridian = await clientBySlug("meridian-skin");
-    const harbour = await clientBySlug("meridian-skin");
     await asContext(SERVICE, async (db) => {
       await db.query("update analytics_jobs set next_attempt_at = '2100-01-01T00:00:00.000Z' where state = 'queued'");
-      const sites = (await db.query<{ id: string }>("select id from websites where client_id = $1 order by created_at", [meridian])).rows;
+      const clinic = await provisionClinic(db, admin.id);
+      const meridian = clinic.clientId;
+      const harbour = meridian;
+      const sites = [{ id: clinic.websiteId }, { id: clinic.stagingId }];
       expect(sites.length).toBeGreaterThanOrEqual(2);
-      const harbourSite = (await db.query<{ id: string }>("select id from websites where client_id = $1 order by created_at limit 1", [harbour])).rows[0]!.id;
+      const harbourSite = sites[0]!.id;
       const sealed = sealedToken({ accessToken: "fixture-token", expiresAt: "2100-01-01T00:00:00.000Z" });
       const first = await saveConnection(db, {
         clientId: meridian, websiteId: sites[0]!.id, provider: "ga4", externalPropertyId: "9105101", streamOrSiteRef: null,

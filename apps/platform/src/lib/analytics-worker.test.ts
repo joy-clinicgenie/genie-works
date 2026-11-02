@@ -24,6 +24,7 @@ describe("analytics worker scheduler preparation", () => {
     expect(route).toContain("export function GET");
     expect(route).toContain("export function POST");
     expect(route).toContain("workerAuthorized");
+    expect(route).toContain("drainMaintenance");
   });
 
   it("requeues an expired lease before the fifth attempt and then records a safe failure", () => {

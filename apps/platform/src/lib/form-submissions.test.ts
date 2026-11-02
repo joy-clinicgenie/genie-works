@@ -199,31 +199,21 @@ describe("isolated enquiry fixture", () => {
     const october = enquiryWindow("2026-10-01", "2026-10-30", "2026-10-30");
     const board = await listEnquiryBoard(null, {}, october);
     expect(board.connected).toBe(true);
-    expect(board.total).toBe(5);
+    expect(board.total).toBe(0);
+    expect(board.items).toEqual([]);
     expect(board.currentTotal).toBe(0);
     expect(board.previousTotal).toBe(0);
     expect(board.breakdowns.client).toEqual([]);
     expect(board.breakdowns.website).toEqual([]);
     expect(board.breakdowns.form).toEqual([]);
     expect(board.breakdowns.source).toEqual([]);
-    expect(board.items.every((item) => item.isSynthetic)).toBe(true);
-    expect(board.items.map((item) => item.reference).sort()).toEqual([
-      "TEST-MS-ACK-002",
-      "TEST-MS-ACK-005",
-      "TEST-MS-NEW-001",
-      "TEST-MS-NEW-004",
-      "TEST-MS-NEW-006",
-    ]);
-    const bySource = board.items.reduce<Record<string, number>>((counts, item) => {
-      counts[item.attributionSource] = (counts[item.attributionSource] ?? 0) + 1;
-      return counts;
-    }, {});
-    expect(bySource).toEqual({ campaign: 1, direct: 2, organic: 2 });
+    expect(board.clinics).toEqual([]);
+    expect(board.websites).toEqual([]);
 
-    expect((await listEnquiryBoard(null, { clinicId: "meridian-skin" }, october)).total).toBe(5);
-    expect((await listEnquiryBoard(null, { websiteKey: "meridian-skin-staging" }, october)).items.map((item) => item.reference)).toEqual(["TEST-MS-ACK-005"]);
-    expect((await listEnquiryBoard(null, { formKey: "contact" }, october)).total).toBe(2);
-    expect((await listEnquiryBoard(null, { status: "new" }, october)).total).toBe(3);
+    expect((await listEnquiryBoard(null, { clinicId: "meridian-skin" }, october)).total).toBe(0);
+    expect((await listEnquiryBoard(null, { websiteKey: "meridian-skin-staging" }, october)).items).toEqual([]);
+    expect((await listEnquiryBoard(null, { formKey: "contact" }, october)).total).toBe(0);
+    expect((await listEnquiryBoard(null, { status: "new" }, october)).total).toBe(0);
     expect((await listEnquiryBoard(["clinic-genie"], {}, october)).total).toBe(0);
     expect((await listEnquiryBoard(["meridian-skin"], { clinicId: "clinic-genie" }, october)).total).toBe(0);
 
@@ -236,12 +226,7 @@ describe("isolated enquiry fixture", () => {
     const counts = await submissionStatusCounts(null, { from: "2026-10-01", to: "2026-10-30" });
     expect(counts).toEqual({ connected: true, counts: { new: 0, acknowledged: 0, closed: 0 } });
 
-    const failed = await getFormSubmission(null, "11111111-1111-4111-8111-111111111102");
-    expect(failed).not.toBe("unavailable");
-    if (!failed || failed === "unavailable") throw new Error("The failed-notification enquiry was not stored.");
-    expect(failed.status).toBe("acknowledged");
-    expect(failed.notification?.status).toBe("failed");
-    expect(failed.message).toContain("Synthetic test enquiry");
+    expect(await getFormSubmission(null, "11111111-1111-4111-8111-111111111102")).toBeNull();
 
     const exported = await listEnquiryBoard(null, { page: "all", productionOnly: true, contact: true }, october);
     expect(exported.total).toBe(0);

@@ -1,21 +1,20 @@
 import { cache } from "react";
 import { redirect } from "next/navigation";
 import {
-  SERVICE,
   canAccessClient,
   canEditClient,
   canExport,
-  canManageAssignments,
   canManageRegistry,
   canManageUsers,
   canWriteConnectionSecrets,
   canPublishClient,
   canReviewClient,
   getActiveStaffByEmail,
-  resolveAccess,
-  withContext,
+  resolveAccessForStaff,
   type AccessProfile,
-} from "@clinic-genie/db";
+} from "@clinic-genie/db/src/services/auth";
+import { canManageAssignments } from "@clinic-genie/db/src/services/access";
+import { SERVICE, withContext } from "@clinic-genie/db/src/client";
 import { auth } from "./auth";
 
 /** Resolves the current staff access profile from the session, server-side, once per request. */
@@ -26,7 +25,7 @@ export const getAccess = cache(async (): Promise<AccessProfile | null> => {
   return withContext(SERVICE, async (db) => {
     const staff = await getActiveStaffByEmail(db, email);
     if (!staff) return null;
-    return resolveAccess(db, staff.id);
+    return resolveAccessForStaff(db, staff);
   });
 });
 

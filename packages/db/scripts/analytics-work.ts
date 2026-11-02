@@ -1,15 +1,15 @@
+import { drainMaintenance } from "../src/analytics/maintenance";
 import { closePools, SERVICE, withContext } from "../src/client";
 import { loadRootEnv } from "../src/env";
-import { runWorkerOnce } from "../src/analytics/sync";
 import { assertFixtureFetch, assertLocalWorkerDatabase } from "../src/testing/targets";
 
 loadRootEnv();
 assertLocalWorkerDatabase(process.env.DATABASE_URL ?? "");
 
-const outcome = await withContext(SERVICE, (db) => runWorkerOnce(db, "cli", {
+const outcome = await drainMaintenance((fn) => withContext(SERVICE, fn), {
   fetch: async (url, init) => {
     assertFixtureFetch(url);
-    const response = await fetch(url, init);
+    const response = await fetch(url, { ...init, signal: AbortSignal.timeout(20_000) });
     return {
       status: response.status,
       headers: response.headers,
@@ -22,7 +22,11 @@ const outcome = await withContext(SERVICE, (db) => runWorkerOnce(db, "cli", {
   googleClientSecret: process.env.ANALYTICS_GOOGLE_CLIENT_SECRET,
   wixAppId: process.env.ANALYTICS_WIX_APP_ID,
   wixAppSecret: process.env.ANALYTICS_WIX_APP_SECRET,
-}));
+  pageSpeedKey: process.env.PAGESPEED_API_KEY,
+}, { owner: "cli" });
 
-console.log(outcome.worked ? `Analytics job ${outcome.result}` : "No analytics job was due.");
+const worked = outcome.jobs > 0 || outcome.inspected > 0 || outcome.measured > 0;
+console.log(worked
+  ? `Analytics jobs ${outcome.jobs}, index checks ${outcome.inspected}, speed checks ${outcome.measured}.`
+  : "No analytics job was due.");
 await closePools();

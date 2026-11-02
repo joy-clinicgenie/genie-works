@@ -41,7 +41,6 @@ export function ClientForm({ mode, staff, values }: { mode: "create" | "edit"; s
   const [channels, setChannels] = useState(values.channels ?? []);
   const [services, setServices] = useState(values.services ?? "");
   const [notes, setNotes] = useState(values.notes ?? "");
-  const [synthetic, setSynthetic] = useState(Boolean(values.isSynthetic));
   const [referenceNumber, setReferenceNumber] = useState(values.referenceNumber ?? "");
   const [shortCode, setShortCode] = useState(values.shortCode ?? "");
   const [specialty, setSpecialty] = useState(values.specialty ?? "");
@@ -134,9 +133,6 @@ export function ClientForm({ mode, staff, values }: { mode: "create" | "edit"; s
       <Field label="Notes" htmlFor="notes">
         <Textarea id="notes" name="notes" value={notes} onChange={(e) => setNotes(e.target.value)} maxLength={4000} />
       </Field>
-      {mode === "create" && (
-        <Checkbox name="isSynthetic" label="This is demonstration data (fictional client)" checked={synthetic} onChange={(e) => setSynthetic(e.target.checked)} />
-      )}
       <FormError state={banner(state)} />
       <Button type="submit" disabled={pending} aria-busy={pending}>{pending ? "Saving…" : mode === "create" ? "Create client" : "Save details"}</Button>
     </form>

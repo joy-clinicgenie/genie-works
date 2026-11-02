@@ -1,9 +1,9 @@
 import { afterAll, describe, expect, it } from "vitest";
-import { SERVICE } from "../src/client";
+import { SERVICE, applyContext } from "../src/client";
 import { adminPool, appPool, asContext, clientBySlug, staffByEmail, staffCtx } from "./helpers";
 import { getActiveStaffByEmail } from "../src/services/auth";
 import {
-  RegistryRuleError, createAccountReference, createWebsite, listAccountReferences, listClients, listWebsites, updateAccountReference, updateStaff, updateWebsite, type WebsiteRow,
+  RegistryRuleError, createAccountReference, createWebsite, grantMembership, listAccountReferences, listClients, listWebsites, revokeMembership, updateAccountReference, updateStaff, updateWebsite, type WebsiteRow,
 } from "../src/services/registry";
 import { listTasks, createTask } from "../src/services/tasks";
 import { listApprovals } from "../src/services/approvals";
@@ -24,8 +24,8 @@ describe("client isolation through row-level security (A-04, A-05, A-06)", () =>
 
   it("direct queries for another client's tasks, approvals, issues and claims return nothing", async () => {
     const specB = await staffByEmail("specialist-b@example.invalid");
-    const harbour = await clientBySlug("meridian-skin");
-    const meridian = await clientBySlug("meridian-skin");
+    const harbour = await clientBySlug("clinic-genie");
+    const meridian = harbour;
     const result = await asContext(staffCtx(specB), async (db) => ({
       tasks: await listTasks(db, { clientId: harbour }),
       approvals: await listApprovals(db, { clientId: harbour }),
@@ -43,37 +43,51 @@ describe("client isolation through row-level security (A-04, A-05, A-06)", () =>
   });
 
   it("guessing a record id outside the membership behaves as not found", async () => {
+    const admin = await staffByEmail("admin@example.invalid");
     const specB = await staffByEmail("specialist-b@example.invalid");
-    const { rows } = await adminPool.query("select t.id from tasks t join clients c on c.id = t.client_id where c.slug = 'meridian-skin' limit 1");
-    const found = await asContext(staffCtx(specB), async (db) => (await db.query("select id from tasks where id = $1", [rows[0].id])).rows.length);
+    const clientId = await clientBySlug("clinic-genie");
+    const found = await asContext(staffCtx(admin), async (db) => {
+      const taskId = await createTask(db, { clientId, title: "Hidden task", description: null, ownerUserId: admin.id, priority: "low", dueDate: null, relatedType: null, relatedId: null }, admin.id);
+      await applyContext(db, staffCtx(specB));
+      return (await db.query("select id from tasks where id = $1", [taskId])).rows.length;
+    });
     expect(found).toBe(0);
   });
 
   it("a specialist cannot insert a task for a client they do not belong to, even with a valid id", async () => {
     const specB = await staffByEmail("specialist-b@example.invalid");
-    const harbour = await clientBySlug("meridian-skin");
+    const harbour = await clientBySlug("clinic-genie");
     await expect(
       asContext(staffCtx(specB), (db) => createTask(db, { clientId: harbour, title: "Cross-client write", description: null, ownerUserId: specB.id, priority: "low", dueDate: null, relatedType: null, relatedId: null }, specB.id)),
     ).rejects.toThrow();
   });
 
   it("read-only users cannot mutate records through direct statements", async () => {
+    const admin = await staffByEmail("admin@example.invalid");
     const ro = await staffByEmail("readonly@example.invalid");
-    const meridian = await clientBySlug("meridian-skin");
-    const taskId = (await adminPool.query<{ id: string }>("select id from tasks where client_id = $1 limit 1", [meridian])).rows[0]!.id;
-    const visible = await asContext(staffCtx(ro), (db) => listTasks(db, { clientId: meridian }));
-    expect(visible).toHaveLength(0);
-    await expect(asContext(staffCtx(ro), (db) => db.query("update tasks set title = 'tampered' where id = $1", [taskId]).then((r) => { if ((r.rowCount ?? 0) === 0) throw new Error("no rows updated"); }))).rejects.toThrow();
-    await expect(asContext(staffCtx(ro), (db) => db.query("insert into task_notes (task_id, client_id, author_user_id, body) values ($1, $2, $3, 'x')", [taskId, meridian, ro.id]))).rejects.toThrow();
+    const meridian = await clientBySlug("clinic-genie");
+    await asContext(staffCtx(admin), async (db) => {
+      const taskId = await createTask(db, { clientId: meridian, title: "Read only check", description: null, ownerUserId: admin.id, priority: "low", dueDate: null, relatedType: null, relatedId: null }, admin.id);
+      await applyContext(db, staffCtx(ro));
+      expect(await listTasks(db, { clientId: meridian })).toHaveLength(0);
+      await expect(db.query("update tasks set title = 'tampered' where id = $1", [taskId]).then((result) => { if ((result.rowCount ?? 0) === 0) throw new Error("no rows updated"); })).rejects.toThrow();
+      await expect(db.query("insert into task_notes (task_id, client_id, author_user_id, body) values ($1, $2, $3, 'x')", [taskId, meridian, ro.id])).rejects.toThrow();
+    });
   });
 
   it("a reviewer can read their client's records but cannot edit tasks", async () => {
+    const admin = await staffByEmail("admin@example.invalid");
     const reviewer = await staffByEmail("reviewer@example.invalid");
-    const meridian = await clientBySlug("meridian-skin");
-    const tasks = await asContext(staffCtx(reviewer), (db) => listTasks(db, { clientId: meridian }));
-    expect(tasks.length).toBeGreaterThan(0);
-    const updated = await asContext(staffCtx(reviewer), async (db) => (await db.query("update tasks set title = 'tampered' where id = $1", [tasks[0]!.id])).rowCount);
-    expect(updated).toBe(0);
+    const meridian = await clientBySlug("clinic-genie");
+    await asContext(staffCtx(admin), async (db) => {
+      await grantMembership(db, { userId: reviewer.id, clientId: meridian }, admin.id);
+      const taskId = await createTask(db, { clientId: meridian, title: "Reviewer read check", description: null, ownerUserId: admin.id, priority: "low", dueDate: null, relatedType: null, relatedId: null }, admin.id);
+      await applyContext(db, staffCtx(reviewer));
+      const tasks = await listTasks(db, { clientId: meridian });
+      expect(tasks.length).toBeGreaterThan(0);
+      const updated = (await db.query("update tasks set title = 'tampered' where id = $1", [taskId])).rowCount;
+      expect(updated).toBe(0);
+    });
   });
 
   it("two specialists see only their own client websites", async () => {
@@ -81,13 +95,13 @@ describe("client isolation through row-level security (A-04, A-05, A-06)", () =>
     const specB = await staffByEmail("specialist-b@example.invalid");
     const sites = async (user: Awaited<ReturnType<typeof staffByEmail>>) =>
       asContext(staffCtx(user), async (db) => (await db.query<{ slug: string }>("select c.slug from websites w join clients c on c.id = w.client_id order by c.slug")).rows.map((r) => r.slug));
-    expect(await sites(specA)).toEqual(["meridian-skin", "meridian-skin"]);
+    expect(await sites(specA)).toEqual([]);
     expect(await sites(specB)).toEqual([]);
   });
 
   it("a specialist cannot add a website, even for a client they belong to", async () => {
     const specB = await staffByEmail("specialist-b@example.invalid");
-    const meridian = await clientBySlug("meridian-skin");
+    const meridian = await clientBySlug("clinic-genie");
     await expect(
       asContext(staffCtx(specB), (db) => db.query("insert into websites (client_id, name, platform) values ($1, 'Cross-role site', 'unknown')", [meridian])),
     ).rejects.toThrow(/row-level security/);
@@ -119,7 +133,12 @@ describe("client isolation through row-level security (A-04, A-05, A-06)", () =>
       "select display_name, email, platform_role from staff_users where id = $1",
       [specA.id],
     )).rows[0]!;
-    const harbour = await clientBySlug("meridian-skin");
+    const harbour = await clientBySlug("clinic-genie");
+    const access = await asContext(staffCtx(admin), async (db) => {
+      const membershipId = await grantMembership(db, { userId: specA.id, clientId: harbour }, admin.id);
+      const taskId = await createTask(db, { clientId: harbour, title: "Deactivation check", description: null, ownerUserId: specA.id, priority: "low", dueDate: null, relatedType: null, relatedId: null }, admin.id);
+      return { membershipId, taskId };
+    }, { commit: true });
     const token = `deactivation-test-${specA.id}`;
     let createdUserId: number | null = null;
     await asContext({ kind: "service" }, async (db) => {
@@ -149,6 +168,14 @@ describe("client isolation through row-level security (A-04, A-05, A-06)", () =>
         (db) => updateStaff(db, specA.id, { displayName: person.display_name, role: person.platform_role, active: true }, admin.id),
         { commit: true },
       );
+      await asContext(staffCtx(admin), (db) => revokeMembership(db, access.membershipId, admin.id, harbour), { commit: true });
+      await adminPool.query("alter table task_notes disable trigger user");
+      await adminPool.query("alter table task_history disable trigger user");
+      await adminPool.query("delete from task_notes where task_id = $1", [access.taskId]);
+      await adminPool.query("delete from task_history where task_id = $1", [access.taskId]);
+      await adminPool.query("delete from tasks where id = $1", [access.taskId]);
+      await adminPool.query("alter table task_notes enable trigger user");
+      await adminPool.query("alter table task_history enable trigger user");
       await asContext({ kind: "service" }, async (db) => {
         await db.query(`delete from sessions where "sessionToken" = $1`, [token]);
         if (createdUserId) await db.query("delete from users where id = $1", [createdUserId]);
@@ -197,24 +224,28 @@ describe("client isolation through row-level security (A-04, A-05, A-06)", () =>
 
   it("a specialist website update that changes no row fails instead of reporting success", async () => {
     const specA = await staffByEmail("specialist-a@example.invalid");
-    const harbour = await clientBySlug("meridian-skin");
-    const site = (await adminPool.query<WebsiteRow>("select * from websites where client_id = $1 and status = 'active' limit 1", [harbour])).rows[0]!;
-    await expect(asContext(staffCtx(specA), (db) => updateWebsite(db, site.id, {
-      name: `${site.name} edited`,
-      url: site.url,
-      platform: site.platform,
-      environment: site.environment,
-      status: site.status,
-      notes: site.notes,
-    }, specA.id))).rejects.toBeInstanceOf(RegistryRuleError);
-    const name = (await adminPool.query<{ name: string }>("select name from websites where id = $1", [site.id])).rows[0]!.name;
-    expect(name).toBe(site.name);
+    const harbour = await clientBySlug("clinic-genie");
+    const site = await insertCheckWebsite(harbour);
+    try {
+      await expect(asContext(staffCtx(specA), (db) => updateWebsite(db, site.id, {
+        name: `${site.name} edited`,
+        url: site.url,
+        platform: site.platform,
+        environment: site.environment,
+        status: site.status,
+        notes: site.notes,
+      }, specA.id))).rejects.toBeInstanceOf(RegistryRuleError);
+      const name = (await adminPool.query<{ name: string }>("select name from websites where id = $1", [site.id])).rows[0]!.name;
+      expect(name).toBe(site.name);
+    } finally {
+      await adminPool.query("delete from websites where id = $1", [site.id]);
+    }
   });
 
   it("an admin or manager can create and update a website, then read the saved values", async () => {
     const admin = await staffByEmail("admin@example.invalid");
     const manager = await staffByEmail("manager@example.invalid");
-    const harbour = await clientBySlug("meridian-skin");
+    const harbour = await clientBySlug("clinic-genie");
     await asContext(staffCtx(admin), async (db) => {
       const created = await createWebsite(db, {
         clientId: harbour, name: "V1-I10 synthetic site", url: "https://example.invalid/v1-i10", platform: "Next.js", environment: "staging", notes: "Synthetic registry check",
@@ -222,7 +253,8 @@ describe("client isolation through row-level security (A-04, A-05, A-06)", () =>
       const listed = await listWebsites(db, harbour);
       expect(listed.find((site) => site.id === created.id)).toMatchObject({ name: "V1-I10 synthetic site", url: "https://example.invalid/v1-i10", environment: "staging" });
     });
-    const site = (await adminPool.query<WebsiteRow>("select * from websites where client_id = $1 and status = 'active' limit 1", [harbour])).rows[0]!;
+    const site = await insertCheckWebsite(harbour);
+    try {
     await asContext(staffCtx(manager), async (db) => {
       await updateWebsite(db, site.id, {
         name: `${site.name} persisted`, url: site.url, platform: site.platform, environment: site.environment, status: site.status, notes: "Synthetic update check",
@@ -232,12 +264,15 @@ describe("client isolation through row-level security (A-04, A-05, A-06)", () =>
     });
     const unchanged = (await adminPool.query<{ name: string; notes: string | null }>("select name, notes from websites where id = $1", [site.id])).rows[0]!;
     expect(unchanged).toEqual({ name: site.name, notes: site.notes });
+    } finally {
+      await adminPool.query("delete from websites where id = $1", [site.id]);
+    }
   });
 
   it("a committed website update is readable in a later transaction and can be restored", async () => {
     const manager = await staffByEmail("manager@example.invalid");
-    const harbour = await clientBySlug("meridian-skin");
-    const site = (await adminPool.query<WebsiteRow>("select * from websites where client_id = $1 and status = 'active' limit 1", [harbour])).rows[0]!;
+    const harbour = await clientBySlug("clinic-genie");
+    const site = await insertCheckWebsite(harbour);
     const marker = "Synthetic V1-I10 persistence check";
     const write = (notes: string | null) => asContext(staffCtx(manager), (db) => updateWebsite(db, site.id, {
       name: site.name, url: site.url, platform: site.platform, environment: site.environment, status: site.status, notes,
@@ -251,15 +286,14 @@ describe("client isolation through row-level security (A-04, A-05, A-06)", () =>
     }
     const restored = (await adminPool.query<{ notes: string | null }>("select notes from websites where id = $1", [site.id])).rows[0]!.notes;
     expect(restored).toBe(site.notes);
+    await adminPool.query("delete from websites where id = $1", [site.id]);
   });
 
   it("an admin can create and update an account reference, then read the saved values", async () => {
     const admin = await staffByEmail("admin@example.invalid");
-    const harbour = await clientBySlug("meridian-skin");
-    const existing = (await adminPool.query<{ id: string; kind: string; label: string; external_identifier: string | null; url: string | null; vault_reference: string | null; notes: string | null; owner_user_id: string | null; active: boolean }>(
-      "select id, kind, label, external_identifier, url, vault_reference, notes, owner_user_id, active from account_references where client_id = $1 limit 1",
-      [harbour],
-    )).rows[0]!;
+    const harbour = await clientBySlug("clinic-genie");
+    const existing = await insertCheckReference(harbour);
+    try {
     await asContext(staffCtx(admin), async (db) => {
       const created = await createAccountReference(db, harbour, {
         kind: "other", label: "V1-I10 synthetic reference", externalIdentifier: "PLACEHOLDER-V1-I10", url: "https://example.invalid/ref", vaultReference: "vault://clinic-genie/synthetic", notes: "Synthetic registry check", ownerUserId: admin.id,
@@ -274,15 +308,15 @@ describe("client isolation through row-level security (A-04, A-05, A-06)", () =>
     });
     const label = (await adminPool.query<{ label: string }>("select label from account_references where id = $1", [existing.id])).rows[0]!.label;
     expect(label).toBe(existing.label);
+    } finally {
+      await adminPool.query("delete from account_references where id = $1", [existing.id]);
+    }
   });
 
   it("a committed account-reference update is readable in a later transaction and can be restored", async () => {
     const admin = await staffByEmail("admin@example.invalid");
-    const harbour = await clientBySlug("meridian-skin");
-    const existing = (await adminPool.query<{ id: string; kind: string; label: string; external_identifier: string | null; url: string | null; vault_reference: string | null; notes: string | null; owner_user_id: string | null; active: boolean }>(
-      "select id, kind, label, external_identifier, url, vault_reference, notes, owner_user_id, active from account_references where client_id = $1 limit 1",
-      [harbour],
-    )).rows[0]!;
+    const harbour = await clientBySlug("clinic-genie");
+    const existing = await insertCheckReference(harbour);
     const marker = `${existing.label} V1-I10`;
     const write = (label: string) => asContext(staffCtx(admin), (db) => updateAccountReference(db, existing.id, {
       kind: existing.kind, label, externalIdentifier: existing.external_identifier, url: existing.url, vaultReference: existing.vault_reference, notes: existing.notes, ownerUserId: existing.owner_user_id, active: existing.active,
@@ -296,15 +330,14 @@ describe("client isolation through row-level security (A-04, A-05, A-06)", () =>
     }
     const restored = (await adminPool.query<{ label: string }>("select label from account_references where id = $1", [existing.id])).rows[0]!.label;
     expect(restored).toBe(existing.label);
+    await adminPool.query("delete from account_references where id = $1", [existing.id]);
   });
 
   it("a specialist, reviewer, read-only user, or other client's specialist cannot change a website or account reference", async () => {
-    const harbour = await clientBySlug("meridian-skin");
-    const site = (await adminPool.query<WebsiteRow>("select * from websites where client_id = $1 and status = 'active' limit 1", [harbour])).rows[0]!;
-    const reference = (await adminPool.query<{ id: string; kind: string; label: string; external_identifier: string | null; url: string | null; vault_reference: string | null; notes: string | null; owner_user_id: string | null; active: boolean }>(
-      "select id, kind, label, external_identifier, url, vault_reference, notes, owner_user_id, active from account_references where client_id = $1 limit 1",
-      [harbour],
-    )).rows[0]!;
+    const harbour = await clientBySlug("clinic-genie");
+    const site = await insertCheckWebsite(harbour);
+    const reference = await insertCheckReference(harbour);
+    try {
     for (const email of ["specialist-a@example.invalid", "specialist-b@example.invalid", "reviewer@example.invalid", "readonly@example.invalid"]) {
       const user = await staffByEmail(email);
       await expect(asContext(staffCtx(user), (db) => updateWebsite(db, site.id, {
@@ -321,8 +354,32 @@ describe("client isolation through row-level security (A-04, A-05, A-06)", () =>
     const label = (await adminPool.query<{ label: string }>("select label from account_references where id = $1", [reference.id])).rows[0]!.label;
     expect(name).toBe(site.name);
     expect(label).toBe(reference.label);
+    } finally {
+      await adminPool.query("delete from websites where id = $1", [site.id]);
+      await adminPool.query("delete from account_references where id = $1", [reference.id]);
+    }
   });
 });
+
+async function insertCheckWebsite(clientId: string): Promise<WebsiteRow> {
+  const { rows } = await adminPool.query<WebsiteRow>(
+    `insert into websites (client_id, name, url, platform, environment, notes)
+     values ($1, 'Check website', 'https://check.example.invalid', 'Next.js', 'staging', null)
+     returning *`,
+    [clientId],
+  );
+  return rows[0]!;
+}
+
+async function insertCheckReference(clientId: string) {
+  const { rows } = await adminPool.query<{ id: string; kind: string; label: string; external_identifier: string | null; url: string | null; vault_reference: string | null; notes: string | null; owner_user_id: string | null; active: boolean }>(
+    `insert into account_references (client_id, kind, label)
+     values ($1, 'other', 'Check reference')
+     returning id, kind, label, external_identifier, url, vault_reference, notes, owner_user_id, active`,
+    [clientId],
+  );
+  return rows[0]!;
+}
 
 describe("audit log protection (A-21)", () => {
   it("audit events cannot be updated or deleted, even by the owner", async () => {

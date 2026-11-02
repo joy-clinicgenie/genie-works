@@ -314,7 +314,7 @@ Opening a mapping issue goes to the page editor. Opening a staff task goes to `/
 
 Content statuses: Planned, Drafting, In review, Published, Needs update, Retired.
 
-On a mapped page (`/seo/pages/[page]`) you can read the path, canonical path, configured indexing, focus topic and mapping. **Live indexability** says **Not checked**. **Google indexing** says **Not connected**. Social sharing and structured data on this screen are not stored. **Record a change** saves a staff record with **What changed**, **Changed on**, **Before**, **After**, **Reason** and an optional **Approval reference**. It does not publish the website. **Record** on a change asks for **Verified on** and **What was observed afterwards**. Later movement is observed. It is not proof the change caused it.
+On a mapped page (`/seo/pages/[page]`) you can read the path, canonical path, configured indexing, focus topic and mapping. **Live indexability** and **Google indexing** show the stored check. Until a check has run, Live says **Not checked**. Google says **Not connected**, **Connected**, or **Reconnect required**, matching the Search Console link. A saved preference is not that check. Social sharing and structured data on this screen are not stored. **Record a change** saves a staff record with **What changed**, **Changed on**, **Before**, **After**, **Reason** and an optional **Approval reference**. It does not publish the website. **Record** on a change asks for **Verified on** and **What was observed afterwards**. Later movement is observed. It is not proof the change caused it.
 
 **How to publish page SEO** (admin or manager, Next.js website)
 
@@ -329,7 +329,7 @@ The client also has a page list at `/clients/[client]/seo` with **Map a page** a
 #### Site Health
 
 **Tabs:** **Website Checks**, **Google Indexing**, **Speed & Mobile**, **Crawl Settings**.  
-**Run check** is disabled. Nothing on this page has been crawled. Broken links, speed scores and sitemap submission are unavailable. A page that was not scanned is not marked Passed. **Google Indexing** can show the saved index preference. That preference is not live indexability and it is not Google’s reported index. The screen has not fetched sitemap or robots files.
+**Run check** is available to someone who can edit the website. It asks Google about known public pages when Search Console is connected. It does not crawl the site for broken links and it does not submit URLs for indexing. A page that was not checked is not marked Passed. **Google Indexing** lists the website home, mapped pages that are not retired, saved page settings, and published blog articles. A draft article is not listed. **Configured** is **Index allowed** unless a noindex preference is saved. **Live** and **Google** stay **Not checked** and **Not connected** until a check is stored. **Speed & Mobile** shows a stored mobile lab score when one has been measured. A missing score is not a pass. The screen has not fetched sitemap or robots files.
 
 #### URL Redirects
 

@@ -2,7 +2,7 @@ import { cookies } from "next/headers";
 import { LogOut } from "lucide-react";
 import { signOut } from "@/lib/auth";
 import { requireAccess } from "@/lib/session";
-import { canEditClient, canManageRegistry, canManageUsers, listBlogWebsites, listClients } from "@clinic-genie/db";
+import { canEditClient, canManageRegistry, canManageUsers, listActiveWebsiteClientIds, listShellClients } from "@clinic-genie/db";
 import { staffTx } from "@/lib/db";
 import { Shell, type NavItem } from "@/components/shell/Shell";
 import { Badge } from "@/components/ui/Badge";
@@ -33,12 +33,12 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     await signOut({ redirectTo: "/sign-in" });
   }
 
-  const { clients, websites } = await staffTx(access, async (db) => ({
-    clients: await listClients(db),
-    websites: await listBlogWebsites(db),
+  const { clients, websiteClientIds } = await staffTx(access, async (db) => ({
+    clients: await listShellClients(db),
+    websiteClientIds: await listActiveWebsiteClientIds(db),
   }));
   const adds = [
-    ...(websites.some((site) => canEditClient(access, site.client_id)) ? [{ href: "/blog/new", label: "Add blog" }] : []),
+    ...(websiteClientIds.some((clientId) => canEditClient(access, clientId)) ? [{ href: "/blog/new", label: "Add blog" }] : []),
     ...(canManageRegistry(access) ? [{ href: "/clients/new", label: "Add client" }] : []),
   ];
   const name = access.user.display_name.trim();

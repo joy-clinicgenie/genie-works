@@ -11,11 +11,11 @@ describe("Search Console connection status", () => {
       { website_id: "w", provider: "gsc", status: "connected", external_property_id: property, disconnected_at: null },
     ], "w");
     expect(picked).toEqual({ status: "connected", propertyId: property });
-    expect(searchConsoleCapability(picked, null)).toBe(`Connected to ${property}. Can read search reports. Cannot inspect URLs.`);
+    expect(searchConsoleCapability(picked, null)).toBe(`Connected to ${property}. Can read search reports and check whether a known page is indexed.`);
   });
 
   it("keeps an unconnected site unavailable", () => {
-    expect(searchConsoleCapability(null, null)).toBe("Not connected. Cannot read search reports or inspect URLs.");
+    expect(searchConsoleCapability(null, null)).toBe("Not connected. Cannot read search reports or check index status.");
     const check = setupChecks({
       codeManaged: false,
       connected: false,

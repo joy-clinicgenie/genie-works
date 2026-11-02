@@ -172,6 +172,59 @@ export async function getClient(db: Queryable, id: string): Promise<ClientRow | 
   return rows[0] ?? null;
 }
 
+export interface ShellClient {
+  id: string;
+  name: string;
+  slug: string;
+  reference_number: string | null;
+  short_code: string | null;
+  public_name: string | null;
+  legal_name: string | null;
+  specialty: string | null;
+}
+
+/** Names and search labels for the shell. Skips the staff joins used by the full client record. */
+export async function listShellClients(db: Queryable): Promise<ShellClient[]> {
+  const { rows } = await db.query<ShellClient>(
+    `select id, name, slug, reference_number, short_code, public_name, legal_name, specialty
+     from clients
+     where status = 'active'
+     order by reference_number nulls last, name`,
+  );
+  return rows;
+}
+
+export async function listActiveWebsiteClientIds(db: Queryable): Promise<string[]> {
+  const { rows } = await db.query<{ client_id: string }>(
+    "select distinct client_id from websites where status = 'active' and archived_at is null",
+  );
+  return rows.map((row) => row.client_id);
+}
+
+export interface ActiveWebsiteSummary {
+  id: string;
+  client_id: string;
+  client_name: string;
+  reference_number: string | null;
+  name: string;
+  url: string | null;
+  platform: string;
+  environment: WebsiteRow["environment"];
+  status: WebsiteRow["status"];
+}
+
+/** Active websites for the SEO picker, in one query. */
+export async function listActiveWebsiteSummaries(db: Queryable): Promise<ActiveWebsiteSummary[]> {
+  const { rows } = await db.query<ActiveWebsiteSummary>(
+    `select w.id, w.client_id, c.name as client_name, c.reference_number, w.name, w.url, w.platform, w.environment, w.status
+     from websites w
+     join clients c on c.id = w.client_id
+     where w.status = 'active' and w.archived_at is null and c.status = 'active'
+     order by c.reference_number nulls last, c.name, w.name`,
+  );
+  return rows;
+}
+
 /** Active clients, plus an explicitly requested client when that record is visible. An unknown id stays absent so callers can deny it. */
 export async function listClientsForRequest(db: Queryable, requestedId?: string | null): Promise<ClientRow[]> {
   const clients = await listClients(db);

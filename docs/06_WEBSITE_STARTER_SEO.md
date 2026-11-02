@@ -43,7 +43,7 @@ Required deployment inputs are the deployed Genie Works API origin, the website 
 - **Business Profile:** branch reference and setup status are staff-entered; "staff marked verified" is not Google API validation.
 
 ## Deferred after first soft launch
-Bulk redirects, redirect groups, advanced metadata templates, automated Site Inspection, direct Google Business Profile API management, performance reporting, `llms.txt` and NLWeb stay in the backlog. Do not create empty screens for them.
+Bulk redirects, redirect groups, advanced metadata templates, direct Google Business Profile API management, `llms.txt` and NLWeb stay in the backlog. D38 allows a read-only URL Inspection check and a stored mobile lab score for known public URLs. It does not submit sitemaps or add a ranking report. Do not create empty screens for the remaining backlog.
 
 ## SEO QA checklist
 - Page-specific title, description, canonical, clean route and clear primary heading.

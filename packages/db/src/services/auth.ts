@@ -38,11 +38,16 @@ export async function getStaffById(db: Queryable, id: string): Promise<StaffUser
 export async function resolveAccess(db: Queryable, userId: string): Promise<AccessProfile | null> {
   const user = await getStaffById(db, userId);
   if (!user || !user.active) return null;
+  return resolveAccessForStaff(db, user);
+}
+
+/** Resolves memberships when the active staff row was already loaded in this transaction. */
+export async function resolveAccessForStaff(db: Queryable, user: StaffUser): Promise<AccessProfile> {
   const { rows } = await db.query<ClientScope>(
     `select m.client_id, c.name as client_name, c.slug as client_slug
      from memberships m join clients c on c.id = m.client_id
      where m.user_id = $1 and m.active and c.status = 'active' order by c.name`,
-    [userId],
+    [user.id],
   );
   return { user, memberships: rows };
 }

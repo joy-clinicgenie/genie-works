@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { canEditClient, formatDate, getSeoPage, listActiveStaff, listApprovals, listSeoPageSettings, listWebsites } from "@clinic-genie/db";
+import { canEditClient, formatDate, getSeoPage, listActiveStaff, listApprovals, listSeoPageSettings, listWebsites, readPageIndex } from "@clinic-genie/db";
 import { requireAccess } from "@/lib/session";
 import { staffTx } from "@/lib/db";
 import { PageHeader, Card, CardHeader, KeyValue } from "@/components/ui/Card";
@@ -22,13 +22,12 @@ export default async function SeoPageDetail({ params, searchParams }: { params: 
   const data = await staffTx(access, async (db) => {
     const page = await getSeoPage(db, id);
     if (!page) return null;
-    const [websites, owners, approvals, settings] = await Promise.all([
-      listWebsites(db, page.client_id),
-      listActiveStaff(db),
-      listApprovals(db, { clientId: page.client_id, statuses: ["approved"] }),
-      page.website_id ? listSeoPageSettings(db, { websiteId: page.website_id }) : Promise.resolve([]),
-    ]);
-    return { page, websites, owners, approvals, settings };
+    const websites = await listWebsites(db, page.client_id);
+    const owners = await listActiveStaff(db);
+    const approvals = await listApprovals(db, { clientId: page.client_id, statuses: ["approved"] });
+    const settings = page.website_id ? await listSeoPageSettings(db, { websiteId: page.website_id }) : [];
+    const indexState = page.website_id ? await readPageIndex(db, page.website_id, page.page_path) : null;
+    return { page, websites, owners, approvals, settings, indexState };
   });
   if (!data) notFound();
   const { page } = data;
@@ -85,12 +84,13 @@ export default async function SeoPageDetail({ params, searchParams }: { params: 
               { label: "Path", value: page.page_path },
               { label: "Website", value: page.website_name },
               { label: "Canonical path", value: setting?.canonical_path ?? null },
-              { label: "Configured indexing", value: setting ? (setting.indexable ? "Index allowed" : "Noindex saved") : "Not saved" },
-              { label: "Live indexability", value: "Not checked" },
-              { label: "Google indexing", value: "Not connected" },
+              { label: "Configured indexing", value: data.indexState?.configured ?? (setting ? (setting.indexable ? "Index allowed" : "Noindex saved") : "Not saved") },
+              { label: "Live indexability", value: data.indexState?.live ?? "Not checked" },
+              { label: "Google indexing", value: data.indexState?.google ?? "Not connected" },
+              { label: "Google detail", value: data.indexState?.detail ?? null },
             ]} /></div>
             {page.content_status === "published" && <p className="mt-3 text-sm">Changing this published path should propose a redirect. <Link href={redirectHref} className="text-action hover:underline">Propose a redirect from {page.page_path}</Link></p>}
-            <details className="mt-3 text-sm"><summary className="cursor-pointer font-medium">Advanced</summary><p className="mt-2 text-muted">Extra robots directives and link tags are not stored. The saved index preference is the only indexing control.</p></details>
+            <details className="mt-3 text-sm"><summary className="cursor-pointer font-medium">Advanced</summary><p className="mt-2 text-muted">Extra robots directives and link tags are not stored. The saved preference is the staff control. A Search Console check reads the Google verdict and does not submit the page.</p></details>
           </Card>
           <Card id="content" className="p-5">
             <h2 className="font-semibold">Content checks</h2>

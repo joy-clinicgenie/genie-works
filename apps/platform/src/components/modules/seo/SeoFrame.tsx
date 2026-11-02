@@ -5,7 +5,7 @@ import { EmptyState, Notice } from "@/components/ui/Notice";
 import { SeoPageLinks, SeoSectionLinks } from "@/components/modules/SeoSubnav";
 import { InnerNavFrame } from "@/components/shell/InnerNav";
 import { SeoContextForm } from "@/components/modules/seo/SeoContextForm";
-import { environmentLabel, seoHref, type SeoContext } from "@/lib/seo-workspace";
+import { environmentLabel, type SeoContext } from "@/lib/seo-workspace";
 
 export function HiddenSeoContext({ ctx, tab, extra }: { ctx: SeoContext; tab?: string; extra?: Record<string, string | undefined> }) {
   return (
@@ -76,19 +76,11 @@ export function SeoFrame({
           {selected.url ? <a href={selected.url} target="_blank" rel="noreferrer" className="text-action hover:underline">View public website</a> : <span className="text-muted">No public URL recorded</span>}
         </div>
       )}
-      {ctx.demo && <div className="mb-4"><Notice tone="warn" title="Demo data">These figures are fictional and are not connected to a clinic. <a className="underline" href={pathname}>Leave demonstration</a></Notice></div>}
-      {!ctx.demo && (
-        <details className="card mb-5 p-4" open={!selected}>
-          <summary className="cursor-pointer text-sm font-semibold">Change clinic or website</summary>
-          <SeoContextForm pathname={pathname} tab={currentTab} clients={ctx.clients} sites={ctx.sites} client={ctx.client} website={ctx.website} />
-        </details>
-      )}
-      {ctx.demoConflict ? (
-        <EmptyState title="Demonstration is separate from a clinic">
-          Remove the selected clinic to view labelled demonstration data, or leave demonstration mode to work on the website.
-          <span className="mt-3 block"><a className="text-action underline" href={seoHref(pathname, { client: ctx.client, website: ctx.website, demo: false }, currentTab ? { tab: currentTab } : undefined)}>Open the selected website</a></span>
-        </EmptyState>
-      ) : blocked ? (
+      <details className="card mb-5 p-4" open={!selected}>
+        <summary className="cursor-pointer text-sm font-semibold">Change clinic or website</summary>
+        <SeoContextForm pathname={pathname} tab={currentTab} clients={ctx.clients} sites={ctx.sites} client={ctx.client} website={ctx.website} />
+      </details>
+      {blocked ? (
         <EmptyState title={ctx.sites.length === 0 ? "No active website is available" : ctx.client && ctx.sites.every((site) => site.clientId !== ctx.client) ? "This clinic has no active website" : "Choose a website"}>SEO data stays empty until a clinic and website are selected. No default clinic is assumed.</EmptyState>
       ) : children}
     </InnerNavFrame>

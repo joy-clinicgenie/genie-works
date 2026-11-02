@@ -1,5 +1,7 @@
 import { afterAll, describe, expect, it } from "vitest";
-import { adminPool, appPool, asContext, clientBySlug, staffByEmail, staffCtx } from "./helpers";
+import { applyContext } from "../src/client";
+import { adminPool, appPool, asContext, staffByEmail, staffCtx } from "./helpers";
+import { provisionClinic } from "./provision";
 import type pg from "pg";
 import { composeReport, costPerLead, conversionRate } from "../src/services/report-builder";
 import { createSavedReport, getSavedReport } from "../src/services/saved-reports";
@@ -33,8 +35,8 @@ describe("report builder measurement rules", () => {
 
   it("keeps clicks out of the lead total and leaves cost per lead blank without both inputs", async () => {
     const admin = await staffByEmail("admin@example.invalid");
-    const client = await clientBySlug("meridian-skin");
     const built = await asContext(staffCtx(admin), async (db) => {
+      const { clientId: client } = await provisionClinic(db, admin.id);
       await record(db, client, admin.id, "clinic_records", "enquiries", 4, "2030-04-01", "2030-04-30");
       await record(db, client, admin.id, "manual", "form_submissions", 7, "2030-04-01", "2030-04-30");
       await record(db, client, admin.id, "manual", "contact_whatsapp", 9, "2030-04-01", "2030-04-30");
@@ -64,8 +66,8 @@ describe("report builder measurement rules", () => {
 
   it("does not calculate cost per lead from clicks when enquiries are absent", async () => {
     const admin = await staffByEmail("admin@example.invalid");
-    const client = await clientBySlug("meridian-skin");
     const built = await asContext(staffCtx(admin), async (db) => {
+      const { clientId: client } = await provisionClinic(db, admin.id);
       await record(db, client, admin.id, "google_ads_export", "cost", 80, "2030-05-01", "2030-05-31", "sgd");
       await record(db, client, admin.id, "manual", "contact_whatsapp", 6, "2030-05-01", "2030-05-31");
       return composeReport(db, {
@@ -86,13 +88,9 @@ describe("report builder measurement rules", () => {
   it("saves a draft without a client-review version and hides another client's figures", async () => {
     const admin = await staffByEmail("admin@example.invalid");
     const specialist = await staffByEmail("specialist-b@example.invalid");
-    const client = await clientBySlug("meridian-skin");
-    await adminPool.query(
-      `insert into report_snapshots (client_id, source, channel, metric, period_start, period_end, value, unit, entered_by)
-       values ($1, 'ga4_export', 'all', 'sessions', '2030-06-01', '2030-06-30', 40, 'count', $2)`,
-      [client, admin.id],
-    );
-    const saved = await asContext(staffCtx(admin), async (db) => {
+    await asContext(staffCtx(admin), async (db) => {
+      const { clientId: client } = await provisionClinic(db, admin.id);
+      await record(db, client, admin.id, "ga4_export", "sessions", 40, "2030-06-01", "2030-06-30");
       const id = await createSavedReport(db, {
         clientId: client,
         name: "January draft",
@@ -112,53 +110,56 @@ describe("report builder measurement rules", () => {
         reportType: "monthly",
         templateKey: "monthly",
       }, admin.id, { draft: true });
-      return getSavedReport(db, id);
+      const saved = await getSavedReport(db, id);
+      expect(saved?.status).toBe("draft");
+      expect(saved?.versions).toHaveLength(0);
+      expect(saved?.checklist).toEqual(expect.arrayContaining(["sessions", "total_leads"]));
+      const period = (await db.query<{ start: string; end: string }>(
+        `select period_start::text as start, period_end::text as end
+         from report_snapshots
+         where client_id = $1 and metric = 'sessions' and superseded_by_id is null
+         order by period_end desc limit 1`,
+        [client],
+      )).rows[0]!;
+      const visible = await composeReport(db, {
+        clientId: client,
+        websiteId: null,
+        periodStart: period.start.slice(0, 10),
+        periodEnd: period.end.slice(0, 10),
+        comparisonStart: null,
+        comparisonEnd: null,
+        items: ["sessions"],
+      });
+      expect(visible.blocks[0]?.lines[0]?.current).not.toBe("Not recorded");
+      await applyContext(db, staffCtx(specialist));
+      await db.query("savepoint outsider_report");
+      await expect(createSavedReport(db, {
+        clientId: client,
+        name: "Not allowed",
+        periodStart: "2026-01-01",
+        periodEnd: "2026-01-31",
+        comparisonStart: null,
+        comparisonEnd: null,
+        sections: ["traffic"],
+        summary: null,
+        observations: null,
+        actionsTaken: null,
+        nextSteps: null,
+        dataSourcesNote: null,
+        missingConnections: null,
+        measurementLimitations: null,
+      }, specialist.id)).rejects.toThrow();
+      await db.query("rollback to savepoint outsider_report");
+      const hidden = await composeReport(db, {
+        clientId: client,
+        websiteId: null,
+        periodStart: period.start.slice(0, 10),
+        periodEnd: period.end.slice(0, 10),
+        comparisonStart: null,
+        comparisonEnd: null,
+        items: ["sessions"],
+      });
+      expect(hidden.blocks[0]?.lines[0]?.current).toBe("Not recorded");
     });
-    expect(saved?.status).toBe("draft");
-    expect(saved?.versions).toHaveLength(0);
-    expect(saved?.checklist).toEqual(expect.arrayContaining(["sessions", "total_leads"]));
-    const period = (await adminPool.query<{ start: string; end: string }>(
-      `select period_start::text as start, period_end::text as end
-       from report_snapshots
-       where client_id = $1 and metric = 'sessions' and superseded_by_id is null
-       order by period_end desc limit 1`,
-      [client],
-    )).rows[0]!;
-    const visible = await asContext(staffCtx(admin), (db) => composeReport(db, {
-      clientId: client,
-      websiteId: null,
-      periodStart: period.start.slice(0, 10),
-      periodEnd: period.end.slice(0, 10),
-      comparisonStart: null,
-      comparisonEnd: null,
-      items: ["sessions"],
-    }));
-    expect(visible.blocks[0]?.lines[0]?.current).not.toBe("Not recorded");
-    await expect(asContext(staffCtx(specialist), (db) => createSavedReport(db, {
-      clientId: client,
-      name: "Not allowed",
-      periodStart: "2026-01-01",
-      periodEnd: "2026-01-31",
-      comparisonStart: null,
-      comparisonEnd: null,
-      sections: ["traffic"],
-      summary: null,
-      observations: null,
-      actionsTaken: null,
-      nextSteps: null,
-      dataSourcesNote: null,
-      missingConnections: null,
-      measurementLimitations: null,
-    }, specialist.id))).rejects.toThrow();
-    const hidden = await asContext(staffCtx(specialist), (db) => composeReport(db, {
-      clientId: client,
-      websiteId: null,
-      periodStart: period.start.slice(0, 10),
-      periodEnd: period.end.slice(0, 10),
-      comparisonStart: null,
-      comparisonEnd: null,
-      items: ["sessions"],
-    }));
-    expect(hidden.blocks[0]?.lines[0]?.current).toBe("Not recorded");
   });
 });

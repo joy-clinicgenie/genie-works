@@ -26,15 +26,13 @@ function controlHref(ctx: SeoContext, controls: GoogleControls, patch: Partial<G
   return seoHref("/seo", ctx, googleQuery({ ...controls, ...patch }));
 }
 
-export function AssistantPanel({ ctx, bundle, demo = false }: { ctx: SeoContext; bundle: WebsiteSeoBundle | null; demo?: boolean }) {
+export function AssistantPanel({ ctx, bundle }: { ctx: SeoContext; bundle: WebsiteSeoBundle | null }) {
   const checks = bundle?.checks ?? [];
   const attention = checks.filter((check) => check.status === "attention").length;
   const issues = bundle?.pages.filter((page) => page.mapping_flag !== "none").length ?? 0;
   const today = todaySgt();
   const recommendations = bundle?.pages.filter((page) => page.mapping_flag === "none" && (page.content_status === "needs_update" || (page.next_review_on !== null && page.next_review_on < today))).length ?? 0;
-  const banner = demo
-    ? "Demo data. Complete 4 setup checks before launch. These are not clinic records."
-    : !bundle
+  const banner = !bundle
     ? "Website checks have not been run yet."
     : attention > 0
       ? `Complete ${attention} setup records before launch. Website checks have not been run yet.`
@@ -43,19 +41,12 @@ export function AssistantPanel({ ctx, bundle, demo = false }: { ctx: SeoContext;
         : recommendations > 0
           ? `Saved setup records are present. ${recommendations} recommendations remain. Website checks have not been run yet.`
           : "Website checks have not been run yet.";
-  const cells = demo
-    ? [
-        ["Setup checklist", "4 of 6", "Demo data. Not a saved clinic checklist.", "setup"],
-        ["Issues", "3", "Demo data. Not unresolved clinic findings.", "issues"],
-        ["Recommendations", "2", "Demo data. Not open clinic suggestions.", "recommendations"],
-        ["Completed tasks", "5", "Demo data. A fictional count for the last 30 days.", "completed"],
-      ] as const
-    : [
-        ["Setup checklist", bundle ? `${checks.length - attention} of ${checks.length}` : "Not selected", "Saved records, not a scan", "setup"],
-        ["Issues", bundle ? String(issues) : "Unavailable", "Unresolved mapping findings", "issues"],
-        ["Recommendations", bundle ? String(recommendations) : "Unavailable", "Review and update reminders", "recommendations"],
-        ["Completed tasks", bundle ? String(bundle.changes.filter((change) => change.verification_on && change.verification_on >= completedSince(today)).length) : "Unavailable", "Verified change records in the last 30 days", "completed"],
-      ] as const;
+  const cells = [
+    ["Setup checklist", bundle ? `${checks.length - attention} of ${checks.length}` : "Not selected", "Saved records, not a scan", "setup"],
+    ["Issues", bundle ? String(issues) : "Unavailable", "Unresolved mapping findings", "issues"],
+    ["Recommendations", bundle ? String(recommendations) : "Unavailable", "Review and update reminders", "recommendations"],
+    ["Completed tasks", bundle ? String(bundle.changes.filter((change) => change.verification_on && change.verification_on >= completedSince(today)).length) : "Unavailable", "Verified change records in the last 30 days", "completed"],
+  ] as const;
   return (
     <Card>
       <CardHeader title="SEO Assistant" description="Complete setup, fix issues and follow recommendations for this website." action={<Link href={seoHref("/seo/tasks", ctx, { tab: "setup" })} className="text-sm font-medium text-action hover:underline">View all tasks</Link>} />
@@ -76,18 +67,18 @@ export function AssistantPanel({ ctx, bundle, demo = false }: { ctx: SeoContext;
   );
 }
 
-export function GooglePanel({ ctx, controls, search = null, demo = false }: { ctx: SeoContext; controls: GoogleControls; search?: SearchConsoleConnection | null; demo?: boolean }) {
+export function GooglePanel({ ctx, controls, search = null }: { ctx: SeoContext; controls: GoogleControls; search?: SearchConsoleConnection | null }) {
   const report = seoHref("/seo/reports", ctx, { tab: "google-search", ...googleQuery(controls) });
   const consoleHref = "https://search.google.com/search-console";
   const metricLabel = METRICS.find(([id]) => id === controls.metric)?.[1] ?? "Clicks";
   const chip = (active: boolean) => buttonClass(active ? "primary" : "secondary", "sm");
-  const property = !demo && search?.status === "connected" ? search.propertyId : null;
+  const property = search?.status === "connected" ? search.propertyId : null;
   return (
     <Card>
       <CardHeader
         title="Site performance on Google"
-        description={demo ? "Demonstration layout only. Search Console is not the source of these labels." : property ? `Connected to ${property}. Controls choose the report context. Stored search figures appear after a sync.` : "Search Console is not connected. Controls choose the report context and do not invent results."}
-        action={demo ? <Badge tone="warn">Demo data</Badge> : <Badge tone={property ? "good" : "neutral"}>{property ? "Connected" : "Not connected"}</Badge>}
+        description={property ? `Connected to ${property}. Controls choose the report context. Stored search figures appear after a sync.` : "Search Console is not connected. Controls choose the report context and do not invent results."}
+        action={<Badge tone={property ? "good" : "neutral"}>{property ? "Connected" : "Not connected"}</Badge>}
       />
       <div className="space-y-4 px-5 pb-5">
         <p className="text-xs text-muted">{property ? `Verified property: ${property}.` : "Verified property: not connected."} Latest Google reporting date: unavailable.</p>
@@ -106,26 +97,20 @@ export function GooglePanel({ ctx, controls, search = null, demo = false }: { ct
           {METRICS.map(([id, label]) => (
             <Link key={id} href={controlHref(ctx, controls, { metric: id })} aria-current={controls.metric === id ? "true" : undefined} className={`rounded-2xl border p-3 ${controls.metric === id ? "border-action bg-brand-pale" : "border-line"}`}>
               <div className="text-xs font-semibold uppercase tracking-[0.12em] text-muted">{label}</div>
-              <div className="mt-1 text-xl font-semibold">{demo ? (controls.metric === id ? "120" : "—") : "Unavailable"} {demo && <Badge tone="warn">Demo data</Badge>}</div>
+              <div className="mt-1 text-xl font-semibold">Unavailable</div>
               <p className="mt-1 text-xs text-muted">{id === "position" ? "A lower average position usually means a better ranking. It does not use the same rise-and-fall rule as clicks." : "No comparison with the previous equivalent period is available."}</p>
             </Link>
           ))}
         </div>
         <div className="rounded-2xl border border-dashed border-line p-4 text-sm text-muted">
-          {demo ? <span><Badge tone="warn">Demo data</Badge> Fictional {metricLabel.toLowerCase()} for the selected control: 120, compared with 98 in the previous period. This is not a Search Console result. A lower average position would not use the same direction as clicks.</span> : `No ${metricLabel.toLowerCase()} trend is available. Google has not provided a reporting date.`}
+          {`No ${metricLabel.toLowerCase()} trend is available. Google has not provided a reporting date.`}
         </div>
         <div className="flex flex-wrap gap-2">
           {(["pages", "queries"] as const).map((record) => <Link key={record} href={controlHref(ctx, controls, { record })} aria-current={controls.record === record ? "true" : undefined} className={chip(controls.record === record)}>{record === "pages" ? "Pages" : "Queries"}</Link>)}
           {(["increased", "decreased"] as const).map((direction) => <Link key={direction} href={controlHref(ctx, controls, { direction })} aria-current={controls.direction === direction ? "true" : undefined} className={chip(controls.direction === direction)}>{direction === "increased" ? "Increased" : "Decreased"}</Link>)}
           {(["clicks", "impressions"] as const).map((changeMetric) => <Link key={changeMetric} href={controlHref(ctx, controls, { changeMetric })} aria-current={controls.changeMetric === changeMetric ? "true" : undefined} className={chip(controls.changeMetric === changeMetric)}>{changeMetric === "clicks" ? "Clicks" : "Impressions"}</Link>)}
         </div>
-        {demo ? (
-          <ul className="space-y-2 text-sm">
-            {["Demo page /demo-page", "Demo query: example treatment", "Demo page /demo-contact", "Demo query: example clinic", "Demo page /demo-team"].map((row) => (
-              <li key={row}><Badge tone="warn">Demo data</Badge> {row}. Absolute change and period total are fictional.</li>
-            ))}
-          </ul>
-        ) : <p className="text-sm text-muted">No significant page or query changes are available.</p>}
+        <p className="text-sm text-muted">No significant page or query changes are available.</p>
         <div className="flex flex-wrap gap-4">
           <Link href={report} className="text-sm font-medium text-action hover:underline">View full report</Link>
           <a href={consoleHref} target="_blank" rel="noreferrer" className="text-sm font-medium text-action hover:underline">Open Google Search Console</a>

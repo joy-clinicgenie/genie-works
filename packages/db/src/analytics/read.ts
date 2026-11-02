@@ -120,21 +120,43 @@ export async function dailySessionSeries(db: Queryable, input: {
   start: string;
   end: string;
 }): Promise<Array<{ date: string; value: number | null }>> {
-  const { rows } = await db.query<{ source_date: string; state: string; value_numeric: number | null }>(
-    `select distinct on (c.source_date) c.source_date::text, c.state, m.value_numeric
+  return (await dailySessionSeriesWithPeriod(db, input)).series;
+}
+
+/** Reads chart points and the complete-period total from the same daily rows. */
+export async function dailySessionSeriesWithPeriod(db: Queryable, input: {
+  clientId: string;
+  websiteId: string;
+  templateKey: string;
+  metric: string;
+  start: string;
+  end: string;
+}): Promise<{
+  series: Array<{ date: string; value: number | null }>;
+  period: { value: number | null; state: "available" | "unavailable"; covered: number; expected: number };
+}> {
+  const { daysBetween } = await import("../services/dates");
+  const { rows } = await db.query<{ source_date: string; state: string; value_numeric: number | null; value_state: string | null }>(
+    `select distinct on (c.source_date) c.source_date::text, c.state, m.value_numeric, m.value_state
      from analytics_coverage c
      join analytics_report_partitions p on p.connection_id = c.connection_id and p.template_key = c.template_key and p.published
        and c.source_date between p.start_date and p.end_date
      left join analytics_report_rows r on r.partition_id = p.id and r.dimension_key = c.source_date::text
-     left join analytics_metric_values m on m.report_row_id = r.id and m.metric_key = $4 and m.value_state = 'available'
+     left join analytics_metric_values m on m.report_row_id = r.id and m.metric_key = $4
      where c.client_id = $1 and c.website_id = $2 and c.template_key = $3 and c.source_date between $5 and $6
      order by c.source_date, p.generation desc`,
     [input.clientId, input.websiteId, input.templateKey, input.metric, input.start, input.end],
   );
-  return rows.map((row) => ({
+  const series = rows.map((row) => ({
     date: row.source_date,
-    value: row.state === "complete" && row.value_numeric !== null ? Number(row.value_numeric) : null,
+    value: row.state === "complete" && row.value_state === "available" && row.value_numeric !== null ? Number(row.value_numeric) : null,
   }));
+  const expected = daysBetween(input.start, input.end) + 1;
+  const complete = rows.filter((row) => row.state === "complete" && row.value_numeric !== null);
+  const period = complete.length === expected
+    ? { value: complete.reduce((sum, row) => sum + Number(row.value_numeric), 0), state: "available" as const, covered: expected, expected }
+    : { value: null, state: "unavailable" as const, covered: complete.length, expected };
+  return { series, period };
 }
 
 export async function additivePeriod(db: Queryable, input: {

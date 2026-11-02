@@ -1,4 +1,4 @@
-import { getClient, listAccountReferences, listClients, listSnapshotClientIds, listSnapshots, listWebsites, type AccessProfile, type AccountReferenceRow, type SnapshotRow, type WebsiteRow } from "@clinic-genie/db";
+import { getClient, listClients, listSnapshotClientIds, listSnapshots, listWebsites, type AccessProfile, type PoolClient, type SnapshotRow, type WebsiteRow } from "@clinic-genie/db";
 import { staffTx } from "@/lib/db";
 import { alignRecordedPeriod, latestUpdate, matchedPeriods, day, type PeriodWindow } from "@/lib/site-metrics";
 
@@ -15,14 +15,16 @@ export interface SiteView {
   websiteId: string | null;
   websiteCleared: boolean;
   snapshots: SnapshotRow[];
-  references: AccountReferenceRow[];
   current?: PeriodWindow;
   previous?: PeriodWindow;
   updatedAt: Date | null;
 }
 
 export async function loadSiteView(access: AccessProfile, requestedId?: string, windows?: { current: PeriodWindow; previous: PeriodWindow }, exact = false, requestedWebsiteId?: string): Promise<SiteView | "denied" | null> {
-  return staffTx(access, async (db) => {
+  return staffTx(access, (db) => loadSiteViewWithDb(db, requestedId, windows, exact, requestedWebsiteId));
+}
+
+export async function loadSiteViewWithDb(db: PoolClient, requestedId?: string, windows?: { current: PeriodWindow; previous: PeriodWindow }, exact = false, requestedWebsiteId?: string): Promise<SiteView | "denied" | null> {
     const clients = await listClients(db);
     if (requestedId && !clients.some((client) => client.id === requestedId)) {
       const requested = await getClient(db, requestedId);
@@ -34,7 +36,6 @@ export async function loadSiteView(access: AccessProfile, requestedId?: string, 
     const chosen = clients.find((client) => client.id === requestedId) ?? clients.find((client) => withSessions.has(client.id)) ?? clients[0]!;
     const snapshots = await listSnapshots(db, { clientId: chosen.id, limit: 20000 });
     const websites = await listWebsites(db, chosen.id);
-    const references = await listAccountReferences(db, chosen.id);
     const requestedSite = requestedWebsiteId ? websites.find((item: WebsiteRow) => item.id === requestedWebsiteId) : undefined;
     const site = requestedSite ?? websites.find((item: WebsiteRow) => item.environment === "production" && item.url) ?? websites.find((item: WebsiteRow) => item.url);
     const periods = windows ? alignRecordedPeriod(snapshots, windows, exact) : matchedPeriods(snapshots);
@@ -56,10 +57,8 @@ export async function loadSiteView(access: AccessProfile, requestedId?: string, 
       websiteId: site?.id ?? null,
       websiteCleared: Boolean(requestedWebsiteId) && !requestedSite,
       snapshots,
-      references,
       current: periods.current,
       previous: periods.previous,
       updatedAt: latestUpdate(inWindow),
     };
-  });
 }

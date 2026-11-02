@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import { requireAccess } from "@/lib/session";
-import { loadSiteView, type SiteView } from "@/lib/site-view";
+import type { PoolClient } from "@clinic-genie/db";
+import { loadSiteView, loadSiteViewWithDb, type SiteView } from "@/lib/site-view";
 import { customWindow, formatCompared, periodRange } from "@/lib/period-range";
 import { periodRangeId, type PeriodRangeId } from "@/lib/period-options";
 import { breakdownLinks, type BreakdownLinks } from "@/lib/report-link";
@@ -10,10 +11,17 @@ import { EmptyState, Notice } from "@/components/ui/Notice";
 
 export async function loadAnalytics(client?: string, range?: string, from?: string, to?: string, website?: string) {
   const access = await requireAccess();
+  return loadAnalyticsForAccess(access, undefined, client, range, from, to, website);
+}
+
+export async function loadAnalyticsForAccess(access: Awaited<ReturnType<typeof requireAccess>>, db: PoolClient | undefined, client?: string, range?: string, from?: string, to?: string, website?: string) {
   const requested = periodRangeId(range);
   const custom = requested === "custom" ? customWindow(from, to) : null;
   const rangeId: PeriodRangeId = custom ? "custom" : requested === "custom" ? "last30" : requested;
-  const loaded = await loadSiteView(access, client, custom ?? periodRange(rangeId), Boolean(custom), website);
+  const windows = custom ?? periodRange(rangeId);
+  const loaded = db
+    ? await loadSiteViewWithDb(db, client, windows, Boolean(custom), website)
+    : await loadSiteView(access, client, windows, Boolean(custom), website);
   const denied = loaded === "denied";
   const view = loaded === "denied" ? null : loaded;
   const reportLinks: BreakdownLinks | null = view ? breakdownLinks(view.clientId, rangeId, custom?.current.start, custom?.current.end, view.websiteId ?? undefined) : null;

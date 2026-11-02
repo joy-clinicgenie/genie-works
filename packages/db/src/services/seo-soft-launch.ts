@@ -337,23 +337,35 @@ export async function getPublishedSeoConfiguration(db: Queryable, websiteId: str
     [websiteId, tokenHash],
   );
   if (!authorised.length) return null;
-  const [pages, redirects, verification] = await Promise.all([
-    db.query<{ page_path: string; title: string; description: string; canonical_path: string | null; indexable: boolean }>(
-      "select page_path, title, description, canonical_path, indexable from seo_page_settings where website_id = $1 order by page_path",
-      [websiteId],
-    ),
-    db.query<{ source_path: string; destination_path: string }>(
-      "select source_path, destination_path from seo_redirects where website_id = $1 and active order by source_path",
-      [websiteId],
-    ),
-    db.query<{ google_site_verification: string | null }>(
-      "select google_site_verification from seo_website_settings where website_id = $1",
-      [websiteId],
-    ),
-  ]);
+  const { rows } = await db.query<{
+    pages: Array<{ path: string; title: string; description: string; canonicalPath: string | null; indexable: boolean }>;
+    redirects: Array<{ source: string; destination: string }>;
+    google_site_verification: string | null;
+  }>(
+    `select
+       coalesce((
+         select jsonb_agg(jsonb_build_object(
+           'path', page_path,
+           'title', title,
+           'description', description,
+           'canonicalPath', canonical_path,
+           'indexable', indexable
+         ) order by page_path)
+         from seo_page_settings where website_id = $1
+       ), '[]'::jsonb) as pages,
+       coalesce((
+         select jsonb_agg(jsonb_build_object(
+           'source', source_path,
+           'destination', destination_path
+         ) order by source_path)
+         from seo_redirects where website_id = $1 and active
+       ), '[]'::jsonb) as redirects,
+       (select google_site_verification from seo_website_settings where website_id = $1) as google_site_verification`,
+    [websiteId],
+  );
   return {
-    pages: pages.rows.map((p) => ({ path: p.page_path, title: p.title, description: p.description, canonicalPath: p.canonical_path, indexable: p.indexable })),
-    redirects: redirects.rows.map((r) => ({ source: r.source_path, destination: r.destination_path })),
-    googleSiteVerification: verification.rows[0]?.google_site_verification ?? null,
+    pages: rows[0]?.pages ?? [],
+    redirects: rows[0]?.redirects ?? [],
+    googleSiteVerification: rows[0]?.google_site_verification ?? null,
   };
 }

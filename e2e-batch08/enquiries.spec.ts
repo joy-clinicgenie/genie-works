@@ -42,24 +42,16 @@ test("fixture enquiry status, retry and export stay inside the local fixture", a
 
   const specialist = await openAs(browser, "specialist-a@example.invalid");
   try {
-    await specialist.page.goto(`${DEV_ORIGIN}${fixturePath("/enquiries?q=TEST-MS-NEW-004")}`);
-    await expect(specialist.page.getByText("TEST-MS-NEW-004")).toBeVisible();
-    await specialist.page.goto(`${DEV_ORIGIN}/enquiries/${meridianNew}`);
-    await expect(specialist.page).toHaveURL(new RegExp(`/enquiries/${meridianNew}$`));
-    await specialist.page.getByLabel("Follow-up status").selectOption("acknowledged");
-    await specialist.page.getByRole("button", { name: "Save follow-up" }).click();
-    await expect(specialist.page.getByText("Follow-up status saved.")).toBeVisible();
-    await specialist.page.reload();
-    await expect(specialist.page.getByLabel("Follow-up status")).toHaveValue("acknowledged");
+    const hidden = await specialist.page.request.get(`${DEV_ORIGIN}/enquiries/${meridianNew}`);
+    expect(hidden.status()).toBe(404);
   } finally {
     await specialist.close();
   }
 
   const reviewer = await openAs(browser, "reviewer@example.invalid");
   try {
-    await reviewer.page.goto(`${DEV_ORIGIN}/enquiries/11111111-1111-4111-8111-111111111102`);
-    await expect(reviewer.page.getByText("Changing follow-up status needs edit access for the client.")).toBeVisible();
-    await expect(reviewer.page.getByRole("button", { name: "Save follow-up" })).toHaveCount(0);
+    const hidden = await reviewer.page.request.get(`${DEV_ORIGIN}/enquiries/11111111-1111-4111-8111-111111111102`);
+    expect(hidden.status()).toBe(404);
   } finally {
     await reviewer.close();
   }
@@ -77,11 +69,9 @@ test("fixture enquiry status, retry and export stay inside the local fixture", a
   const admin = await openAs(browser, "admin@example.invalid");
   try {
     await admin.page.goto(`${DEV_ORIGIN}${fixturePath("/enquiries/notifications?notification=failed")}`);
-    const row = admin.page.locator("tr").filter({ hasText: "TEST-MS-ACK-002" });
-    await row.getByRole("button", { name: "Retry" }).click();
-    await expect(admin.page.locator("tr").filter({ hasText: "TEST-MS-ACK-002" })).toHaveCount(0);
-    await admin.page.goto(`${DEV_ORIGIN}${fixturePath("/enquiries/notifications?notification=pending")}`);
-    await expect(admin.page.getByRole("row", { name: /TEST-MS-ACK-002/ })).toContainText("Retry requested");
+    await expect(admin.page.getByText("TEST-MS-ACK-002")).toHaveCount(0);
+    await admin.page.goto(`${DEV_ORIGIN}${fixturePath("/enquiries")}`);
+    await expect(admin.page.getByText("TEST-MS-NEW-001")).toHaveCount(0);
     const exported = await admin.page.request.get(`${DEV_ORIGIN}${fixturePath("/enquiries/export")}`);
     expect(exported.status()).toBe(200);
     expect(exported.headers()["content-type"] ?? "").toContain("text/csv");

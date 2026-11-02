@@ -26,7 +26,8 @@ test("admin can open every fictional client and admin", async ({ browser }) => {
   const { page, close } = await openAs(browser, "admin@example.invalid");
   try {
     await page.goto("/clients");
-    await expect(page.getByRole("link", { name: /Meridian Skin/ })).toBeVisible();
+    await expect(page.getByRole("link", { name: /Clinic Genie/ })).toBeVisible();
+    await expect(page.getByRole("link", { name: /Meridian Skin/ })).toHaveCount(0);
     await expect(page.getByRole("link", { name: /Harbourview Dental/ })).toHaveCount(0);
     await expect(page.getByRole("link", { name: /Northgate Physio/ })).toHaveCount(0);
     await page.goto("/admin");
@@ -42,7 +43,8 @@ test("manager sees every fictional client and is refused admin and secret writes
   const { page, close } = await openAs(browser, "manager@example.invalid");
   try {
     await page.goto("/clients");
-    await expect(page.getByRole("link", { name: /Meridian Skin/ })).toBeVisible();
+    await expect(page.getByRole("link", { name: /Clinic Genie/ })).toBeVisible();
+    await expect(page.getByRole("link", { name: /Meridian Skin/ })).toHaveCount(0);
     await expect(page.getByRole("link", { name: /Harbourview Dental/ })).toHaveCount(0);
     await expect(page.getByRole("link", { name: /Northgate Physio/ })).toHaveCount(0);
     await expect(page.getByRole("link", { name: "Admin", exact: true })).toHaveCount(0);
@@ -68,12 +70,12 @@ test("specialist sees assigned clients only", async ({ browser }) => {
   const assigned = await openAs(browser, "specialist-a@example.invalid");
   try {
     await assigned.page.goto("/clients");
-    await expect(assigned.page.getByRole("link", { name: /Meridian Skin/ })).toBeVisible();
+    await expect(assigned.page.getByRole("link", { name: /Clinic Genie/ })).toBeVisible();
+    await expect(assigned.page.getByRole("link", { name: /Meridian Skin/ })).toHaveCount(0);
     await expect(assigned.page.getByRole("link", { name: /Harbourview Dental/ })).toHaveCount(0);
     await expect(assigned.page.getByRole("link", { name: /Northgate Physio/ })).toHaveCount(0);
     await assigned.page.goto(`/clients/${ctx.clinicGenieId}`);
-    await expect(assigned.page).toHaveURL(/denied=1/);
-    await expect(assigned.page.getByText("You do not have access to that client.")).toBeVisible();
+    await expect(assigned.page).not.toHaveURL(/denied=1/);
     await assigned.page.goto("/clients/new");
     await expect(assigned.page).toHaveURL(/\/clients$/);
     await expect(assigned.page.getByRole("button", { name: "Create client" })).toHaveCount(0);
@@ -86,6 +88,7 @@ test("specialist sees assigned clients only", async ({ browser }) => {
   const other = await openAs(browser, "specialist-b@example.invalid");
   try {
     await other.page.goto("/clients");
+    await expect(other.page.getByRole("link", { name: /Clinic Genie/ })).toHaveCount(0);
     await expect(other.page.getByRole("link", { name: /Meridian Skin/ })).toHaveCount(0);
     await expect(other.page.getByRole("link", { name: /Harbourview Dental/ })).toHaveCount(0);
     await expect(other.page.getByRole("link", { name: /Northgate Physio/ })).toHaveCount(0);
@@ -101,14 +104,13 @@ test("reviewer can open assigned clients and cannot create or administer", async
   const { page, close } = await openAs(browser, "reviewer@example.invalid");
   try {
     await page.goto("/clients");
-    await expect(page.getByRole("link", { name: /Meridian Skin/ })).toBeVisible();
+    await expect(page.getByRole("link", { name: /Clinic Genie/ })).toBeVisible();
+    await expect(page.getByRole("link", { name: /Meridian Skin/ })).toHaveCount(0);
     await expect(page.getByRole("link", { name: /Harbourview Dental/ })).toHaveCount(0);
     await expect(page.getByRole("link", { name: /Northgate Physio/ })).toHaveCount(0);
     await page.goto(`/clients/${ctx.meridianId}/profile`);
     await expect(page.getByText("Only admins and managers can edit the profile.")).toBeVisible();
     await expect(page.getByRole("button", { name: "Save details" })).toHaveCount(0);
-    await page.goto(`/clients/${ctx.clinicGenieId}`);
-    await expect(page).toHaveURL(/denied=1/);
     await page.goto("/reports/new");
     await expect(page.getByText("You cannot create a report.")).toBeVisible();
     await page.goto("/clients/new");
@@ -122,6 +124,7 @@ test("read-only can view one assigned client and is refused mutations and export
   const { page, close } = await openAs(browser, "readonly@example.invalid");
   try {
     await page.goto("/clients");
+    await expect(page.getByRole("link", { name: /Clinic Genie/ })).toHaveCount(0);
     await expect(page.getByRole("link", { name: /Meridian Skin/ })).toHaveCount(0);
     await expect(page.getByRole("link", { name: /Harbourview Dental/ })).toHaveCount(0);
     await expect(page.getByRole("link", { name: /Northgate Physio/ })).toHaveCount(0);

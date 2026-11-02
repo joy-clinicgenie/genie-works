@@ -1,8 +1,10 @@
 import NextAuth from "next-auth";
 import type { Provider } from "next-auth/providers";
 import Google from "next-auth/providers/google";
-import PostgresAdapter from "@auth/pg-adapter";
-import { SERVICE, authAdapterClient, createStaff, getActiveStaffByEmail, recordAudit, recordMagicLink, withContext } from "@clinic-genie/db";
+import { SERVICE, authAdapterClient, withContext } from "@clinic-genie/db/src/client";
+import { getActiveStaffByEmail } from "@clinic-genie/db/src/services/auth";
+import { recordAudit } from "@clinic-genie/db/src/services/audit";
+import { postgresAuthAdapter } from "./postgres-auth-adapter";
 import { assertRuntimeAuthSecret, decideSignIn, magicLinksEnabled } from "./runtime-policy";
 
 const devLinks = magicLinksEnabled();
@@ -19,6 +21,7 @@ if (devLinks) {
     async sendVerificationRequest({ identifier, url, expires }: { identifier: string; url: string; expires: Date }) {
       if (!magicLinksEnabled()) return;
       // No mail is sent. The link is recorded in the database and shown on /dev/magic-links.
+      const { recordMagicLink } = await import("@clinic-genie/db/src/services/dev-mail");
       await withContext(SERVICE, (db) => recordMagicLink(db, identifier, url, expires));
     },
   } as unknown as Provider);
@@ -31,7 +34,7 @@ if (process.env.AUTH_GOOGLE_ID && process.env.AUTH_GOOGLE_SECRET) {
 export const authProviders = { devLinks, google: Boolean(process.env.AUTH_GOOGLE_ID && process.env.AUTH_GOOGLE_SECRET) };
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
-  adapter: PostgresAdapter(authAdapterClient()),
+  adapter: postgresAuthAdapter(authAdapterClient()),
   session: { strategy: "database", maxAge: 12 * 60 * 60, updateAge: 60 * 60 },
   providers,
   pages: { signIn: "/sign-in", error: "/sign-in", verifyRequest: "/dev/magic-links" },
@@ -42,20 +45,21 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       assertRuntimeAuthSecret();
       const email = user.email?.toLowerCase();
       if (!email) return false;
-      let staff = await withContext(SERVICE, (db) => getActiveStaffByEmail(db, email));
       const hosted = profile && typeof profile === "object" && "hd" in profile && typeof profile.hd === "string" ? profile.hd.toLowerCase() : undefined;
-      if (decideSignIn({ email, hasStaff: Boolean(staff), provider: account?.provider, hostedDomain: hosted }) === "create-admin") {
-        await withContext(SERVICE, (db) => createStaff(db, { email, displayName: user.name?.trim() || email, role: "admin" }, null));
-        staff = await withContext(SERVICE, (db) => getActiveStaffByEmail(db, email));
-      }
-      if (!staff) {
-        await withContext(SERVICE, (db) =>
-          recordAudit(db, { actorType: "public", action: "auth.sign_in", targetType: "staff_user", outcome: "denied", metadata: { reason: "no_active_staff_record", emailDomain: email.split("@")[1] } }),
-        );
-        return false;
-      }
-      await withContext(SERVICE, (db) => recordAudit(db, { actorType: "staff", actorUserId: staff.id, action: "auth.sign_in", targetType: "staff_user", targetId: staff.id, outcome: "success" }));
-      return true;
+      return withContext(SERVICE, async (db) => {
+        let staff = await getActiveStaffByEmail(db, email);
+        if (decideSignIn({ email, hasStaff: Boolean(staff), provider: account?.provider, hostedDomain: hosted }) === "create-admin") {
+          const { createStaff } = await import("@clinic-genie/db/src/services/registry");
+          await createStaff(db, { email, displayName: user.name?.trim() || email, role: "admin" }, null);
+          staff = await getActiveStaffByEmail(db, email);
+        }
+        if (!staff) {
+          await recordAudit(db, { actorType: "public", action: "auth.sign_in", targetType: "staff_user", outcome: "denied", metadata: { reason: "no_active_staff_record", emailDomain: email.split("@")[1] } });
+          return false;
+        }
+        await recordAudit(db, { actorType: "staff", actorUserId: staff.id, action: "auth.sign_in", targetType: "staff_user", targetId: staff.id, outcome: "success" });
+        return true;
+      });
     },
   },
 });

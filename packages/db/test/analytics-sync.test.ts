@@ -1,6 +1,7 @@
 import { afterAll, describe, expect, it } from "vitest";
 import { SERVICE, applyContext } from "../src/client";
 import { adminPool, appPool, asContext, clientBySlug, staffByEmail, staffCtx } from "./helpers";
+import { provisionClinic } from "./provision";
 import { bindConnectionFromState, createOAuthState, disconnectConnection, exchangeOAuthState, listConnections, saveConnection, setSourcePolicy } from "../src/analytics/connections";
 import { dueWindow, enqueueDue, enqueueJob, executeJob, leaseNext, listConnectionSyncStatus, sealedToken, type FetchLike, type FetchResponse } from "../src/analytics/sync";
 import { publishedReport } from "../src/analytics/read";
@@ -27,9 +28,10 @@ describe("analytics tenant isolation and sync", () => {
   it("hides another clinic's connection and every secret from staff", async () => {
     const admin = await staffByEmail("admin@example.invalid");
     const specB = await staffByEmail("specialist-b@example.invalid");
-    const hidden = await clientBySlug("meridian-skin");
     await asContext(SERVICE, async (db) => {
-      const hiddenSite = (await db.query<{ id: string }>("select id from websites where client_id = $1 order by created_at limit 1", [hidden])).rows[0]!.id;
+      const hiddenClinic = await provisionClinic(db, admin.id);
+      const hidden = hiddenClinic.clientId;
+      const hiddenSite = hiddenClinic.websiteId;
       const owned = await createClient(db, {
         slug: "fixture-owned-clinic", name: "Fixture owned clinic", ownerUserId: admin.id, channels: ["website"], isSynthetic: true, notes: null,
       }, admin.id);
@@ -62,9 +64,10 @@ describe("analytics tenant isolation and sync", () => {
   it("rejects a forged, replayed or empty property binding", async () => {
     const admin = await staffByEmail("admin@example.invalid");
     const specA = await staffByEmail("specialist-a@example.invalid");
-    const harbour = await clientBySlug("meridian-skin");
     await asContext(SERVICE, async (db) => {
-      const site = (await db.query<{ id: string }>("select id from websites where client_id = $1 order by created_at limit 1", [harbour])).rows[0]!.id;
+      const harbourClinic = await provisionClinic(db, admin.id);
+      const harbour = harbourClinic.clientId;
+      const site = harbourClinic.websiteId;
       await expect(exchangeOAuthState(db, { state: "forged-state", token: { accessToken: "x" } })).rejects.toThrow(/expired/);
       const created = await createOAuthState(db, {
         actorUserId: admin.id, clientId: harbour, websiteId: site, provider: "gsc", redirectUri: "http://localhost:3400/api/analytics/google/callback",
@@ -91,9 +94,10 @@ describe("analytics tenant isolation and sync", () => {
 
   it("keeps the previous partition when a later page fails", async () => {
     const admin = await staffByEmail("admin@example.invalid");
-    const clientId = await clientBySlug("meridian-skin");
     await asContext(SERVICE, async (db) => {
-      const site = (await db.query<{ id: string }>("select id from websites where client_id = $1 order by created_at limit 1", [clientId])).rows[0]!.id;
+      const provisioned = await provisionClinic(db, admin.id);
+      const clientId = provisioned.clientId;
+      const site = provisioned.websiteId;
       await db.query("update analytics_jobs set state = 'cancelled', lease_owner = null, lease_until = null where state in ('queued', 'leased')");
       const sealed = sealedToken({ accessToken: "gsc-token", expiresAt: "2100-01-01T00:00:00.000Z" });
       const connection = await saveConnection(db, {
@@ -127,9 +131,10 @@ describe("analytics tenant isolation and sync", () => {
 
   it("leases one job and stops on rate limits or invalid_grant", async () => {
     const admin = await staffByEmail("admin@example.invalid");
-    const clientId = await clientBySlug("meridian-skin");
     await asContext(SERVICE, async (db) => {
-      const site = (await db.query<{ id: string }>("select id from websites where client_id = $1 order by created_at limit 1", [clientId])).rows[0]!.id;
+      const provisioned = await provisionClinic(db, admin.id);
+      const clientId = provisioned.clientId;
+      const site = provisioned.websiteId;
       await db.query("update analytics_jobs set state = 'cancelled', lease_owner = null, lease_until = null where state in ('queued', 'leased')");
       const sealed = sealedToken({ accessToken: "old", refreshToken: "refresh", expiresAt: "2020-01-01T00:00:00.000Z" });
       const connection = await saveConnection(db, {
@@ -159,9 +164,10 @@ describe("analytics tenant isolation and sync", () => {
 
   it("stores an exact-range user total without summing daily rows", async () => {
     const admin = await staffByEmail("admin@example.invalid");
-    const clientId = await clientBySlug("meridian-skin");
     await asContext(SERVICE, async (db) => {
-      const site = (await db.query<{ id: string }>("select id from websites where client_id = $1 order by created_at limit 1", [clientId])).rows[0]!.id;
+      const provisioned = await provisionClinic(db, admin.id);
+      const clientId = provisioned.clientId;
+      const site = provisioned.websiteId;
       await db.query("update analytics_jobs set state = 'cancelled', lease_owner = null, lease_until = null where state in ('queued', 'leased')");
       const sealed = sealedToken({ accessToken: "ga4", expiresAt: "2100-01-01T00:00:00.000Z" });
       const connection = await saveConnection(db, {
@@ -203,9 +209,10 @@ describe("analytics tenant isolation and sync", () => {
 
   it("rejects an overlapping source policy and allows reconnect after disconnect", async () => {
     const admin = await staffByEmail("admin@example.invalid");
-    const clientId = await clientBySlug("meridian-skin");
     await asContext(SERVICE, async (db) => {
-      const site = (await db.query<{ id: string }>("select id from websites where client_id = $1 order by created_at limit 1", [clientId])).rows[0]!.id;
+      const provisioned = await provisionClinic(db, admin.id);
+      const clientId = provisioned.clientId;
+      const site = provisioned.websiteId;
       const first = encryptSecret(JSON.stringify({ accessToken: "a", expiresAt: "2100-01-01T00:00:00.000Z" }));
       const second = encryptSecret(JSON.stringify({ accessToken: "b", expiresAt: "2100-01-01T00:00:00.000Z" }));
       const left = await saveConnection(db, {
@@ -243,9 +250,10 @@ describe("analytics tenant isolation and sync", () => {
 
   it("queues the provider-timezone window and reuses a queued job", async () => {
     const admin = await staffByEmail("admin@example.invalid");
-    const clientId = await clientBySlug("meridian-skin");
     await asContext(SERVICE, async (db) => {
-      const site = (await db.query<{ id: string }>("select id from websites where client_id = $1 order by created_at limit 1", [clientId])).rows[0]!.id;
+      const provisioned = await provisionClinic(db, admin.id);
+      const clientId = provisioned.clientId;
+      const site = provisioned.websiteId;
       const sealed = sealedToken({ accessToken: "window", expiresAt: "2100-01-01T00:00:00.000Z" });
       const connection = await saveConnection(db, {
         clientId, websiteId: site, provider: "ga4", externalPropertyId: "5050", streamOrSiteRef: null,
@@ -266,9 +274,10 @@ describe("analytics tenant isolation and sync", () => {
 
   it("stops a retryable job after five attempts and fails an expired lease at the same limit", async () => {
     const admin = await staffByEmail("admin@example.invalid");
-    const clientId = await clientBySlug("meridian-skin");
     await asContext(SERVICE, async (db) => {
-      const site = (await db.query<{ id: string }>("select id from websites where client_id = $1 order by created_at limit 1", [clientId])).rows[0]!.id;
+      const provisioned = await provisionClinic(db, admin.id);
+      const clientId = provisioned.clientId;
+      const site = provisioned.websiteId;
       const sealed = sealedToken({ accessToken: "limited", expiresAt: "2100-01-01T00:00:00.000Z" });
       const connection = await saveConnection(db, {
         clientId, websiteId: site, provider: "ga4", externalPropertyId: "6060", streamOrSiteRef: null,
@@ -316,10 +325,11 @@ describe("analytics tenant isolation and sync", () => {
   it("reports the last succeeded sync and hides another clinic's queue", async () => {
     const admin = await staffByEmail("admin@example.invalid");
     const specB = await staffByEmail("specialist-b@example.invalid");
-    const harbour = await clientBySlug("meridian-skin");
     const clinicGenie = await clientBySlug("clinic-genie");
     await asContext(SERVICE, async (db) => {
-      const site = (await db.query<{ id: string }>("select id from websites where client_id = $1 order by created_at limit 1", [harbour])).rows[0]!.id;
+      const harbourClinic = await provisionClinic(db, admin.id);
+      const harbour = harbourClinic.clientId;
+      const site = harbourClinic.websiteId;
       const sealed = sealedToken({ accessToken: "status", expiresAt: "2100-01-01T00:00:00.000Z" });
       const connection = await saveConnection(db, {
         clientId: harbour, websiteId: site, provider: "ga4", externalPropertyId: "7070", streamOrSiteRef: null,
@@ -360,10 +370,11 @@ describe("analytics tenant isolation and sync", () => {
 
   it("keeps fixture sessions inside one website and replaces a repeat without adding the previous value", async () => {
     const admin = await staffByEmail("admin@example.invalid");
-    const harbour = await clientBySlug("meridian-skin");
     const clinicGenie = await clientBySlug("clinic-genie");
     await asContext(SERVICE, async (db) => {
-      const harbourSite = (await db.query<{ id: string }>("select id from websites where client_id = $1 order by created_at limit 1", [harbour])).rows[0]!.id;
+      const harbourClinic = await provisionClinic(db, admin.id);
+      const harbour = harbourClinic.clientId;
+      const harbourSite = harbourClinic.websiteId;
       const clinicGenieSite = (await createWebsite(db, {
         clientId: clinicGenie,
         name: "Clinic Genie fixture website",
@@ -426,9 +437,10 @@ describe("analytics tenant isolation and sync", () => {
 
   it("stores a missing provider metric as unavailable", async () => {
     const admin = await staffByEmail("admin@example.invalid");
-    const clientId = await clientBySlug("meridian-skin");
     await asContext(SERVICE, async (db) => {
-      const site = (await db.query<{ id: string }>("select id from websites where client_id = $1 order by created_at limit 1", [clientId])).rows[0]!.id;
+      const provisioned = await provisionClinic(db, admin.id);
+      const clientId = provisioned.clientId;
+      const site = provisioned.websiteId;
       const sealed = sealedToken({ accessToken: "partial", expiresAt: "2100-01-01T00:00:00.000Z" });
       const connection = await saveConnection(db, {
         clientId, websiteId: site, provider: "ga4", externalPropertyId: "8080", streamOrSiteRef: null,

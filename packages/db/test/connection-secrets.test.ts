@@ -1,6 +1,7 @@
 import { afterAll, describe, expect, it } from "vitest";
 import { SERVICE, applyContext } from "../src/client";
-import { adminPool, appPool, asContext, clientBySlug, staffByEmail, staffCtx } from "./helpers";
+import { adminPool, appPool, asContext, staffByEmail, staffCtx } from "./helpers";
+import { provisionClinic } from "./provision";
 import { PermissionDeniedError } from "../src/services/auth";
 import { createOAuthState, disconnectConnection, listConnections, saveConnection } from "../src/analytics/connections";
 import { sealedToken } from "../src/analytics/sync";
@@ -16,10 +17,11 @@ afterAll(async () => {
 describe("connection credential writes", () => {
   it("lets an administrator store a connection and keeps the secret out of the staff row, list and audit", async () => {
     const admin = await staffByEmail("admin@example.invalid");
-    const harbour = await clientBySlug("meridian-skin");
     const marker = "staff-must-not-see-this";
     await asContext(SERVICE, async (db) => {
-      const site = (await db.query<{ id: string }>("select id from websites where client_id = $1 order by created_at limit 1", [harbour])).rows[0]!.id;
+      const clinic = await provisionClinic(db, admin.id);
+      const harbour = clinic.clientId;
+      const site = clinic.websiteId;
       const token = sealedToken({ accessToken: marker, expiresAt: "2100-01-01T00:00:00.000Z" });
       const connection = await saveConnection(db, {
         clientId: harbour,
@@ -63,11 +65,12 @@ describe("connection credential writes", () => {
     const specialist = await staffByEmail("specialist-a@example.invalid");
     const reviewer = await staffByEmail("reviewer@example.invalid");
     const reader = await staffByEmail("readonly@example.invalid");
-    const harbour = await clientBySlug("meridian-skin");
     await asContext(SERVICE, async (db) => {
+      const clinic = await provisionClinic(db, admin.id);
+      const harbour = clinic.clientId;
       const site = (await db.query<{ id: string; name: string; url: string | null; platform: string; environment: "production" | "staging" | "development"; status: "active" | "archived"; notes: string | null }>(
-        "select id, name, url, platform, environment, status, notes from websites where client_id = $1 order by created_at limit 1",
-        [harbour],
+        "select id, name, url, platform, environment, status, notes from websites where id = $1",
+        [clinic.websiteId],
       )).rows[0]!;
       const token = sealedToken({ accessToken: "manager-must-not-store-this", expiresAt: "2100-01-01T00:00:00.000Z" });
       const connection = await saveConnection(db, {

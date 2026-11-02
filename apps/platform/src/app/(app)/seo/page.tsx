@@ -2,7 +2,7 @@ import { requireAccess } from "@/lib/session";
 import { Button, LinkButton } from "@/components/ui/Button";
 import { SeoFrame, Unavailable } from "@/components/modules/seo/SeoFrame";
 import { AiPanel, AssistantPanel, GooglePanel, QuickActions, RecentChanges } from "@/components/modules/seo/OverviewPanels";
-import { loadSeoContext, loadWebsiteSeo, readGoogleControls, seoHref, type SeoSearch } from "@/lib/seo-workspace";
+import { loadSeoOverview, readGoogleControls, seoHref, type SeoSearch } from "@/lib/seo-workspace";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "SEO" };
@@ -10,8 +10,7 @@ export const metadata = { title: "SEO" };
 export default async function SeoOverviewPage({ searchParams }: { searchParams: Promise<SeoSearch> }) {
   const access = await requireAccess();
   const query = await searchParams;
-  const ctx = await loadSeoContext(access, query);
-  const bundle = ctx.selected ? await loadWebsiteSeo(access, ctx.selected) : null;
+  const { ctx, bundle } = await loadSeoOverview(access, query);
   const controls = readGoogleControls(query);
   const drafts = bundle?.changes.filter((change) => !change.verification_on).length ?? 0;
   return (
@@ -29,14 +28,14 @@ export default async function SeoOverviewPage({ searchParams }: { searchParams: 
     >
       <div className="space-y-4">
         <p id="check-unavailable" className="text-xs text-muted">Run website check is unavailable because no crawler is connected.</p>
-        <AssistantPanel ctx={ctx} bundle={bundle} demo={ctx.demo} />
+        <AssistantPanel ctx={ctx} bundle={bundle} />
         <div className="grid items-start gap-4 xl:grid-cols-3">
-          <div className="xl:col-span-2"><GooglePanel ctx={ctx} controls={controls} search={bundle?.searchConsole} demo={ctx.demo} /></div>
+          <div className="xl:col-span-2"><GooglePanel ctx={ctx} controls={controls} search={bundle?.searchConsole} /></div>
           <AiPanel ctx={ctx} />
         </div>
         <div className="grid items-start gap-4 lg:grid-cols-2">
           <QuickActions ctx={ctx} />
-          {bundle ? <RecentChanges ctx={ctx} bundle={bundle} /> : <Unavailable title="Recent changes">Choose a website to see its saved change records. Demonstration mode does not invent a change history.</Unavailable>}
+          {bundle ? <RecentChanges ctx={ctx} bundle={bundle} /> : <Unavailable title="Recent changes">Choose a website to see its saved change records.</Unavailable>}
         </div>
       </div>
     </SeoFrame>

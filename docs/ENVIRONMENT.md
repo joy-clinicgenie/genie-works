@@ -36,6 +36,7 @@ Used by the embedded database on this machine. `npm run db:rehearse` creates `cl
 | `CRON_SECRET` | Bearer a Vercel Cron sends. The worker accepts this or `ANALYTICS_WORKER_SECRET`. |
 | `ANALYTICS_LIVE_REPORTS` | Reads promoted provider data when on. |
 | `ANALYTICS_FIXTURE_MODE` | When on, provider calls must stay on this machine. |
+| `PAGESPEED_API_KEY` | Optional key for mobile lab scores. Empty uses the unkeyed endpoint. |
 | `ANALYTICS_ALLOW_REMOTE_WORKER` | Allows the worker database host to be remote. Leave unset for local work. |
 | `MIGRATE_ALLOW_REMOTE` | Allows `db:migrate` to use a remote non-production host. Leave unset for local work. Production still refuses. |
 | `RECOVERY_ALLOWED_DB_PATTERN` | Name marker required by backup and restore-test. Unset means `rehearsal`. The shared application database, the enquiry database, a remote host and production stay refused. |

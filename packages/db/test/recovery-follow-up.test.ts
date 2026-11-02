@@ -78,9 +78,10 @@ describe("isolated enquiry follow-up and report recovery", () => {
         const admin = (await client.query<{ id: string }>("select id from staff_users where email = 'admin@example.invalid'")).rows[0];
         const clinic = (await client.query<{ id: string }>("select id from clients where slug = 'clinic-genie'")).rows[0];
         const site = (await client.query<{ id: string; client_id: string }>(
-          `select w.id, w.client_id
-           from websites w join clients c on c.id = w.client_id
-           where c.slug = 'meridian-skin' and w.enquiry_key = 'meridian-skin-production'`,
+          `insert into websites (client_id, name, url, platform, environment, enquiry_key)
+           select id, 'Check website', 'https://check.example.invalid', 'Next.js', 'production', 'check-production'
+           from clients where slug = 'clinic-genie'
+           returning id, client_id`,
         )).rows[0];
         expect(admin && clinic && site).toBeTruthy();
         await client.query(

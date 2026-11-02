@@ -29,12 +29,12 @@ describe("leads and forms records", () => {
     const admin = await staffByEmail("admin@example.invalid");
     const specB = await staffByEmail("specialist-b@example.invalid");
     const readonly = await staffByEmail("readonly@example.invalid");
-    const harbour = await clientBySlug("meridian-skin");
+    const harbour = await clientBySlug("clinic-genie");
     const saved = await asContext(staffCtx(admin), async (db) => {
       const event = await recordEnquiryStatusEvent(db, {
         enquiryId: ENQUIRY_ID,
-        clinicSlug: "meridian-skin",
-        websiteKey: "meridian-skin-production",
+        clinicSlug: "clinic-genie",
+        websiteKey: "check-production",
         fromStatus: "closed",
         toStatus: "new",
         note: "Reopened for a call back",
@@ -52,7 +52,7 @@ describe("leads and forms records", () => {
     expect(saved).toBeTruthy();
     await expect(asContext(staffCtx(specB), (db) => recordEnquiryStatusEvent(db, {
       enquiryId: ENQUIRY_ID,
-      clinicSlug: "meridian-skin",
+      clinicSlug: "clinic-genie",
       websiteKey: null,
       fromStatus: "new",
       toStatus: "closed",
@@ -61,19 +61,19 @@ describe("leads and forms records", () => {
     }))).rejects.toThrow();
     await expect(asContext(staffCtx(readonly), (db) => recordEnquiryStatusEvent(db, {
       enquiryId: ENQUIRY_ID,
-      clinicSlug: "meridian-skin",
+      clinicSlug: "clinic-genie",
       websiteKey: null,
       fromStatus: "new",
       toStatus: "acknowledged",
       note: null,
       actorUserId: readonly.id,
     }))).rejects.toThrow();
-    const hidden = await asContext(staffCtx(specB), (db) => db.query("select id from enquiry_status_events where clinic_slug = 'meridian-skin'"));
+    const hidden = await asContext(staffCtx(specB), (db) => db.query("select id from enquiry_status_events where clinic_slug = 'clinic-genie'"));
     expect(hidden.rows).toHaveLength(0);
 
     const owned = await adminPool.query<{ id: string }>(
       `insert into enquiry_status_events (enquiry_id, client_id, clinic_slug, from_status, to_status, actor_user_id)
-       select $1, c.id, c.slug, 'closed', 'new', $2 from clients c where c.slug = 'meridian-skin' returning id`,
+       select $1, c.id, c.slug, 'closed', 'new', $2 from clients c where c.slug = 'clinic-genie' returning id`,
       [ENQUIRY_ID, admin.id],
     );
     const ownedId = owned.rows[0]?.id;
@@ -110,10 +110,17 @@ describe("leads and forms records", () => {
     const admin = await staffByEmail("admin@example.invalid");
     const specA = await staffByEmail("specialist-a@example.invalid");
     const specB = await staffByEmail("specialist-b@example.invalid");
-    const harbour = await clientBySlug("meridian-skin");
+    const harbour = await clientBySlug("clinic-genie");
+    const siteId = (await adminPool.query<{ id: string }>(
+      `insert into websites (client_id, name, url, platform, environment, enquiry_key)
+       values ($1, 'Check website', 'https://check.example.invalid', 'Next.js', 'production', 'check-production')
+       returning id`,
+      [harbour],
+    )).rows[0]!.id;
+    try {
     await asContext(staffCtx(admin), async (db) => {
       const sites = await listFormWebsites(db, [harbour]);
-      const site = sites.find((item) => item.enquiry_key === "meridian-skin-production") ?? sites[0];
+      const site = sites.find((item) => item.id === siteId) ?? sites[0];
       expect(site).toBeTruthy();
       const saved = await saveWebsiteForm(db, {
         websiteId: site!.id,
@@ -152,7 +159,8 @@ describe("leads and forms records", () => {
         updatedBy: specA.id,
       });
     })).rejects.toThrow();
-    const membershipId = await asContext(staffCtx(admin), async (db) => {
+    let membershipId = "";
+    membershipId = await asContext(staffCtx(admin), async (db) => {
       const granted = await grantMembership(db, { userId: specB.id, clientId: harbour }, admin.id);
       const sites = await listFormWebsites(db, [harbour]);
       const site = sites[0];
@@ -179,13 +187,16 @@ describe("leads and forms records", () => {
       expect(canExport({ user: { platform_role: specB.platform_role } } as never)).toBe(false);
     } finally {
       await adminPool.query("delete from website_forms where client_id = $1 and form_key = 'appointment-enquiry'", [harbour]);
-      await asContext(staffCtx(admin), (db) => revokeMembership(db, membershipId, admin.id, harbour), { commit: true });
+      if (membershipId) await asContext(staffCtx(admin), (db) => revokeMembership(db, membershipId, admin.id, harbour), { commit: true });
+    }
+    } finally {
+      await adminPool.query("delete from websites where id = $1", [siteId]);
     }
   });
 
   it("lists a manual notification retry without the enquiry body", async () => {
     const admin = await staffByEmail("admin@example.invalid");
-    const harbour = await clientBySlug("meridian-skin");
+    const harbour = await clientBySlug("clinic-genie");
     const outboxId = "22222222-2222-4222-8222-222222222202";
     await asContext(staffCtx(admin), async (db) => {
       await recordAudit(db, {

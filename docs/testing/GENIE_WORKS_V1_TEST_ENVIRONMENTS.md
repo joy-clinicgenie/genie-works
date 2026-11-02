@@ -29,7 +29,7 @@ All of these records are synthetic. Addresses use `example.invalid`.
 
 | Client slug | Websites | Platform | Staff who can open the client |
 |---|---|---|---|
-| `meridian-skin` | Meridian Skin website (`meridian-skin-production`) and Meridian Skin staging (`meridian-skin-staging`) | Next.js on Vercel | Admin, manager, specialist A, reviewer |
+| `clinic-genie` | None from the seed | Internal agency record | Admin and manager, because those roles are global |
 
 Stable staff sign-in addresses, all fictional:
 
@@ -37,9 +37,9 @@ Stable staff sign-in addresses, all fictional:
 |---|---|---|
 | `admin@example.invalid` | admin | all |
 | `manager@example.invalid` | manager | all |
-| `specialist-a@example.invalid` | specialist | Meridian |
+| `specialist-a@example.invalid` | specialist | No client |
 | `specialist-b@example.invalid` | specialist | No client |
-| `reviewer@example.invalid` | reviewer | Meridian |
+| `reviewer@example.invalid` | reviewer | No client |
 | `readonly@example.invalid` | read-only | No client |
 
 Enquiry rows use fixed ids `11111111-1111-4111-8111-111111111101` through `…1106`. Notification rows use `22222222-2222-4222-8222-222222222201` through `…2206`. Statuses are New, Acknowledged and Closed. Attribution values are `direct`, `organic`, `referral` and `campaign`. Forms are `appointment-enquiry` and `contact`. Notification states are sent, failed, exhausted, pending and unconfigured.
@@ -162,7 +162,7 @@ Representative native paths for a future staging consumer, all non-indexable on 
 | Harbourview-only read | No Meridian or Northgate enquiry |
 | Worker `POST` without a bearer, and with the wrong bearer | HTTP 401 `Unauthorized` |
 | `ANALYTICS_FIXTURE_MODE=1` | Refuses `googleapis.com` and `wixapis.com` |
-| Provider fixture job | Separate session counts 4 and 9 for the two Meridian websites. Empty partition, HTTP 500 retry, HTTP 429 retry, expired token reconnect, overlapping import rejected |
+| Provider fixture job | Separate session counts 4 and 9 for two websites on one disposable clinic. Empty partition, HTTP 500 retry, HTTP 429 retry, expired token reconnect, overlapping import rejected |
 | `npm run consumers:check` | Matrix printed. Unauthenticated public reads returned HTTP 404 |
 | `npm run typecheck -w @clinic-genie/db` and `npm run typecheck -w @clinic-genie/platform` | Exit 0 |
 

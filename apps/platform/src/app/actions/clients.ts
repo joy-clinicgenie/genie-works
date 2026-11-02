@@ -53,7 +53,7 @@ export async function createClientAction(_prev: ActionState, form: FormData): Pr
   let id: string;
   try {
     const client = await staffTx(access, (db) =>
-      createClient(db, { slug, name: str(form, "name"), ownerUserId: optional(form, "ownerUserId"), channels: channels(form), services: optional(form, "services"), isSynthetic: bool(form, "isSynthetic"), notes: optional(form, "notes"), ...profileFields(form), contactEmail: contactEmail.value }, access.user.id),
+      createClient(db, { slug, name: str(form, "name"), ownerUserId: optional(form, "ownerUserId"), channels: channels(form), services: optional(form, "services"), isSynthetic: false, notes: optional(form, "notes"), ...profileFields(form), contactEmail: contactEmail.value }, access.user.id),
     );
     id = client.id;
   } catch (err) {

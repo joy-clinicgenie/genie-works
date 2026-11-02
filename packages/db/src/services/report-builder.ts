@@ -137,12 +137,10 @@ async function load(db: Queryable, input: {
   const previous = compared
     ? snaps.rows.filter((row) => row.period_start.slice(0, 10) === input.comparisonStart && row.period_end.slice(0, 10) === input.comparisonEnd)
     : [];
-  const [currentAnalytics, previousAnalytics] = await Promise.all([
-    loadAnalytics(db, input.clientId, input.websiteId, input.periodStart, input.periodEnd),
-    compared && input.comparisonStart && input.comparisonEnd
-      ? loadAnalytics(db, input.clientId, input.websiteId, input.comparisonStart, input.comparisonEnd)
-      : Promise.resolve(new Map<string, PublishedReport>()),
-  ]);
+  const currentAnalytics = await loadAnalytics(db, input.clientId, input.websiteId, input.periodStart, input.periodEnd);
+  const previousAnalytics = compared && input.comparisonStart && input.comparisonEnd
+    ? await loadAnalytics(db, input.clientId, input.websiteId, input.comparisonStart, input.comparisonEnd)
+    : new Map<string, PublishedReport>();
   const blog = await db.query<{ published: number; existing: number }>(
     `select
        count(*) filter (where first_published_at::date between $3::date and $4::date)::int as published,
@@ -225,10 +223,10 @@ async function load(db: Queryable, input: {
 async function loadAnalytics(db: Queryable, clientId: string, websiteId: string | null, start: string, end: string): Promise<Map<string, PublishedReport>> {
   const found = new Map<string, PublishedReport>();
   if (!websiteId) return found;
-  await Promise.all(ANALYTICS_TEMPLATES.map(async (templateKey) => {
+  for (const templateKey of ANALYTICS_TEMPLATES) {
     const report = await publishedReport(db, { clientId, websiteId, templateKey, start, end });
     if (report) found.set(templateKey, report);
-  }));
+  }
   return found;
 }
 

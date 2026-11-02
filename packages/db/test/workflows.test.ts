@@ -1,6 +1,7 @@
 import { afterAll, describe, expect, it } from "vitest";
 import { applyContext } from "../src/client";
 import { adminPool, appPool, asContext, clientBySlug, staffByEmail, staffCtx } from "./helpers";
+import { provisionClinic } from "./provision";
 import { createApproval, decideApproval, getApproval } from "../src/services/approvals";
 import { createTask, transitionTask, TaskRuleError, getTask } from "../src/services/tasks";
 import { openIssue, transitionIssue, getIssue } from "../src/services/issues";
@@ -15,9 +16,11 @@ afterAll(async () => {
 
 describe("tasks (A-09, A-10)", () => {
   it("waiting requires waiting-on and a follow-up date", async () => {
+    const admin = await staffByEmail("admin@example.invalid");
     const specA = await staffByEmail("specialist-a@example.invalid");
-    const harbour = await clientBySlug("meridian-skin");
-    await asContext(staffCtx(specA), async (db) => {
+    await asContext(staffCtx(admin), async (db) => {
+      const { clientId: harbour } = await provisionClinic(db, admin.id, [specA.id]);
+      await applyContext(db, staffCtx(specA));
       const id = await createTask(db, { clientId: harbour, title: "Rule test", description: null, ownerUserId: specA.id, priority: "medium", dueDate: null, relatedType: null, relatedId: null }, specA.id);
       await expect(transitionTask(db, id, { status: "waiting", note: null, waitingOn: "", followUpDate: null }, specA.id)).rejects.toBeInstanceOf(TaskRuleError);
       await transitionTask(db, id, { status: "waiting", note: "chasing", waitingOn: "Client", followUpDate: "2026-10-25" }, specA.id);
@@ -31,9 +34,9 @@ describe("tasks (A-09, A-10)", () => {
   it("rejects a related record from another client", async () => {
     const specA = await staffByEmail("specialist-a@example.invalid");
     const admin = await staffByEmail("admin@example.invalid");
-    const meridian = await clientBySlug("meridian-skin");
     const other = await clientBySlug("clinic-genie");
     await asContext(staffCtx(admin), async (db) => {
+      const { clientId: meridian } = await provisionClinic(db, admin.id, [specA.id]);
       const issueId = await openIssue(db, other, { title: "Other client", description: null, severity: "low", ownerUserId: admin.id, relatedType: null, relatedId: null }, admin.id);
       await applyContext(db, staffCtx(specA));
       await expect(createTask(db, { clientId: meridian, title: "Bad link", description: null, ownerUserId: specA.id, priority: "low", dueDate: null, relatedType: "issue", relatedId: issueId }, specA.id)).rejects.toThrow(/does not belong/);
@@ -45,8 +48,10 @@ describe("approvals are append-only (A-11, A-12)", () => {
   it("a requester cannot decide, a revised decision supersedes and never edits the original", async () => {
     const specA = await staffByEmail("specialist-a@example.invalid");
     const manager = await staffByEmail("manager@example.invalid");
-    const harbour = await clientBySlug("meridian-skin");
-    await asContext(staffCtx(manager), async (db) => {
+    const admin = await staffByEmail("admin@example.invalid");
+    await asContext(staffCtx(admin), async (db) => {
+      const { clientId: harbour } = await provisionClinic(db, admin.id, [specA.id]);
+      await applyContext(db, staffCtx(manager));
       const id = await createApproval(db, { clientId: harbour, title: "Append-only test", summary: null, requestType: "other", relatedType: null, relatedId: null }, specA.id, true);
       await expect(decideApproval(db, id, { outcome: "approved", note: null }, specA.id)).rejects.toThrow(/cannot decide/);
       const first = await decideApproval(db, id, { outcome: "changes_requested", note: "tighten the copy" }, manager.id);
@@ -71,8 +76,10 @@ describe("issue verification (A-15)", () => {
   it("records verifier, date and result; failed verification reopens", async () => {
     const specA = await staffByEmail("specialist-a@example.invalid");
     const manager = await staffByEmail("manager@example.invalid");
-    const harbour = await clientBySlug("meridian-skin");
-    await asContext(staffCtx(manager), async (db) => {
+    const admin = await staffByEmail("admin@example.invalid");
+    await asContext(staffCtx(admin), async (db) => {
+      const { clientId: harbour } = await provisionClinic(db, admin.id, [specA.id]);
+      await applyContext(db, staffCtx(manager));
       const id = await openIssue(db, harbour, { title: "Verify me", description: null, severity: "low", ownerUserId: specA.id, relatedType: null, relatedId: null }, specA.id);
       await expect(transitionIssue(db, id, { status: "verified_closed", note: "x" }, manager.id)).rejects.toThrow(/Cannot move/);
       await transitionIssue(db, id, { status: "resolved_pending_verification", note: "fixed" }, specA.id);
@@ -95,10 +102,11 @@ describe("medical review (A-17)", () => {
   it("never approves without a source, preserves reviews when wording changes", async () => {
     const specA = await staffByEmail("specialist-a@example.invalid");
     const reviewer = await staffByEmail("reviewer@example.invalid");
-    const meridian = await clientBySlug("meridian-skin");
-    // One rolled-back transaction; the role context switches between the specialist and the reviewer.
-    await asContext(staffCtx(specA), async (db) => {
+    const admin = await staffByEmail("admin@example.invalid");
+    await asContext(staffCtx(admin), async (db) => {
+      const { clientId: meridian } = await provisionClinic(db, admin.id, [specA.id, reviewer.id]);
       const asRole = (u: { id: string; platform_role: string }) => db.query("select set_config('app.platform_role', $1, true), set_config('app.user_id', $2, true)", [u.platform_role, u.id]);
+      await asRole(specA);
       const claimId = await createClaim(db, meridian, { claimSummary: "Test claim", location: null, wording: "v1 wording" }, specA.id);
       const review = await assignReview(db, claimId, reviewer.id, specA.id);
       await asRole(reviewer);
@@ -122,8 +130,10 @@ describe("medical review (A-17)", () => {
 describe("report snapshots (A-18)", () => {
   it("re-recording a figure supersedes rather than edits, and null stays unavailable", async () => {
     const specA = await staffByEmail("specialist-a@example.invalid");
-    const meridian = await clientBySlug("meridian-skin");
-    await asContext(staffCtx(specA), async (db) => {
+    const admin = await staffByEmail("admin@example.invalid");
+    await asContext(staffCtx(admin), async (db) => {
+      const { clientId: meridian } = await provisionClinic(db, admin.id, [specA.id]);
+      await applyContext(db, staffCtx(specA));
       const a = await addSnapshot(db, meridian, { source: "manual", channel: "all", metric: "clicks", periodStart: "2026-09-01", periodEnd: "2026-09-30", value: 10, note: null }, specA.id);
       const b = await addSnapshot(db, meridian, { source: "manual", channel: "all", metric: "clicks", periodStart: "2026-09-01", periodEnd: "2026-09-30", value: 12, note: "corrected" }, specA.id);
       const current = await listSnapshots(db, { clientId: meridian });
@@ -144,7 +154,7 @@ describe("report snapshots (A-18)", () => {
 describe("timeline idempotency (A-20)", () => {
   it("the same dedupe key never creates a second event", async () => {
     const manager = await staffByEmail("manager@example.invalid");
-    const harbour = await clientBySlug("meridian-skin");
+    const harbour = await clientBySlug("clinic-genie");
     await asContext(staffCtx(manager), async (db) => {
       const key = `test:${Date.now()}`;
       await recordTimeline(db, { clientId: harbour, eventType: "task_created", title: "once", relatedType: null, relatedId: null, actorUserId: manager.id, dedupeKey: key });

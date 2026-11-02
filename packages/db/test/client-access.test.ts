@@ -1,6 +1,7 @@
 import { afterAll, describe, expect, it } from "vitest";
 import { SERVICE, applyContext } from "../src/client";
 import { adminPool, appPool, asContext, clientBySlug, staffByEmail, staffCtx } from "./helpers";
+import { provisionClinic } from "./provision";
 import { clientActions, scopeWorkspace } from "../src/services/access";
 import { PermissionDeniedError, type AccessProfile } from "../src/services/auth";
 import { saveSeoPageSetting } from "../src/services/seo-soft-launch";
@@ -30,8 +31,8 @@ describe("client ownership and shared permissions", () => {
     const specialist = await staffByEmail("specialist-a@example.invalid");
     const reviewer = await staffByEmail("reviewer@example.invalid");
     const readonly = await staffByEmail("readonly@example.invalid");
-    const meridian = await clientBySlug("meridian-skin");
-    const other = await clientBySlug("clinic-genie");
+    const meridian = "11111111-1111-4111-8111-111111111111";
+    const other = "22222222-2222-4222-8222-222222222222";
     const profile = (user: typeof admin, memberships: AccessProfile["memberships"] = []): AccessProfile => ({
       user: { ...user, email: "synthetic@example.invalid", display_name: "Synthetic", active: true },
       memberships,
@@ -40,18 +41,18 @@ describe("client ownership and shared permissions", () => {
     expect(clientActions.export(profile(manager), meridian)).toBe(true);
     expect(clientActions.manageAssignments(profile(admin), meridian)).toBe(true);
     expect(clientActions.manageAssignments(profile(manager), meridian)).toBe(false);
-    const member = profile(specialist, [{ client_id: meridian, client_name: "Meridian", client_slug: "meridian-skin" }]);
+    const member = profile(specialist, [{ client_id: meridian, client_name: "Check clinic", client_slug: "check-clinic" }]);
     expect(clientActions.view(member, meridian)).toBe(true);
     expect(clientActions.edit(member, meridian)).toBe(true);
     expect(clientActions.submitForReview(member, meridian)).toBe(true);
     expect(clientActions.publish(member, meridian)).toBe(false);
     expect(clientActions.export(member, meridian)).toBe(false);
     expect(clientActions.view(member, other)).toBe(false);
-    const reviewerMember = profile(reviewer, [{ client_id: meridian, client_name: "Meridian", client_slug: "meridian-skin" }]);
+    const reviewerMember = profile(reviewer, [{ client_id: meridian, client_name: "Check clinic", client_slug: "check-clinic" }]);
     expect(clientActions.review(reviewerMember, meridian)).toBe(true);
     expect(clientActions.edit(reviewerMember, meridian)).toBe(false);
     expect(clientActions.publish(reviewerMember, meridian)).toBe(false);
-    const reader = profile(readonly, [{ client_id: meridian, client_name: "Meridian", client_slug: "meridian-skin" }]);
+    const reader = profile(readonly, [{ client_id: meridian, client_name: "Check clinic", client_slug: "check-clinic" }]);
     expect(clientActions.view(reader, meridian)).toBe(true);
     expect(clientActions.edit(reader, meridian)).toBe(false);
     expect(clientActions.review(reader, meridian)).toBe(false);
@@ -73,9 +74,10 @@ describe("client ownership and shared permissions", () => {
     const admin = await staffByEmail("admin@example.invalid");
     const specA = await staffByEmail("specialist-a@example.invalid");
     const specB = await staffByEmail("specialist-b@example.invalid");
-    const meridian = await clientBySlug("meridian-skin");
     const other = await clientBySlug("clinic-genie");
     await asContext(staffCtx(admin), async (db) => {
+      const clinic = await provisionClinic(db, admin.id, [specA.id]);
+      const meridian = clinic.clientId;
       const before = (await getClient(db, meridian))!;
       await updateClient(db, meridian, {
         name: before.name,
@@ -126,9 +128,9 @@ describe("client ownership and shared permissions", () => {
   it("makes an assignment cover the client websites and removes that access when revoked", async () => {
     const admin = await staffByEmail("admin@example.invalid");
     const specB = await staffByEmail("specialist-b@example.invalid");
-    const harbour = await clientBySlug("meridian-skin");
     await asContext(SERVICE, async (db) => {
       await applyContext(db, staffCtx(admin));
+      const { clientId: harbour } = await provisionClinic(db, admin.id);
       const membershipId = await grantMembership(db, { userId: specB.id, clientId: harbour }, admin.id);
       await applyContext(db, staffCtx(specB));
       const names = (await listWebsites(db, harbour)).map((site) => site.name);
@@ -147,7 +149,7 @@ describe("client ownership and shared permissions", () => {
 
   it("keeps an authorised service, note and file link in a later transaction", async () => {
     const admin = await staffByEmail("admin@example.invalid");
-    const harbour = await clientBySlug("meridian-skin");
+    const harbour = await clientBySlug("clinic-genie");
     const before = await asContext(staffCtx(admin), async (db) => (await getClient(db, harbour))!);
     const profile = {
       name: before.name,
