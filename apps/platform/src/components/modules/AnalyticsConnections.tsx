@@ -4,7 +4,7 @@ import { serviceTx, staffTx } from "@/lib/db";
 import { Badge } from "@/components/ui/Badge";
 import { buttonClass } from "@/components/ui/Button";
 import { ClinicConnectionPicker } from "@/components/modules/ClinicConnectionPicker";
-import { bindAnalyticsProperty, connectWix, disconnectAnalytics, importAnalyticsCsv, refreshAnalytics } from "@/app/actions/analytics";
+import { bindAnalyticsProperty, connectWix, disconnectAnalytics, importAnalyticsCsv, refreshAnalytics, retryAnalyticsFailures } from "@/app/actions/analytics";
 import { listGoogleProperties } from "@/lib/analytics-properties";
 
 const MESSAGES: Record<string, string> = {
@@ -20,6 +20,8 @@ const MESSAGES: Record<string, string> = {
   connected: "The property is connected. History already stored is unchanged.",
   disconnected: "The connection is stopped. Stored reports remain.",
   queued: "A refresh was queued for the recent window.",
+  retry_queued: "Permanently failed jobs were queued for a new bounded attempt cycle.",
+  retry_unavailable: "No permanently failed job was eligible for retry. Restore the connection first if required.",
   accept: "The file was accepted as an import. It does not replace a provider report.",
   overlap: "The file overlaps an existing range and was stored only because replace was selected. Provider partitions stay in place.",
   replay: "This file was already imported.",
@@ -28,6 +30,8 @@ const MESSAGES: Record<string, string> = {
 function safeErrorText(code: string): string {
   const words: Record<string, string> = {
     rate_limited: "The provider asked us to wait. Retry stops after five attempts.",
+    provider_unavailable: "The provider is temporarily unavailable. A bounded retry is scheduled.",
+    worker_deadline: "The worker stopped safely near its time budget. A bounded retry is scheduled.",
     reconnect_required: "The connection needs to be restored.",
     provider_rejected: "The provider rejected the request.",
     lease_expired: "A sync stopped before it finished.",
@@ -42,7 +46,7 @@ function SyncState({ status }: { status: ConnectionSyncStatus | undefined }) {
     <div className="mt-1 text-sm text-ink-soft">
       <p>Last successful sync: {status?.lastSuccessAt ? formatDateTime(status.lastSuccessAt) : "No successful sync"}</p>
       <p>
-        Queue: {status?.queued ?? 0} queued, {status?.leased ?? 0} leased, {status?.failed ?? 0} failed
+        Queue: {status?.queued ?? 0} queued, {status?.leased ?? 0} processing, {status?.retryScheduled ?? 0} retry scheduled, {status?.failed ?? 0} permanently failed
         {(status?.reconnectRequired ?? 0) > 0 ? `, ${status?.reconnectRequired} waiting for reconnect` : ""}
       </p>
       {status?.safeError ? <p className="text-ink">{safeErrorText(status.safeError)}</p> : null}
@@ -124,11 +128,20 @@ export async function AnalyticsConnections({
                   <span className="flex items-center gap-2">
                     <Badge tone={connection.status === "connected" ? "good" : "warn"}>{connection.status === "reconnect_required" ? "Reconnect required" : connection.status}</Badge>
                     {canStoreSecrets && (
-                      <form action={disconnectAnalytics}>
-                        <input type="hidden" name="connectionId" value={connection.id} />
-                        <input type="hidden" name="clientId" value={data.selected?.id} />
-                        <button className={buttonClass("secondary", "sm")} type="submit">Disconnect</button>
-                      </form>
+                      <>
+                        {(syncByConnection.get(connection.id)?.failed ?? 0) > 0 && connection.status === "connected" && (
+                          <form action={retryAnalyticsFailures}>
+                            <input type="hidden" name="connectionId" value={connection.id} />
+                            <input type="hidden" name="clientId" value={data.selected?.id} />
+                            <button className={buttonClass("secondary", "sm")} type="submit">Retry failed jobs</button>
+                          </form>
+                        )}
+                        <form action={disconnectAnalytics}>
+                          <input type="hidden" name="connectionId" value={connection.id} />
+                          <input type="hidden" name="clientId" value={data.selected?.id} />
+                          <button className={buttonClass("secondary", "sm")} type="submit">Disconnect</button>
+                        </form>
+                      </>
                     )}
                   </span>
                 </li>

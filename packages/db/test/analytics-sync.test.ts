@@ -3,7 +3,7 @@ import { SERVICE, applyContext } from "../src/client";
 import { adminPool, appPool, asContext, clientBySlug, staffByEmail, staffCtx } from "./helpers";
 import { provisionClinic } from "./provision";
 import { bindConnectionFromState, createOAuthState, disconnectConnection, exchangeOAuthState, listConnections, saveConnection, setSourcePolicy } from "../src/analytics/connections";
-import { dueWindow, enqueueDue, enqueueJob, executeJob, leaseNext, listConnectionSyncStatus, sealedToken, type FetchLike, type FetchResponse } from "../src/analytics/sync";
+import { dueWindow, enqueueDue, enqueueJob, executeJob, leaseNext, listConnectionSyncStatus, retryFailedAnalyticsJobs, sealedToken, type FetchLike, type FetchResponse } from "../src/analytics/sync";
 import { publishedReport } from "../src/analytics/read";
 import { encryptSecret } from "../src/analytics/crypto";
 import { createClient, createWebsite, grantMembership } from "../src/services/registry";
@@ -288,12 +288,12 @@ describe("analytics tenant isolation and sync", () => {
       const start = new Date("2099-06-01T00:00:00.000Z");
       const queued = await enqueueJob(db, { clientId, websiteId: site, connectionId: connection.id, templateKey: "ga4.traffic_daily", start: "2026-10-01", end: "2026-10-02" });
       for (let attempt = 0; attempt < 4; attempt += 1) {
-        const now = new Date(start.getTime() + attempt * 60_000);
+        const now = new Date(start.getTime() + attempt * 31 * 60_000);
         const job = await leaseNext(db, "retry-worker", now);
         expect(job?.id).toBe(queued.id);
         expect((await executeJob(db, job!, { fetch: limited, now })).result).toBe("retry");
       }
-      const fifthNow = new Date(start.getTime() + 10 * 60_000);
+      const fifthNow = new Date(start.getTime() + 5 * 31 * 60_000);
       const fifth = await leaseNext(db, "retry-worker", fifthNow);
       expect((await executeJob(db, fifth!, { fetch: limited, now: fifthNow })).result).toBe("failed");
       const failed = await db.query<{ state: string; attempts: number; safe_error_code: string }>(
@@ -307,10 +307,12 @@ describe("analytics tenant isolation and sync", () => {
       for (let attempt = 0; attempt < 5; attempt += 1) {
         if (attempt > 0) {
           await db.query("update analytics_jobs set lease_until = $2 where id = $1", [crashed.id, new Date(cursor.getTime() - 1000).toISOString()]);
+          expect(await leaseNext(db, `reaper-${attempt}`, cursor)).toBeNull();
+          cursor = new Date(cursor.getTime() + 31 * 60_000);
         }
         const leased = await leaseNext(db, `owner-${attempt}`, cursor);
         expect(leased?.id).toBe(crashed.id);
-        cursor = new Date(cursor.getTime() + 60_000);
+        cursor = new Date(cursor.getTime() + 3 * 60_000);
       }
       await db.query("update analytics_jobs set lease_until = $2 where id = $1", [crashed.id, new Date(cursor.getTime() - 1000).toISOString()]);
       expect(await leaseNext(db, "owner-final", cursor)).toBeNull();
@@ -458,6 +460,138 @@ describe("analytics tenant isolation and sync", () => {
       const report = await publishedReport(db, { clientId, websiteId: site, templateKey: "ga4.traffic_range", start: "2026-10-01", end: "2026-10-02" });
       expect(report?.rows[0]?.metrics.find((metric) => metric.key === "sessions")).toMatchObject({ value: null, state: "unavailable" });
       expect(report?.rows[0]?.metrics.find((metric) => metric.key === "totalUsers")).toMatchObject({ value: 12, state: "available" });
+    });
+  });
+
+  it("serializes jobs for one provider connection", async () => {
+    const admin = await staffByEmail("admin@example.invalid");
+    await asContext(SERVICE, async (db) => {
+      const provisioned = await provisionClinic(db, admin.id);
+      const token = sealedToken({ accessToken: "serial", expiresAt: "2100-01-01T00:00:00.000Z" });
+      const connection = await saveConnection(db, {
+        clientId: provisioned.clientId,
+        websiteId: provisioned.websiteId,
+        provider: "ga4",
+        externalPropertyId: "9090",
+        streamOrSiteRef: null,
+        providerTimezone: "Asia/Singapore",
+        tokenCiphertext: token.ciphertext,
+        tokenNonce: token.nonce,
+        actorUserId: admin.id,
+      });
+      await db.query("update analytics_jobs set state = 'cancelled', lease_owner = null, lease_until = null where state in ('queued', 'leased')");
+      await enqueueJob(db, { clientId: provisioned.clientId, websiteId: provisioned.websiteId, connectionId: connection.id, templateKey: "ga4.traffic_daily", start: "2026-10-01", end: "2026-10-02" });
+      await enqueueJob(db, { clientId: provisioned.clientId, websiteId: provisioned.websiteId, connectionId: connection.id, templateKey: "ga4.device", start: "2026-10-01", end: "2026-10-02" });
+      const now = new Date("2099-11-01T00:00:00.000Z");
+      expect(await leaseNext(db, "parallel-a", now)).not.toBeNull();
+      expect(await leaseNext(db, "parallel-b", now)).toBeNull();
+    });
+  });
+
+  it("stores Wix daily sessions and preserves missing measures as missing", async () => {
+    const admin = await staffByEmail("admin@example.invalid");
+    await asContext(SERVICE, async (db) => {
+      const provisioned = await provisionClinic(db, admin.id);
+      const token = sealedToken({ accessToken: "wix", expiresAt: "2100-01-01T00:00:00.000Z" });
+      const connection = await saveConnection(db, {
+        clientId: provisioned.clientId,
+        websiteId: provisioned.websiteId,
+        provider: "wix",
+        externalPropertyId: "wix-fixture",
+        streamOrSiteRef: "wix-fixture",
+        providerTimezone: "Asia/Singapore",
+        tokenCiphertext: token.ciphertext,
+        tokenNonce: token.nonce,
+        actorUserId: admin.id,
+      });
+      await db.query("update analytics_jobs set state = 'cancelled', lease_owner = null, lease_until = null where state in ('queued', 'leased')");
+      await enqueueJob(db, { clientId: provisioned.clientId, websiteId: provisioned.websiteId, connectionId: connection.id, templateKey: "wix.data_daily", start: "2026-10-01", end: "2026-10-02" });
+      const now = new Date("2026-11-02T12:00:00.000Z");
+      const job = await leaseNext(db, "wix-worker", now);
+      const fetchWix: FetchLike = async (url) => {
+        expect(url).toContain("dateRange.endDate=2026-10-03");
+        return jsonResponse(200, {
+          data: [{ type: "TOTAL_SESSIONS", values: [{ date: "2026-10-01", value: 4 }, { date: "2026-10-02", value: 0 }] }],
+        });
+      };
+      expect((await executeJob(db, job!, { fetch: fetchWix, now })).result).toBe("succeeded");
+      const report = await publishedReport(db, {
+        clientId: provisioned.clientId,
+        websiteId: provisioned.websiteId,
+        templateKey: "wix.data_daily",
+        start: "2026-10-01",
+        end: "2026-10-02",
+      });
+      expect(report?.rows.map((row) => row.metrics.find((metric) => metric.key === "total_sessions")?.value)).toEqual([4, 0]);
+      expect(report?.rows.some((row) => row.metrics.some((metric) => metric.key === "total_unique_visitors"))).toBe(false);
+    });
+  });
+
+  it("allows only an active administrator to retry permanent failures", async () => {
+    const admin = await staffByEmail("admin@example.invalid");
+    const specialist = await staffByEmail("specialist-a@example.invalid");
+    await asContext(SERVICE, async (db) => {
+      const provisioned = await provisionClinic(db, admin.id);
+      const token = sealedToken({ accessToken: "retry", expiresAt: "2100-01-01T00:00:00.000Z" });
+      const connection = await saveConnection(db, {
+        clientId: provisioned.clientId,
+        websiteId: provisioned.websiteId,
+        provider: "ga4",
+        externalPropertyId: "9191",
+        streamOrSiteRef: null,
+        providerTimezone: "Asia/Singapore",
+        tokenCiphertext: token.ciphertext,
+        tokenNonce: token.nonce,
+        actorUserId: admin.id,
+      });
+      const job = await enqueueJob(db, { clientId: provisioned.clientId, websiteId: provisioned.websiteId, connectionId: connection.id, templateKey: "ga4.country", start: "2026-10-01", end: "2026-10-02" });
+      await db.query("update analytics_jobs set state = 'failed', attempts = 5, safe_error_code = 'provider_rejected' where id = $1", [job.id]);
+      expect(await retryFailedAnalyticsJobs(db, { connectionId: connection.id, actorUserId: specialist.id })).toBe(0);
+      expect(await retryFailedAnalyticsJobs(db, { connectionId: connection.id, actorUserId: admin.id })).toBe(1);
+      const retried = await db.query<{ state: string; attempts: number; manual_retry_count: number }>(
+        "select state, attempts, manual_retry_count from analytics_jobs where id = $1",
+        [job.id],
+      );
+      expect(retried.rows[0]).toMatchObject({ state: "queued", attempts: 0, manual_retry_count: 1 });
+    });
+  });
+
+  it("recovers a claimed job when the result transaction rolls back", async () => {
+    const admin = await staffByEmail("admin@example.invalid");
+    await asContext(SERVICE, async (db) => {
+      const provisioned = await provisionClinic(db, admin.id);
+      const token = sealedToken({ accessToken: "rollback", expiresAt: "2100-01-01T00:00:00.000Z" });
+      const connection = await saveConnection(db, {
+        clientId: provisioned.clientId,
+        websiteId: provisioned.websiteId,
+        provider: "ga4",
+        externalPropertyId: "9292",
+        streamOrSiteRef: null,
+        providerTimezone: "Asia/Singapore",
+        tokenCiphertext: token.ciphertext,
+        tokenNonce: token.nonce,
+        actorUserId: admin.id,
+      });
+      await db.query("update analytics_jobs set state = 'cancelled', lease_owner = null, lease_until = null where state in ('queued', 'leased')");
+      const queued = await enqueueJob(db, { clientId: provisioned.clientId, websiteId: provisioned.websiteId, connectionId: connection.id, templateKey: "ga4.traffic_daily", start: "2026-10-01", end: "2026-10-01" });
+      const claimedAt = new Date("2099-12-01T00:00:00.000Z");
+      const job = await leaseNext(db, "rollback-worker", claimedAt);
+      await db.query("savepoint result_write");
+      const accepted: FetchLike = async () => jsonResponse(200, {
+        dimensionHeaders: [{ name: "date" }],
+        metricHeaders: [{ name: "sessions" }],
+        rows: [{ dimensionValues: [{ value: "20261001" }], metricValues: [{ value: "8" }] }],
+      });
+      expect((await executeJob(db, job!, { fetch: accepted, now: claimedAt })).result).toBe("succeeded");
+      await db.query("rollback to savepoint result_write");
+      const afterRollback = await db.query<{ state: string }>("select state from analytics_jobs where id = $1", [queued.id]);
+      expect(afterRollback.rows[0]?.state).toBe("leased");
+
+      const expiredAt = new Date(claimedAt.getTime() + 3 * 60_000);
+      await db.query("update analytics_jobs set lease_until = $2 where id = $1", [queued.id, new Date(expiredAt.getTime() - 1).toISOString()]);
+      expect(await leaseNext(db, "reaper", expiredAt)).toBeNull();
+      const retryAt = new Date(expiredAt.getTime() + 31 * 60_000);
+      expect((await leaseNext(db, "recovery-worker", retryAt))?.id).toBe(queued.id);
     });
   });
 });

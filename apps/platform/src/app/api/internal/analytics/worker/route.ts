@@ -5,6 +5,12 @@ import { workerAuthorized } from "@/lib/analytics-worker";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 120;
+const WORKER_BUDGET_MS = 90_000;
+
+function jobLimit(): number {
+  const parsed = Number(process.env.ANALYTICS_WORKER_JOB_LIMIT ?? "40");
+  return Number.isInteger(parsed) && parsed >= 1 && parsed <= 100 ? parsed : 40;
+}
 
 async function handle(request: Request) {
   if (!workerAuthorized(request.headers.get("authorization"))) {
@@ -18,9 +24,21 @@ async function handle(request: Request) {
     wixAppId: process.env.ANALYTICS_WIX_APP_ID,
     wixAppSecret: process.env.ANALYTICS_WIX_APP_SECRET,
     pageSpeedKey: process.env.PAGESPEED_API_KEY,
-  }, { owner: "http" });
+  }, { owner: "http", jobLimit: jobLimit(), budgetMs: WORKER_BUDGET_MS });
   const worked = outcome.jobs > 0 || outcome.inspected > 0 || outcome.measured > 0;
-  return NextResponse.json({ worked, jobs: outcome.jobs, inspected: outcome.inspected, measured: outcome.measured, result: outcome.result ?? null });
+  return NextResponse.json({
+    worked,
+    enqueued: outcome.enqueued,
+    jobs: outcome.jobs,
+    succeeded: outcome.succeeded,
+    failed: outcome.failed,
+    retryScheduled: outcome.retryScheduled,
+    reconnectRequired: outcome.reconnectRequired,
+    stale: outcome.stale,
+    inspected: outcome.inspected,
+    measured: outcome.measured,
+    result: outcome.result ?? null,
+  });
 }
 
 /** Vercel Cron calls this path with GET. POST remains available for a manual bearer call. */

@@ -1,5 +1,6 @@
 import type { Queryable } from "../client";
 import { addDays, daysBetween } from "../services/dates";
+import { recordAudit } from "../services/audit";
 import { decryptSecret, encryptSecret } from "./crypto";
 import { queryHash, safeAnalyticsPath, safeSearchQuery, type AnalyticsProvider } from "./measure";
 import { checkCompatibility, ga4PropertyPath, ga4ReportBody, ga4Template, isInvalidGrant, parseGa4Report } from "./providers/ga4";
@@ -18,6 +19,7 @@ export type FetchLike = (url: string, init?: { method?: string; headers?: Record
 export interface SyncDeps {
   fetch: FetchLike;
   now: Date;
+  deadlineAt?: number;
   pageSize?: number;
   failOnPage?: number;
   googleClientId?: string;
@@ -26,7 +28,7 @@ export interface SyncDeps {
   wixAppSecret?: string;
 }
 
-interface JobRow {
+export interface JobRow {
   id: string;
   client_id: string;
   website_id: string;
@@ -36,9 +38,10 @@ interface JobRow {
   start_date: string;
   end_date: string;
   attempts: number;
+  lease_owner: string;
 }
 
-interface ConnectionRow {
+export interface ConnectionRow {
   id: string;
   client_id: string;
   website_id: string;
@@ -50,7 +53,7 @@ interface ConnectionRow {
   status: string;
 }
 
-interface TokenBundle {
+export interface TokenBundle {
   accessToken: string;
   refreshToken?: string;
   expiresAt?: string;
@@ -66,9 +69,11 @@ interface FactRow {
 
 class RetryableError extends Error {
   seconds: number;
-  constructor(seconds: number) {
+  code: "rate_limited" | "provider_unavailable" | "worker_deadline";
+  constructor(seconds: number, code: "rate_limited" | "provider_unavailable" | "worker_deadline") {
     super("retry");
     this.seconds = seconds;
+    this.code = code;
   }
 }
 
@@ -84,6 +89,38 @@ const TEMPLATES: Record<AnalyticsProvider, string[]> = {
   wix: ["wix.data_daily"],
   gsc: ["gsc.totals", "gsc.pages", "gsc.queries"],
 };
+
+const MAX_ATTEMPTS = 5;
+const LEASE_SECONDS = 150;
+const MAX_BACKOFF_SECONDS = 30 * 60;
+
+interface KnownCapability {
+  supported_metrics: string[];
+  supported_dimensions: string[];
+  status: string;
+}
+
+interface SealedTokenRow {
+  ciphertext: string;
+  nonce: string;
+  client_id: string;
+}
+
+export interface ClaimedAnalyticsJob {
+  job: JobRow;
+  connection: ConnectionRow;
+  sealedToken: SealedTokenRow | null;
+  capability: KnownCapability | null;
+  runId: string;
+  owner: string;
+}
+
+interface PulledJob {
+  facts?: { rows: FactRow[]; timezone: string; pages: number; quota?: Record<string, unknown> };
+  capabilities?: Array<{ templateKey: string; metrics: string[]; dimensions: string[]; dependencies: string[]; status: "supported" | "unsupported" }>;
+}
+
+export type WorkerJobResult = "succeeded" | "failed" | "retry" | "reconnect" | "stale";
 
 export function civilDate(timeZone: string, now: Date): string {
   return new Intl.DateTimeFormat("en-CA", { timeZone, year: "numeric", month: "2-digit", day: "2-digit" }).format(now);
@@ -121,19 +158,44 @@ export async function enqueueJob(db: Queryable, input: {
   version?: number;
 }): Promise<{ id: string; reused: boolean }> {
   const hash = queryHash(input.templateKey, input.version ?? 1, { start: input.start, end: input.end });
-  const existing = await db.query<{ id: string }>(
-    `select id from analytics_jobs
-     where connection_id = $1 and template_key = $2 and query_hash = $3 and start_date = $4 and end_date = $5 and state in ('queued', 'leased')
+  const existing = await db.query<{ id: string; state: string }>(
+    `select id, state from analytics_jobs
+     where connection_id = $1 and template_key = $2 and query_hash = $3 and start_date = $4 and end_date = $5 and state <> 'cancelled'
+     order by created_at desc
      limit 1`,
     [input.connectionId, input.templateKey, hash, input.start, input.end],
   );
-  if (existing.rows[0]) return { id: existing.rows[0].id, reused: true };
+  if (existing.rows[0]) {
+    if (existing.rows[0].state === "succeeded") {
+      await db.query(
+        `update analytics_jobs
+         set state = 'queued', attempts = 0, next_attempt_at = now(), safe_error_code = null,
+             last_error_at = null, failed_at = null, updated_at = now()
+         where id = $1 and state = 'succeeded'`,
+        [existing.rows[0].id],
+      );
+    }
+    return { id: existing.rows[0].id, reused: true };
+  }
   const { rows } = await db.query<{ id: string }>(
     `insert into analytics_jobs (client_id, website_id, connection_id, template_key, query_hash, start_date, end_date)
-     values ($1, $2, $3, $4, $5, $6, $7) returning id`,
+     values ($1, $2, $3, $4, $5, $6, $7)
+     on conflict (connection_id, template_key, query_hash, start_date, end_date)
+       where state in ('queued', 'leased')
+     do nothing
+     returning id`,
     [input.clientId, input.websiteId, input.connectionId, input.templateKey, hash, input.start, input.end],
   );
-  return { id: rows[0]!.id, reused: false };
+  if (rows[0]) return { id: rows[0].id, reused: false };
+  const raced = await db.query<{ id: string }>(
+    `select id from analytics_jobs
+     where connection_id = $1 and template_key = $2 and query_hash = $3
+       and start_date = $4 and end_date = $5 and state in ('queued', 'leased')
+     limit 1`,
+    [input.connectionId, input.templateKey, hash, input.start, input.end],
+  );
+  if (!raced.rows[0]) throw new Error("analytics_job_enqueue_conflict");
+  return { id: raced.rows[0].id, reused: true };
 }
 
 export async function enqueueDue(db: Queryable, now: Date, websiteId?: string): Promise<number> {
@@ -183,6 +245,7 @@ export async function enqueueBackfill(db: Queryable, connectionId: string, oldes
 export interface ConnectionSyncStatus {
   connectionId: string;
   queued: number;
+  retryScheduled: number;
   leased: number;
   failed: number;
   reconnectRequired: number;
@@ -245,6 +308,7 @@ export async function listConnectionSyncStatus(db: Queryable, clientId: string):
   const { rows } = await db.query<{
     connection_id: string;
     queued: number;
+    retry_scheduled: number;
     leased: number;
     failed: number;
     reconnect_required: number;
@@ -252,7 +316,8 @@ export async function listConnectionSyncStatus(db: Queryable, clientId: string):
     safe_error: string | null;
   }>(
     `select c.id as connection_id,
-       count(j.id) filter (where j.state = 'queued')::int as queued,
+       count(j.id) filter (where j.state = 'queued' and j.next_attempt_at <= now())::int as queued,
+       count(j.id) filter (where j.state = 'queued' and j.next_attempt_at > now())::int as retry_scheduled,
        count(j.id) filter (where j.state = 'leased')::int as leased,
        count(j.id) filter (where j.state = 'failed')::int as failed,
        count(j.id) filter (where j.state = 'reconnect_required')::int as reconnect_required,
@@ -273,6 +338,7 @@ export async function listConnectionSyncStatus(db: Queryable, clientId: string):
   return rows.map((row) => ({
     connectionId: row.connection_id,
     queued: Number(row.queued),
+    retryScheduled: Number(row.retry_scheduled),
     leased: Number(row.leased),
     failed: Number(row.failed),
     reconnectRequired: Number(row.reconnect_required),
@@ -281,100 +347,273 @@ export async function listConnectionSyncStatus(db: Queryable, clientId: string):
   }));
 }
 
-export async function leaseNext(db: Queryable, owner: string, now: Date): Promise<JobRow | null> {
+export function retryBackoffSeconds(attempt: number, providerSeconds = 0): number {
+  const exponential = Math.min(MAX_BACKOFF_SECONDS, 30 * (2 ** Math.max(0, attempt - 1)));
+  return Math.max(exponential, Math.min(MAX_BACKOFF_SECONDS, Math.max(0, providerSeconds)));
+}
+
+export async function reapExpiredLeases(db: Queryable, now: Date): Promise<number> {
   const at = now.toISOString();
-  await db.query(
+  const { rows } = await db.query<{ id: string; terminal: boolean }>(
     `update analytics_jobs
-     set state = 'failed', safe_error_code = 'lease_expired', lease_owner = null, lease_until = null, updated_at = $1
-     where state = 'leased' and lease_until is not null and lease_until < $1::timestamptz and attempts >= 5`,
-    [at],
+     set state = case when attempts >= $2 then 'failed' else 'queued' end,
+         next_attempt_at = case
+           when attempts >= $2 then next_attempt_at
+           else $1::timestamptz + least($3, 30 * power(2, greatest(attempts - 1, 0))) * interval '1 second'
+         end,
+         safe_error_code = 'lease_expired',
+         last_error_at = $1,
+         failed_at = case when attempts >= $2 then $1 else null end,
+         lease_owner = null,
+         lease_until = null,
+         heartbeat_at = null,
+         updated_at = $1
+     where state = 'leased' and lease_until is not null and lease_until < $1::timestamptz
+     returning id, attempts >= $2 as terminal`,
+    [at, MAX_ATTEMPTS, MAX_BACKOFF_SECONDS],
   );
-  await db.query(
-    `update analytics_jobs
-     set state = 'queued', next_attempt_at = $1, lease_owner = null, lease_until = null, updated_at = $1
-     where state = 'leased' and lease_until is not null and lease_until < $1::timestamptz and attempts < 5`,
-    [at],
-  );
+  if (rows.length > 0) {
+    await db.query(
+      `update analytics_sync_runs
+       set finished_at = $2, result = 'failed', safe_error_code = 'lease_expired'
+       where finished_at is null and job_id = any($1::uuid[])`,
+      [rows.map((row) => row.id), at],
+    );
+  }
+  return rows.length;
+}
+
+export async function leaseNext(db: Queryable, owner: string, now: Date): Promise<JobRow | null> {
+  await reapExpiredLeases(db, now);
   const { rows } = await db.query<JobRow>(
     `with next as (
-       select id from analytics_jobs
-       where state = 'queued' and next_attempt_at <= $2
-       order by next_attempt_at, id
+       select candidate.id from analytics_jobs candidate
+       where candidate.state = 'queued' and candidate.next_attempt_at <= $2
+         and not exists (
+           select 1 from analytics_jobs active
+           where active.connection_id = candidate.connection_id and active.state = 'leased'
+         )
+       order by candidate.next_attempt_at, candidate.created_at, candidate.id
        for update skip locked
        limit 1
      )
      update analytics_jobs j
-     set state = 'leased', lease_owner = $1, lease_until = $2::timestamptz + interval '2 minutes', heartbeat_at = $2, attempts = attempts + 1, updated_at = $2
+     set state = 'leased',
+         lease_owner = $1,
+         lease_until = $2::timestamptz + ($3 * interval '1 second'),
+         heartbeat_at = $2,
+         attempts = attempts + 1,
+         failed_at = null,
+         updated_at = $2
      from next where j.id = next.id
-     returning j.id, j.client_id, j.website_id, j.connection_id, j.template_key, j.query_hash, j.start_date::text, j.end_date::text, j.attempts`,
-    [owner, now.toISOString()],
+     returning j.id, j.client_id, j.website_id, j.connection_id, j.template_key, j.query_hash,
+       j.start_date::text, j.end_date::text, j.attempts, j.lease_owner`,
+    [owner, now.toISOString(), LEASE_SECONDS],
   );
   return rows[0] ?? null;
 }
 
-export async function executeJob(db: Queryable, job: JobRow, deps: SyncDeps): Promise<{ result: "succeeded" | "failed" | "retry" | "reconnect" }> {
+export async function claimNextJob(db: Queryable, owner: string, now: Date): Promise<ClaimedAnalyticsJob | null> {
+  const job = await leaseNext(db, owner, now);
+  if (!job) return null;
   const connection = await loadConnection(db, job.connection_id, job.client_id);
+  const sealedToken = await loadSealedToken(db, connection);
+  const capability = await loadCapability(db, connection.id, job.template_key);
   const run = await db.query<{ id: string }>(
     `insert into analytics_sync_runs (job_id, client_id, website_id, connection_id, result) values ($1, $2, $3, $4, 'running') returning id`,
     [job.id, job.client_id, job.website_id, job.connection_id],
   );
-  const runId = run.rows[0]!.id;
-  try {
-    const token = await loadToken(db, connection);
-    const current = await ensureAccessToken(db, connection, token, deps);
-    const pulled = await pullTemplate(db, connection, job, current, deps);
-    if (pulled.capabilities) await storeCapabilities(db, connection, pulled.capabilities);
-    if (pulled.facts) {
-      await promote(db, {
-        connection,
-        job,
-        facts: pulled.facts.rows,
-        completeness: pulled.facts.rows.length === 0 ? "empty" : "complete",
-        timezone: pulled.facts.timezone,
-        pages: pulled.facts.pages,
-        quota: pulled.facts.quota ?? {},
-      });
-    }
-    await finish(db, job.id, runId, "succeeded", pulled.facts?.pages ?? pulled.capabilities?.length ?? 0, pulled.facts?.rows.length ?? 0, null);
-    return { result: "succeeded" };
-  } catch (error) {
-    if (error instanceof RetryableError) {
-      const exhausted = job.attempts >= 5;
-      await db.query(
-        `update analytics_jobs set state = $2, next_attempt_at = $3, safe_error_code = 'rate_limited', lease_owner = null, lease_until = null, updated_at = now() where id = $1`,
-        [job.id, exhausted ? "failed" : "queued", new Date(deps.now.getTime() + error.seconds * 1000).toISOString()],
-      );
-      await finish(db, job.id, runId, exhausted ? "failed" : "running", 0, 0, "rate_limited");
-      return { result: exhausted ? "failed" : "retry" };
-    }
-    if (error instanceof ReconnectError) {
-      await db.query("update analytics_connections set status = 'reconnect_required', updated_at = now() where id = $1", [connection.id]);
-      await db.query("update analytics_jobs set state = 'reconnect_required', safe_error_code = 'reconnect_required', lease_owner = null, updated_at = now() where id = $1", [job.id]);
-      await finish(db, job.id, runId, "reconnect_required", 0, 0, "reconnect_required");
-      return { result: "reconnect" };
-    }
-    const code = error instanceof Error && (error.message === "page_failed" || error.message === "unsupported") ? error.message : "provider_rejected";
-    await db.query("update analytics_jobs set state = 'failed', safe_error_code = $2, lease_owner = null, updated_at = now() where id = $1", [job.id, code]);
-    await finish(db, job.id, runId, "failed", 0, 0, code);
-    return { result: "failed" };
-  }
+  return { job, connection, sealedToken, capability, runId: run.rows[0]!.id, owner };
 }
 
-export async function runWorkerOnce(db: Queryable, owner: string, deps: SyncDeps): Promise<{ worked: boolean; result?: string }> {
-  await enqueueDue(db, deps.now);
-  const job = await leaseNext(db, owner, deps.now);
-  if (!job) return { worked: false };
-  const outcome = await executeJob(db, job, deps);
+export async function executeClaimedJob(
+  run: <T>(fn: (db: Queryable) => Promise<T>) => Promise<T>,
+  claimed: ClaimedAnalyticsJob,
+  deps: SyncDeps,
+): Promise<{ result: WorkerJobResult }> {
+  let original: TokenBundle | undefined;
+  let current: TokenBundle | undefined;
+  let pulled: PulledJob;
+  try {
+    original = decodeClaimedToken(claimed);
+    current = await ensureAccessToken(claimed.connection, original, deps);
+    pulled = await pullTemplate(claimed.connection, claimed.job, current, claimed.capability, deps);
+  } catch (error) {
+    return run((db) => failClaimedJob(db, claimed, error, original, current, deps.now));
+  }
+  return run((db) => finalizeClaimedJob(db, claimed, pulled, original, current));
+}
+
+export async function runWorkerOnce(
+  run: <T>(fn: (db: Queryable) => Promise<T>) => Promise<T>,
+  owner: string,
+  deps: SyncDeps,
+): Promise<{ worked: boolean; result?: WorkerJobResult }> {
+  const claimed = await run((db) => claimNextJob(db, owner, deps.now));
+  if (!claimed) return { worked: false };
+  const outcome = await executeClaimedJob(run, claimed, deps);
   return { worked: true, result: outcome.result };
 }
 
-async function finish(db: Queryable, jobId: string, runId: string, result: string, pages: number, rows: number, code: string | null): Promise<void> {
+/** Compatibility helper for focused DB tests. Production workers use executeClaimedJob with separate transactions. */
+export async function executeJob(db: Queryable, job: JobRow, deps: SyncDeps): Promise<{ result: WorkerJobResult }> {
+  const connection = await loadConnection(db, job.connection_id, job.client_id);
+  const sealedToken = await loadSealedToken(db, connection);
+  const capability = await loadCapability(db, connection.id, job.template_key);
+  const run = await db.query<{ id: string }>(
+    `insert into analytics_sync_runs (job_id, client_id, website_id, connection_id, result) values ($1, $2, $3, $4, 'running') returning id`,
+    [job.id, job.client_id, job.website_id, job.connection_id],
+  );
+  return executeClaimedJob(async (fn) => fn(db), {
+    job,
+    connection,
+    sealedToken,
+    capability,
+    runId: run.rows[0]!.id,
+    owner: job.lease_owner,
+  }, deps);
+}
+
+async function lockOwnedClaim(db: Queryable, claimed: ClaimedAnalyticsJob): Promise<boolean> {
+  const { rows } = await db.query<{ id: string }>(
+    `select id from analytics_jobs
+     where id = $1 and state = 'leased' and lease_owner = $2
+     for update`,
+    [claimed.job.id, claimed.owner],
+  );
+  return Boolean(rows[0]);
+}
+
+async function saveRefreshedToken(
+  db: Queryable,
+  claimed: ClaimedAnalyticsJob,
+  original: TokenBundle | undefined,
+  token: TokenBundle | undefined,
+): Promise<void> {
+  if (!original || !token || token === original || !claimed.connection.secret_ref) return;
+  const sealed = encryptSecret(JSON.stringify(token));
+  await db.query(
+    "update analytics_secrets set ciphertext = $2, nonce = $3 where id = $1 and connection_id = $4",
+    [claimed.connection.secret_ref, sealed.ciphertext, sealed.nonce, claimed.connection.id],
+  );
+}
+
+async function finalizeClaimedJob(
+  db: Queryable,
+  claimed: ClaimedAnalyticsJob,
+  pulled: PulledJob,
+  original: TokenBundle,
+  token: TokenBundle,
+): Promise<{ result: WorkerJobResult }> {
+  if (!await lockOwnedClaim(db, claimed)) return { result: "stale" };
+  await saveRefreshedToken(db, claimed, original, token);
+  if (pulled.capabilities) await storeCapabilities(db, claimed.connection, pulled.capabilities);
+  if (pulled.facts) {
+    await promote(db, {
+      connection: claimed.connection,
+      job: claimed.job,
+      facts: pulled.facts.rows,
+      completeness: pulled.facts.rows.length === 0 ? "empty" : "complete",
+      timezone: pulled.facts.timezone,
+      pages: pulled.facts.pages,
+      quota: pulled.facts.quota ?? {},
+    });
+  }
+  await finish(
+    db,
+    claimed.job.id,
+    claimed.runId,
+    "succeeded",
+    pulled.facts?.pages ?? pulled.capabilities?.length ?? 0,
+    pulled.facts?.rows.length ?? 0,
+    null,
+    pulled.facts?.quota ?? {},
+  );
+  return { result: "succeeded" };
+}
+
+async function failClaimedJob(
+  db: Queryable,
+  claimed: ClaimedAnalyticsJob,
+  error: unknown,
+  original: TokenBundle | undefined,
+  token: TokenBundle | undefined,
+  now: Date,
+): Promise<{ result: WorkerJobResult }> {
+  if (!await lockOwnedClaim(db, claimed)) return { result: "stale" };
+  await saveRefreshedToken(db, claimed, original, token);
+  const at = now.toISOString();
+  if (error instanceof RetryableError) {
+    const exhausted = claimed.job.attempts >= MAX_ATTEMPTS;
+    const delay = retryBackoffSeconds(claimed.job.attempts, error.seconds);
+    await db.query(
+      `update analytics_jobs
+       set state = $2,
+           next_attempt_at = $3,
+           safe_error_code = $4,
+           last_error_at = $5,
+           failed_at = case when $2 = 'failed' then $5::timestamptz else null end,
+           lease_owner = null,
+           lease_until = null,
+           heartbeat_at = null,
+           updated_at = $5
+       where id = $1`,
+      [claimed.job.id, exhausted ? "failed" : "queued", new Date(now.getTime() + delay * 1000).toISOString(), error.code, at],
+    );
+    await finish(db, claimed.job.id, claimed.runId, "failed", 0, 0, error.code);
+    return { result: exhausted ? "failed" : "retry" };
+  }
+  if (error instanceof ReconnectError) {
+    await db.query("update analytics_connections set status = 'reconnect_required', updated_at = $2 where id = $1", [claimed.connection.id, at]);
+    await db.query(
+      `update analytics_jobs
+       set state = 'reconnect_required', safe_error_code = 'reconnect_required', last_error_at = $2,
+           failed_at = $2, lease_owner = null, lease_until = null, heartbeat_at = null, updated_at = $2
+       where id = $1`,
+      [claimed.job.id, at],
+    );
+    await finish(db, claimed.job.id, claimed.runId, "reconnect_required", 0, 0, "reconnect_required");
+    return { result: "reconnect" };
+  }
+  const code = error instanceof Error && (error.message === "page_failed" || error.message === "unsupported")
+    ? error.message
+    : "provider_rejected";
+  await db.query(
+    `update analytics_jobs
+     set state = 'failed', safe_error_code = $2, last_error_at = $3, failed_at = $3,
+         lease_owner = null, lease_until = null, heartbeat_at = null, updated_at = $3
+     where id = $1`,
+    [claimed.job.id, code, at],
+  );
+  await finish(db, claimed.job.id, claimed.runId, "failed", 0, 0, code);
+  return { result: "failed" };
+}
+
+async function finish(
+  db: Queryable,
+  jobId: string,
+  runId: string,
+  result: string,
+  pages: number,
+  rows: number,
+  code: string | null,
+  quota: Record<string, unknown> = {},
+): Promise<void> {
   if (result === "succeeded") {
-    await db.query("update analytics_jobs set state = 'succeeded', lease_owner = null, lease_until = null, safe_error_code = null, updated_at = now() where id = $1", [jobId]);
+    await db.query(
+      `update analytics_jobs
+       set state = 'succeeded', lease_owner = null, lease_until = null, heartbeat_at = null,
+           safe_error_code = null, last_error_at = null, failed_at = null, updated_at = now()
+       where id = $1`,
+      [jobId],
+    );
   }
   await db.query(
-    `update analytics_sync_runs set finished_at = now(), result = $2, pages_fetched = $3, rows_fetched = $4, safe_error_code = $5 where id = $1`,
-    [runId, result === "running" ? "failed" : result, pages, rows, code],
+    `update analytics_sync_runs
+     set finished_at = now(), result = $2, pages_fetched = $3, rows_fetched = $4,
+         safe_error_code = $5, quota_meta = $6
+     where id = $1`,
+    [runId, result, pages, rows, code, JSON.stringify(quota)],
   );
 }
 
@@ -426,19 +665,20 @@ async function promote(db: Queryable, input: {
   await db.query("update analytics_report_partitions set published = true where id = $1", [partitionId]);
 }
 
-async function pullTemplate(db: Queryable, connection: ConnectionRow, job: JobRow, token: TokenBundle, deps: SyncDeps): Promise<{
-  facts?: { rows: FactRow[]; timezone: string; pages: number; quota?: Record<string, unknown> };
-  capabilities?: Array<{ templateKey: string; metrics: string[]; dimensions: string[]; dependencies: string[]; status: "supported" | "unsupported" }>;
-}> {
+async function pullTemplate(
+  connection: ConnectionRow,
+  job: JobRow,
+  token: TokenBundle,
+  known: KnownCapability | null,
+  deps: SyncDeps,
+): Promise<PulledJob> {
   if (connection.provider === "ga4") {
     const spec = ga4Template(job.template_key);
-    const known = await db.query<{ supported_metrics: string[]; supported_dimensions: string[]; status: string }>(
-      `select supported_metrics, supported_dimensions, status from analytics_capabilities
-       where connection_id = $1 and template_key = $2 order by checked_at desc limit 1`,
-      [connection.id, job.template_key],
-    );
-    const row = known.rows[0];
-    const decision = checkCompatibility(spec, row ? { metrics: row.supported_metrics ?? [], dimensions: row.supported_dimensions ?? [], status: row.status } : null);
+    const decision = checkCompatibility(spec, known ? {
+      metrics: known.supported_metrics ?? [],
+      dimensions: known.supported_dimensions ?? [],
+      status: known.status,
+    } : null);
     if (decision === "unsupported") throw new Error("unsupported");
     return {
       facts: await pullGa4(connection, job, token, deps),
@@ -459,6 +699,7 @@ async function pullGa4(connection: ConnectionRow, job: JobRow, token: TokenBundl
   let pages = 0;
   let quota: Record<string, unknown> | undefined;
   while (pages < 20) {
+    assertWorkerTime(deps);
     pages += 1;
     if (deps.failOnPage === pages) throw new Error("page_failed");
     const response = await authorized(deps, `https://analyticsdata.googleapis.com/v1beta/${property}:runReport`, token.accessToken, ga4ReportBody({
@@ -489,6 +730,7 @@ async function pullGa4(connection: ConnectionRow, job: JobRow, token: TokenBundl
 }
 
 async function pullWix(connection: ConnectionRow, job: JobRow, token: TokenBundle, deps: SyncDeps): Promise<{ rows: FactRow[]; timezone: string; pages: number }> {
+  assertWorkerTime(deps);
   const today = civilDate(connection.provider_timezone || "Asia/Singapore", deps.now);
   const window = wixDataWindow(today, job.start_date, job.end_date);
   if ("error" in window) throw new Error("provider_rejected");
@@ -535,6 +777,7 @@ async function pullGsc(connection: ConnectionRow, job: JobRow, token: TokenBundl
   let startRow = 0;
   let pages = 0;
   while (pages < 20) {
+    assertWorkerTime(deps);
     pages += 1;
     if (deps.failOnPage === pages) throw new Error("page_failed");
     const response = await authorized(
@@ -584,14 +827,10 @@ async function storeCapabilities(db: Queryable, connection: ConnectionRow, capab
   }
 }
 
-async function ensureAccessToken(db: Queryable, connection: ConnectionRow, token: TokenBundle, deps: SyncDeps): Promise<TokenBundle> {
+async function ensureAccessToken(connection: ConnectionRow, token: TokenBundle, deps: SyncDeps): Promise<TokenBundle> {
   if (!token.expiresAt || new Date(token.expiresAt).getTime() > deps.now.getTime() + 60_000) return token;
-  const refreshed = connection.provider === "wix" ? await refreshWix(connection, token, deps) : await refreshGoogle(token, deps);
-  if (connection.secret_ref) {
-    const sealed = encryptSecret(JSON.stringify(refreshed));
-    await db.query("update analytics_secrets set ciphertext = $2, nonce = $3 where id = $1 and connection_id = $4", [connection.secret_ref, sealed.ciphertext, sealed.nonce, connection.id]);
-  }
-  return refreshed;
+  assertWorkerTime(deps);
+  return connection.provider === "wix" ? refreshWix(connection, token, deps) : refreshGoogle(token, deps);
 }
 
 async function refreshWix(connection: ConnectionRow, token: TokenBundle, deps: SyncDeps): Promise<TokenBundle> {
@@ -640,9 +879,28 @@ async function authorized(deps: SyncDeps, url: string, accessToken: string, body
 }
 
 function assertStatus(status: number, retryAfter: string | null): void {
-  if (status === 429 || status >= 500) throw new RetryableError(Number(retryAfter) || 30);
+  if (status === 429) throw new RetryableError(Number(retryAfter) || 30, "rate_limited");
+  if (status >= 500) throw new RetryableError(Number(retryAfter) || 30, "provider_unavailable");
   if (status === 401 || status === 403) throw new ReconnectError();
   if (status >= 400) throw new Error("provider_rejected");
+}
+
+function assertWorkerTime(deps: SyncDeps): void {
+  if (deps.deadlineAt !== undefined && Date.now() >= deps.deadlineAt) {
+    throw new RetryableError(30, "worker_deadline");
+  }
+}
+
+async function loadCapability(db: Queryable, connectionId: string, templateKey: string): Promise<KnownCapability | null> {
+  const { rows } = await db.query<KnownCapability>(
+    `select supported_metrics, supported_dimensions, status
+     from analytics_capabilities
+     where connection_id = $1 and template_key = $2
+     order by checked_at desc
+     limit 1`,
+    [connectionId, templateKey],
+  );
+  return rows[0] ?? null;
 }
 
 async function loadConnection(db: Queryable, id: string, clientId: string): Promise<ConnectionRow> {
@@ -656,14 +914,75 @@ async function loadConnection(db: Queryable, id: string, clientId: string): Prom
   return row;
 }
 
-async function loadToken(db: Queryable, connection: ConnectionRow): Promise<TokenBundle> {
-  const { rows } = await db.query<{ ciphertext: string; nonce: string; client_id: string }>(
+export async function retryFailedAnalyticsJobs(
+  db: Queryable,
+  input: { connectionId: string; actorUserId: string; now?: Date },
+): Promise<number> {
+  const now = input.now ?? new Date();
+  const actor = await db.query<{ allowed: boolean }>(
+    `select exists (
+       select 1 from staff_users where id = $1 and active and platform_role = 'admin'
+     ) as allowed`,
+    [input.actorUserId],
+  );
+  if (!actor.rows[0]?.allowed) return 0;
+  const connection = await db.query<{ id: string; client_id: string; status: string }>(
+    `select id, client_id, status
+     from analytics_connections
+     where id = $1 and disconnected_at is null
+     for update`,
+    [input.connectionId],
+  );
+  const row = connection.rows[0];
+  if (!row || row.status !== "connected") return 0;
+  const retried = await db.query<{ id: string }>(
+    `update analytics_jobs
+     set state = 'queued',
+         attempts = 0,
+         next_attempt_at = $2,
+         lease_owner = null,
+         lease_until = null,
+         heartbeat_at = null,
+         safe_error_code = null,
+         last_error_at = null,
+         failed_at = null,
+         manual_retry_count = manual_retry_count + 1,
+         updated_at = $2
+     where connection_id = $1 and state = 'failed'
+     returning id`,
+    [input.connectionId, now.toISOString()],
+  );
+  if (retried.rows.length > 0) {
+    await recordAudit(db, {
+      actorType: "staff",
+      actorUserId: input.actorUserId,
+      action: "analytics_jobs.retry",
+      targetType: "analytics_connection",
+      targetId: input.connectionId,
+      clientId: row.client_id,
+      outcome: "success",
+      metadata: { count: retried.rows.length },
+    });
+  }
+  return retried.rows.length;
+}
+
+async function loadSealedToken(db: Queryable, connection: ConnectionRow): Promise<SealedTokenRow | null> {
+  const { rows } = await db.query<SealedTokenRow>(
     "select ciphertext, nonce, client_id from analytics_secrets where id = $1 and connection_id = $2",
     [connection.secret_ref, connection.id],
   );
-  const secret = rows[0];
-  if (!secret || secret.client_id !== connection.client_id) throw new ReconnectError();
-  return JSON.parse(decryptSecret(secret.ciphertext, secret.nonce)) as TokenBundle;
+  return rows[0] ?? null;
+}
+
+function decodeClaimedToken(claimed: ClaimedAnalyticsJob): TokenBundle {
+  const secret = claimed.sealedToken;
+  if (!secret || secret.client_id !== claimed.connection.client_id) throw new ReconnectError();
+  try {
+    return JSON.parse(decryptSecret(secret.ciphertext, secret.nonce)) as TokenBundle;
+  } catch {
+    throw new ReconnectError();
+  }
 }
 
 export function sealedToken(token: TokenBundle): { ciphertext: string; nonce: string } {

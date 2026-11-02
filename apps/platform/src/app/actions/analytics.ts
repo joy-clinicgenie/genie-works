@@ -15,6 +15,7 @@ import {
   listWebsites,
   readExchangedToken,
   recordImport,
+  retryFailedAnalyticsJobs,
   saveConnection,
   setSourcePolicy,
   todaySgt,
@@ -178,6 +179,20 @@ export async function refreshAnalytics(formData: FormData) {
   await serviceTx((db) => enqueueDue(db, new Date(), websiteId));
   revalidatePath("/settings");
   done("queued", clientId);
+}
+
+export async function retryAnalyticsFailures(formData: FormData) {
+  const access = await requireAccess();
+  const clientId = str(formData, "clientId");
+  const connectionId = str(formData, "connectionId");
+  if (!canWriteConnectionSecrets(access)) fail("secret_denied", clientId);
+  if (!connectionId) fail("denied", clientId);
+  const retried = await serviceTx((db) => retryFailedAnalyticsJobs(db, {
+    connectionId,
+    actorUserId: access.user.id,
+  }));
+  revalidatePath("/settings");
+  done(retried > 0 ? "retry_queued" : "retry_unavailable", clientId);
 }
 
 export async function importAnalyticsCsv(formData: FormData) {

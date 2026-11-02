@@ -27,10 +27,11 @@ describe("analytics worker scheduler preparation", () => {
     expect(route).toContain("drainMaintenance");
   });
 
-  it("requeues an expired lease before the fifth attempt and then records a safe failure", () => {
+  it("uses durable claims, separate execution and safe lease recovery", () => {
     const source = readFileSync(resolve(root, "packages/db/src/analytics/sync.ts"), "utf8");
-    expect(source).toContain("attempts < 5");
-    expect(source).toContain("attempts >= 5");
+    expect(source).toContain("claimNextJob");
+    expect(source).toContain("executeClaimedJob");
+    expect(source).toContain("reapExpiredLeases");
     expect(source).toContain("lease_expired");
   });
 });
