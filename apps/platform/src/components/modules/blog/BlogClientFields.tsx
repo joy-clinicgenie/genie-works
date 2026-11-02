@@ -20,7 +20,12 @@ export function BlogClientFields({
 
   function openClient(nextClient: string, form: HTMLFormElement | null) {
     const nextWebsite = nextClient ? chooseClientWebsite(nextClient, websites) : "";
-    const params = new URLSearchParams(form ? new FormData(form) : undefined);
+    const params = new URLSearchParams();
+    if (form) {
+      for (const [key, value] of new FormData(form)) {
+        if (typeof value === "string") params.append(key, value);
+      }
+    }
     if (nextClient) params.set("client", nextClient);
     else params.delete("client");
     if (nextWebsite) params.set("website", nextWebsite);
