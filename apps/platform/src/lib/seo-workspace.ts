@@ -12,7 +12,6 @@ import {
   listSeoPageSettings,
   listSeoPages,
   listSeoRedirects,
-  listShellClients,
   gscDueWindow,
   listTasks,
   listWebsites,
@@ -31,6 +30,7 @@ import {
 } from "@clinic-genie/db";
 import { TASK_STATUSES } from "@clinic-genie/contracts";
 import { staffTx } from "@/lib/db";
+import { shellClients } from "@/lib/client-registry";
 import { clientLabel } from "@/lib/client-label";
 
 export type SeoSearch = Record<string, string | string[] | undefined>;
@@ -212,7 +212,8 @@ async function loadSeoContextWithDb(db: PoolClient, query: SeoSearch): Promise<S
   const client = one(query.client);
   const website = one(query.website);
   const demo = false;
-  const records = await listShellClients(db);
+  // Copied, because an unlisted client is unshifted onto it below and the registry read is shared.
+  const records = [...await shellClients(db)];
   if (client && !records.some((item) => item.id === client)) {
     const extra = await getClient(db, client);
     if (extra) records.unshift({

@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import { afterAll, describe, expect, it, vi } from "vitest";
 import pg from "pg";
 import { assertEnquiryFixtureUrl, canExport, loadRootEnv, type AccessProfile } from "@clinic-genie/db";
@@ -168,6 +170,17 @@ describe("enquiry comparison and export", () => {
     expect(canExport(profile("specialist"))).toBe(false);
     expect(canExport(profile("reviewer"))).toBe(false);
     expect(canExport(profile("read_only"))).toBe(false);
+  });
+
+  it("counts production enquiries once per board read", () => {
+    const source = readFileSync(fileURLToPath(new URL("./form-submissions.ts", import.meta.url)), "utf8");
+    const board = source.slice(source.indexOf("export async function listEnquiryBoard"), source.indexOf("export async function listFormSubmissions"));
+    // The list and the count are the only two reads that build a filter for the current window.
+    expect(board.match(/enquiryWhere\(scope, filters, currentDates/g) ?? []).toHaveLength(2);
+    // The production total is the same count, so it is reused rather than queried again.
+    expect(board).not.toContain("productionWhere");
+    expect(board.match(/select count\(\*\)::int as count/g) ?? []).toHaveLength(1);
+    expect(board).toContain("const listProduction = true;");
   });
 
   it("builds a website form address from the site URL and path", () => {

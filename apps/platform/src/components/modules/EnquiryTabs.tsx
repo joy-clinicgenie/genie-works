@@ -4,9 +4,11 @@ import { usePathname } from "next/navigation";
 import type { ReactNode } from "react";
 import { InnerNavFrame, InnerNavGroup, InnerNavLink } from "@/components/shell/InnerNav";
 
+// The Forms tab is hidden from this nav. /enquiries/forms still resolves for
+// anyone holding the link, and stays listed in EXACT so it does not mark the
+// Enquiries tab active.
 const TABS = [
   ["/enquiries", "Enquiries"],
-  ["/enquiries/forms", "Forms"],
   ["/enquiries/notifications", "Notification status"],
 ] as const;
 

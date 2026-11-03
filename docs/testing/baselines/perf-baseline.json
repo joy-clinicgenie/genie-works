@@ -1,0 +1,1523 @@
+{
+  "generatedAt": "2026-11-03T04:44:42.872Z",
+  "suite": "perf",
+  "origin": "http://127.0.0.1:3418",
+  "build": "production build (next start) from .next-perf",
+  "provider": "Wix reads served by the local mock. Real-provider measurements: NOT MEASURED, by design.",
+  "warmRuns": 5,
+  "databaseCounts": "NOT MEASURED per navigation. pg_stat_statements needs shared_preload_libraries, which the embedded server does not set, and pg_stat_database.xact_commit is flushed on a timer with a lag longer than any usable settle delay (measured: 50 statements gave a delta of 1, then the next window of 6 gave 52). Exact per-path query and round-trip counts come from npm run perf:query-counts.",
+  "pages": [
+    {
+      "id": "dashboard",
+      "label": "Dashboard",
+      "path": "/",
+      "email": "admin@example.invalid",
+      "viewport": "desktop",
+      "cold": {
+        "navigationMs": 176,
+        "primaryDataVisibleMs": 445,
+        "status": 200,
+        "ttfbMs": 152,
+        "responseEndMs": 155,
+        "domContentLoadedMs": 387,
+        "firstContentfulPaintMs": 400,
+        "cumulativeLayoutShift": 0,
+        "requestCount": 12,
+        "transferredBytes": 203893,
+        "providerCalls": 2,
+        "providerMs": 1
+      },
+      "warm": {
+        "navigationMs": {
+          "n": 5,
+          "min": 36,
+          "p50": 41,
+          "p95": 58,
+          "max": 58
+        },
+        "primaryDataVisibleMs": {
+          "n": 5,
+          "min": 59,
+          "p50": 65,
+          "p95": 86,
+          "max": 86
+        },
+        "ttfbMs": {
+          "n": 5,
+          "min": 31,
+          "p50": 37,
+          "p95": 52,
+          "max": 52
+        },
+        "firstContentfulPaintMs": {
+          "n": 4,
+          "min": 52,
+          "p50": 60,
+          "p95": 60,
+          "max": 60
+        },
+        "providerCalls": {
+          "n": 5,
+          "min": 1,
+          "p50": 1,
+          "p95": 1,
+          "max": 1
+        },
+        "providerMs": {
+          "n": 5,
+          "min": 0,
+          "p50": 0,
+          "p95": 1,
+          "max": 1
+        },
+        "cumulativeLayoutShift": 0,
+        "requestCount": 12,
+        "transferredBytes": 11448
+      }
+    },
+    {
+      "id": "enquiries",
+      "label": "Enquiries",
+      "path": "/enquiries",
+      "email": "admin@example.invalid",
+      "viewport": "desktop",
+      "cold": {
+        "navigationMs": 24,
+        "primaryDataVisibleMs": 74,
+        "status": 200,
+        "ttfbMs": 21,
+        "responseEndMs": 23,
+        "domContentLoadedMs": 67,
+        "firstContentfulPaintMs": null,
+        "cumulativeLayoutShift": 0,
+        "requestCount": 12,
+        "transferredBytes": 205128,
+        "providerCalls": 3,
+        "providerMs": 0
+      },
+      "warm": {
+        "navigationMs": {
+          "n": 5,
+          "min": 22,
+          "p50": 33,
+          "p95": 43,
+          "max": 43
+        },
+        "primaryDataVisibleMs": {
+          "n": 5,
+          "min": 50,
+          "p50": 63,
+          "p95": 69,
+          "max": 69
+        },
+        "ttfbMs": {
+          "n": 5,
+          "min": 18,
+          "p50": 28,
+          "p95": 35,
+          "max": 35
+        },
+        "firstContentfulPaintMs": null,
+        "providerCalls": {
+          "n": 5,
+          "min": 3,
+          "p50": 3,
+          "p95": 3,
+          "max": 3
+        },
+        "providerMs": {
+          "n": 5,
+          "min": 0,
+          "p50": 0,
+          "p95": 0,
+          "max": 0
+        },
+        "cumulativeLayoutShift": 0,
+        "requestCount": 12,
+        "transferredBytes": 13306
+      }
+    },
+    {
+      "id": "enquiries-filtered",
+      "label": "Enquiries filtered by status",
+      "path": "/enquiries?status=new",
+      "email": "admin@example.invalid",
+      "viewport": "desktop",
+      "cold": {
+        "navigationMs": 16,
+        "primaryDataVisibleMs": 56,
+        "status": 200,
+        "ttfbMs": 13,
+        "responseEndMs": 15,
+        "domContentLoadedMs": 51,
+        "firstContentfulPaintMs": null,
+        "cumulativeLayoutShift": 0,
+        "requestCount": 12,
+        "transferredBytes": 205181,
+        "providerCalls": 3,
+        "providerMs": 0
+      },
+      "warm": {
+        "navigationMs": {
+          "n": 5,
+          "min": 21,
+          "p50": 29,
+          "p95": 34,
+          "max": 34
+        },
+        "primaryDataVisibleMs": {
+          "n": 5,
+          "min": 52,
+          "p50": 59,
+          "p95": 63,
+          "max": 63
+        },
+        "ttfbMs": {
+          "n": 5,
+          "min": 17,
+          "p50": 26,
+          "p95": 29,
+          "max": 29
+        },
+        "firstContentfulPaintMs": null,
+        "providerCalls": {
+          "n": 5,
+          "min": 3,
+          "p50": 3,
+          "p95": 3,
+          "max": 3
+        },
+        "providerMs": {
+          "n": 5,
+          "min": 0,
+          "p50": 0,
+          "p95": 0,
+          "max": 0
+        },
+        "cumulativeLayoutShift": 0,
+        "requestCount": 12,
+        "transferredBytes": 13359
+      }
+    },
+    {
+      "id": "enquiries-page-2",
+      "label": "Enquiries page 2",
+      "path": "/enquiries?page=2",
+      "email": "admin@example.invalid",
+      "viewport": "desktop",
+      "cold": {
+        "navigationMs": 12,
+        "primaryDataVisibleMs": 64,
+        "status": 200,
+        "ttfbMs": 10,
+        "responseEndMs": 11,
+        "domContentLoadedMs": 59,
+        "firstContentfulPaintMs": null,
+        "cumulativeLayoutShift": 0,
+        "requestCount": 12,
+        "transferredBytes": 203351,
+        "providerCalls": 3,
+        "providerMs": 0
+      },
+      "warm": {
+        "navigationMs": {
+          "n": 5,
+          "min": 14,
+          "p50": 26,
+          "p95": 35,
+          "max": 35
+        },
+        "primaryDataVisibleMs": {
+          "n": 5,
+          "min": 39,
+          "p50": 49,
+          "p95": 57,
+          "max": 57
+        },
+        "ttfbMs": {
+          "n": 5,
+          "min": 9,
+          "p50": 21,
+          "p95": 26,
+          "max": 26
+        },
+        "firstContentfulPaintMs": {
+          "n": 4,
+          "min": 36,
+          "p50": 48,
+          "p95": 52,
+          "max": 52
+        },
+        "providerCalls": {
+          "n": 5,
+          "min": 3,
+          "p50": 3,
+          "p95": 3,
+          "max": 3
+        },
+        "providerMs": {
+          "n": 5,
+          "min": 0,
+          "p50": 0,
+          "p95": 0,
+          "max": 0
+        },
+        "cumulativeLayoutShift": 0,
+        "requestCount": 12,
+        "transferredBytes": 11529
+      }
+    },
+    {
+      "id": "enquiries-clinic-a",
+      "label": "Enquiries scoped to Clinic A",
+      "path": "/enquiries?clinic=demo-clinic-a",
+      "email": "admin@example.invalid",
+      "viewport": "desktop",
+      "cold": {
+        "navigationMs": 13,
+        "primaryDataVisibleMs": 89,
+        "status": 200,
+        "ttfbMs": 10,
+        "responseEndMs": 12,
+        "domContentLoadedMs": 25,
+        "firstContentfulPaintMs": null,
+        "cumulativeLayoutShift": 0,
+        "requestCount": 12,
+        "transferredBytes": 202972,
+        "providerCalls": 3,
+        "providerMs": 0
+      },
+      "warm": {
+        "navigationMs": {
+          "n": 5,
+          "min": 18,
+          "p50": 27,
+          "p95": 35,
+          "max": 35
+        },
+        "primaryDataVisibleMs": {
+          "n": 5,
+          "min": 41,
+          "p50": 53,
+          "p95": 56,
+          "max": 56
+        },
+        "ttfbMs": {
+          "n": 5,
+          "min": 15,
+          "p50": 22,
+          "p95": 26,
+          "max": 26
+        },
+        "firstContentfulPaintMs": {
+          "n": 4,
+          "min": 36,
+          "p50": 52,
+          "p95": 52,
+          "max": 52
+        },
+        "providerCalls": {
+          "n": 5,
+          "min": 3,
+          "p50": 3,
+          "p95": 3,
+          "max": 3
+        },
+        "providerMs": {
+          "n": 5,
+          "min": 0,
+          "p50": 0,
+          "p95": 0,
+          "max": 0
+        },
+        "cumulativeLayoutShift": 0,
+        "requestCount": 12,
+        "transferredBytes": 11150
+      }
+    },
+    {
+      "id": "analytics-overview",
+      "label": "Analytics Overview",
+      "path": "/analytics?client=aaaaaaaa-0000-4000-8000-000000000001&website=a0000000-0000-4000-8000-00000000a001",
+      "email": "admin@example.invalid",
+      "viewport": "desktop",
+      "cold": {
+        "navigationMs": 40,
+        "primaryDataVisibleMs": 78,
+        "status": 200,
+        "ttfbMs": 37,
+        "responseEndMs": 39,
+        "domContentLoadedMs": 72,
+        "firstContentfulPaintMs": null,
+        "cumulativeLayoutShift": 0,
+        "requestCount": 12,
+        "transferredBytes": 211980,
+        "providerCalls": 0,
+        "providerMs": 0
+      },
+      "warm": {
+        "navigationMs": {
+          "n": 5,
+          "min": 34,
+          "p50": 40,
+          "p95": 48,
+          "max": 48
+        },
+        "primaryDataVisibleMs": {
+          "n": 5,
+          "min": 61,
+          "p50": 67,
+          "p95": 75,
+          "max": 75
+        },
+        "ttfbMs": {
+          "n": 5,
+          "min": 16,
+          "p50": 37,
+          "p95": 44,
+          "max": 44
+        },
+        "firstContentfulPaintMs": {
+          "n": 4,
+          "min": 56,
+          "p50": 68,
+          "p95": 68,
+          "max": 68
+        },
+        "providerCalls": {
+          "n": 5,
+          "min": 0,
+          "p50": 0,
+          "p95": 0,
+          "max": 0
+        },
+        "providerMs": {
+          "n": 5,
+          "min": 0,
+          "p50": 0,
+          "p95": 0,
+          "max": 0
+        },
+        "cumulativeLayoutShift": 0,
+        "requestCount": 12,
+        "transferredBytes": 13856
+      }
+    },
+    {
+      "id": "analytics-traffic",
+      "label": "Analytics Traffic",
+      "path": "/analytics/traffic?client=aaaaaaaa-0000-4000-8000-000000000001&website=a0000000-0000-4000-8000-00000000a001",
+      "email": "admin@example.invalid",
+      "viewport": "desktop",
+      "cold": {
+        "navigationMs": 19,
+        "primaryDataVisibleMs": 56,
+        "status": 200,
+        "ttfbMs": 16,
+        "responseEndMs": 17,
+        "domContentLoadedMs": 51,
+        "firstContentfulPaintMs": null,
+        "cumulativeLayoutShift": 0,
+        "requestCount": 12,
+        "transferredBytes": 211679,
+        "providerCalls": 0,
+        "providerMs": 0
+      },
+      "warm": {
+        "navigationMs": {
+          "n": 5,
+          "min": 21,
+          "p50": 38,
+          "p95": 47,
+          "max": 47
+        },
+        "primaryDataVisibleMs": {
+          "n": 5,
+          "min": 48,
+          "p50": 62,
+          "p95": 71,
+          "max": 71
+        },
+        "ttfbMs": {
+          "n": 5,
+          "min": 18,
+          "p50": 34,
+          "p95": 43,
+          "max": 43
+        },
+        "firstContentfulPaintMs": {
+          "n": 4,
+          "min": 56,
+          "p50": 64,
+          "p95": 64,
+          "max": 64
+        },
+        "providerCalls": {
+          "n": 5,
+          "min": 0,
+          "p50": 0,
+          "p95": 0,
+          "max": 0
+        },
+        "providerMs": {
+          "n": 5,
+          "min": 0,
+          "p50": 0,
+          "p95": 0,
+          "max": 0
+        },
+        "cumulativeLayoutShift": 0,
+        "requestCount": 12,
+        "transferredBytes": 13555
+      }
+    },
+    {
+      "id": "analytics-behaviour",
+      "label": "Analytics Behaviour",
+      "path": "/analytics/behavior?client=aaaaaaaa-0000-4000-8000-000000000001&website=a0000000-0000-4000-8000-00000000a001",
+      "email": "admin@example.invalid",
+      "viewport": "desktop",
+      "cold": {
+        "navigationMs": 17,
+        "primaryDataVisibleMs": 95,
+        "status": 200,
+        "ttfbMs": 14,
+        "responseEndMs": 15,
+        "domContentLoadedMs": 27,
+        "firstContentfulPaintMs": 96,
+        "cumulativeLayoutShift": 0,
+        "requestCount": 12,
+        "transferredBytes": 208904,
+        "providerCalls": 0,
+        "providerMs": 0
+      },
+      "warm": {
+        "navigationMs": {
+          "n": 5,
+          "min": 21,
+          "p50": 35,
+          "p95": 41,
+          "max": 41
+        },
+        "primaryDataVisibleMs": {
+          "n": 5,
+          "min": 47,
+          "p50": 59,
+          "p95": 66,
+          "max": 66
+        },
+        "ttfbMs": {
+          "n": 5,
+          "min": 17,
+          "p50": 31,
+          "p95": 38,
+          "max": 38
+        },
+        "firstContentfulPaintMs": {
+          "n": 5,
+          "min": 40,
+          "p50": 52,
+          "p95": 60,
+          "max": 60
+        },
+        "providerCalls": {
+          "n": 5,
+          "min": 0,
+          "p50": 0,
+          "p95": 0,
+          "max": 0
+        },
+        "providerMs": {
+          "n": 5,
+          "min": 0,
+          "p50": 0,
+          "p95": 0,
+          "max": 0
+        },
+        "cumulativeLayoutShift": 0,
+        "requestCount": 12,
+        "transferredBytes": 10780
+      }
+    },
+    {
+      "id": "seo-overview",
+      "label": "SEO Overview",
+      "path": "/seo?client=aaaaaaaa-0000-4000-8000-000000000001&website=a0000000-0000-4000-8000-00000000a001",
+      "email": "admin@example.invalid",
+      "viewport": "desktop",
+      "cold": {
+        "navigationMs": 23,
+        "primaryDataVisibleMs": 60,
+        "status": 200,
+        "ttfbMs": 20,
+        "responseEndMs": 22,
+        "domContentLoadedMs": 58,
+        "firstContentfulPaintMs": null,
+        "cumulativeLayoutShift": 0,
+        "requestCount": 12,
+        "transferredBytes": 207184,
+        "providerCalls": 0,
+        "providerMs": 0
+      },
+      "warm": {
+        "navigationMs": {
+          "n": 5,
+          "min": 20,
+          "p50": 23,
+          "p95": 37,
+          "max": 37
+        },
+        "primaryDataVisibleMs": {
+          "n": 5,
+          "min": 45,
+          "p50": 47,
+          "p95": 61,
+          "max": 61
+        },
+        "ttfbMs": {
+          "n": 5,
+          "min": 16,
+          "p50": 19,
+          "p95": 34,
+          "max": 34
+        },
+        "firstContentfulPaintMs": {
+          "n": 3,
+          "min": 40,
+          "p50": 52,
+          "p95": 56,
+          "max": 56
+        },
+        "providerCalls": {
+          "n": 5,
+          "min": 0,
+          "p50": 0,
+          "p95": 0,
+          "max": 0
+        },
+        "providerMs": {
+          "n": 5,
+          "min": 0,
+          "p50": 0,
+          "p95": 0,
+          "max": 0
+        },
+        "cumulativeLayoutShift": 0,
+        "requestCount": 12,
+        "transferredBytes": 14629
+      }
+    },
+    {
+      "id": "reports-library",
+      "label": "Reports library",
+      "path": "/reports",
+      "email": "admin@example.invalid",
+      "viewport": "desktop",
+      "cold": {
+        "navigationMs": 10,
+        "primaryDataVisibleMs": 63,
+        "status": 200,
+        "ttfbMs": 7,
+        "responseEndMs": 8,
+        "domContentLoadedMs": 59,
+        "firstContentfulPaintMs": null,
+        "cumulativeLayoutShift": 0,
+        "requestCount": 11,
+        "transferredBytes": 199542,
+        "providerCalls": 0,
+        "providerMs": 0
+      },
+      "warm": {
+        "navigationMs": {
+          "n": 5,
+          "min": 12,
+          "p50": 22,
+          "p95": 36,
+          "max": 36
+        },
+        "primaryDataVisibleMs": {
+          "n": 5,
+          "min": 35,
+          "p50": 44,
+          "p95": 62,
+          "max": 62
+        },
+        "ttfbMs": {
+          "n": 5,
+          "min": 8,
+          "p50": 19,
+          "p95": 33,
+          "max": 33
+        },
+        "firstContentfulPaintMs": {
+          "n": 5,
+          "min": 32,
+          "p50": 36,
+          "p95": 56,
+          "max": 56
+        },
+        "providerCalls": {
+          "n": 5,
+          "min": 0,
+          "p50": 0,
+          "p95": 0,
+          "max": 0
+        },
+        "providerMs": {
+          "n": 5,
+          "min": 0,
+          "p50": 0,
+          "p95": 0,
+          "max": 0
+        },
+        "cumulativeLayoutShift": 0,
+        "requestCount": 11,
+        "transferredBytes": 9001
+      }
+    },
+    {
+      "id": "report-new",
+      "label": "Report generation form",
+      "path": "/reports/new?client=aaaaaaaa-0000-4000-8000-000000000001",
+      "email": "admin@example.invalid",
+      "viewport": "desktop",
+      "cold": {
+        "navigationMs": 18,
+        "primaryDataVisibleMs": 69,
+        "status": 200,
+        "ttfbMs": 15,
+        "responseEndMs": 16,
+        "domContentLoadedMs": 65,
+        "firstContentfulPaintMs": null,
+        "cumulativeLayoutShift": 0,
+        "requestCount": 13,
+        "transferredBytes": 214231,
+        "providerCalls": 0,
+        "providerMs": 0
+      },
+      "warm": {
+        "navigationMs": {
+          "n": 5,
+          "min": 14,
+          "p50": 23,
+          "p95": 33,
+          "max": 33
+        },
+        "primaryDataVisibleMs": {
+          "n": 5,
+          "min": 44,
+          "p50": 47,
+          "p95": 101,
+          "max": 101
+        },
+        "ttfbMs": {
+          "n": 5,
+          "min": 8,
+          "p50": 20,
+          "p95": 30,
+          "max": 30
+        },
+        "firstContentfulPaintMs": {
+          "n": 4,
+          "min": 36,
+          "p50": 52,
+          "p95": 76,
+          "max": 76
+        },
+        "providerCalls": {
+          "n": 5,
+          "min": 0,
+          "p50": 0,
+          "p95": 0,
+          "max": 0
+        },
+        "providerMs": {
+          "n": 5,
+          "min": 0,
+          "p50": 0,
+          "p95": 0,
+          "max": 0
+        },
+        "cumulativeLayoutShift": 0,
+        "requestCount": 13,
+        "transferredBytes": 11045
+      }
+    },
+    {
+      "id": "blog-list",
+      "label": "Blog list",
+      "path": "/blog?client=aaaaaaaa-0000-4000-8000-000000000001&website=a0000000-0000-4000-8000-00000000a001",
+      "email": "admin@example.invalid",
+      "viewport": "desktop",
+      "cold": {
+        "navigationMs": 11,
+        "primaryDataVisibleMs": 122,
+        "status": 200,
+        "ttfbMs": 8,
+        "responseEndMs": 22,
+        "domContentLoadedMs": 28,
+        "firstContentfulPaintMs": 84,
+        "cumulativeLayoutShift": 0,
+        "requestCount": 48,
+        "transferredBytes": 237908,
+        "providerCalls": 0,
+        "providerMs": 0
+      },
+      "warm": {
+        "navigationMs": {
+          "n": 5,
+          "min": 10,
+          "p50": 16,
+          "p95": 32,
+          "max": 32
+        },
+        "primaryDataVisibleMs": {
+          "n": 5,
+          "min": 37,
+          "p50": 333,
+          "p95": 838,
+          "max": 838
+        },
+        "ttfbMs": {
+          "n": 5,
+          "min": 6,
+          "p50": 12,
+          "p95": 27,
+          "max": 27
+        },
+        "firstContentfulPaintMs": {
+          "n": 3,
+          "min": 24,
+          "p50": 28,
+          "p95": 44,
+          "max": 44
+        },
+        "providerCalls": {
+          "n": 5,
+          "min": 0,
+          "p50": 0,
+          "p95": 0,
+          "max": 0
+        },
+        "providerMs": {
+          "n": 5,
+          "min": 0,
+          "p50": 0,
+          "p95": 0,
+          "max": 0
+        },
+        "cumulativeLayoutShift": 0,
+        "requestCount": 48,
+        "transferredBytes": 44804
+      }
+    },
+    {
+      "id": "blog-editor",
+      "label": "Blog editor, article with media",
+      "path": "/blog/29fff0e2-62d1-422d-ae21-9a4ad3f3c9d7",
+      "email": "admin@example.invalid",
+      "viewport": "desktop",
+      "cold": {
+        "navigationMs": 13,
+        "primaryDataVisibleMs": 112,
+        "status": 200,
+        "ttfbMs": 10,
+        "responseEndMs": 26,
+        "domContentLoadedMs": 29,
+        "firstContentfulPaintMs": null,
+        "cumulativeLayoutShift": 0,
+        "requestCount": 19,
+        "transferredBytes": 226604,
+        "providerCalls": 0,
+        "providerMs": 0
+      },
+      "warm": {
+        "navigationMs": {
+          "n": 5,
+          "min": 20,
+          "p50": 26,
+          "p95": 27,
+          "max": 27
+        },
+        "primaryDataVisibleMs": {
+          "n": 5,
+          "min": 60,
+          "p50": 826,
+          "p95": 839,
+          "max": 839
+        },
+        "ttfbMs": {
+          "n": 5,
+          "min": 15,
+          "p50": 17,
+          "p95": 21,
+          "max": 21
+        },
+        "firstContentfulPaintMs": {
+          "n": 4,
+          "min": 32,
+          "p50": 40,
+          "p95": 48,
+          "max": 48
+        },
+        "providerCalls": {
+          "n": 5,
+          "min": 0,
+          "p50": 0,
+          "p95": 0,
+          "max": 0
+        },
+        "providerMs": {
+          "n": 5,
+          "min": 0,
+          "p50": 0,
+          "p95": 0,
+          "max": 0
+        },
+        "cumulativeLayoutShift": 0,
+        "requestCount": 38,
+        "transferredBytes": 36077
+      }
+    },
+    {
+      "id": "blog-editor-plain",
+      "label": "Blog editor, article without media",
+      "path": "/blog/21d6c461-7b4e-4d2d-a8c9-86985c9a15af",
+      "email": "admin@example.invalid",
+      "viewport": "desktop",
+      "cold": {
+        "navigationMs": 9,
+        "primaryDataVisibleMs": 119,
+        "status": 200,
+        "ttfbMs": 7,
+        "responseEndMs": 18,
+        "domContentLoadedMs": 22,
+        "firstContentfulPaintMs": 80,
+        "cumulativeLayoutShift": 0.0008,
+        "requestCount": 36,
+        "transferredBytes": 242203,
+        "providerCalls": 0,
+        "providerMs": 0
+      },
+      "warm": {
+        "navigationMs": {
+          "n": 5,
+          "min": 10,
+          "p50": 14,
+          "p95": 26,
+          "max": 26
+        },
+        "primaryDataVisibleMs": {
+          "n": 5,
+          "min": 39,
+          "p50": 58,
+          "p95": 831,
+          "max": 831
+        },
+        "ttfbMs": {
+          "n": 5,
+          "min": 6,
+          "p50": 7,
+          "p95": 18,
+          "max": 18
+        },
+        "firstContentfulPaintMs": {
+          "n": 3,
+          "min": 24,
+          "p50": 32,
+          "p95": 36,
+          "max": 36
+        },
+        "providerCalls": {
+          "n": 5,
+          "min": 0,
+          "p50": 0,
+          "p95": 0,
+          "max": 0
+        },
+        "providerMs": {
+          "n": 5,
+          "min": 0,
+          "p50": 0,
+          "p95": 0,
+          "max": 0
+        },
+        "cumulativeLayoutShift": 0,
+        "requestCount": 17,
+        "transferredBytes": 19299
+      }
+    },
+    {
+      "id": "blog-preview",
+      "label": "Blog preview with media",
+      "path": "/blog/29fff0e2-62d1-422d-ae21-9a4ad3f3c9d7/preview",
+      "email": "admin@example.invalid",
+      "viewport": "desktop",
+      "cold": {
+        "navigationMs": 11,
+        "primaryDataVisibleMs": 61,
+        "status": 200,
+        "ttfbMs": 8,
+        "responseEndMs": 13,
+        "domContentLoadedMs": 60,
+        "firstContentfulPaintMs": null,
+        "cumulativeLayoutShift": 0,
+        "requestCount": 13,
+        "transferredBytes": 201640,
+        "providerCalls": 0,
+        "providerMs": 0
+      },
+      "warm": {
+        "navigationMs": {
+          "n": 5,
+          "min": 11,
+          "p50": 18,
+          "p95": 24,
+          "max": 24
+        },
+        "primaryDataVisibleMs": {
+          "n": 5,
+          "min": 31,
+          "p50": 36,
+          "p95": 46,
+          "max": 46
+        },
+        "ttfbMs": {
+          "n": 5,
+          "min": 7,
+          "p50": 14,
+          "p95": 18,
+          "max": 18
+        },
+        "firstContentfulPaintMs": {
+          "n": 2,
+          "min": 28,
+          "p50": 28,
+          "p95": 28,
+          "max": 28
+        },
+        "providerCalls": {
+          "n": 5,
+          "min": 0,
+          "p50": 0,
+          "p95": 0,
+          "max": 0
+        },
+        "providerMs": {
+          "n": 5,
+          "min": 0,
+          "p50": 0,
+          "p95": 0,
+          "max": 0
+        },
+        "cumulativeLayoutShift": 0,
+        "requestCount": 13,
+        "transferredBytes": 9694
+      }
+    },
+    {
+      "id": "blog-media",
+      "label": "Blog media route",
+      "path": "/api/blog-media/ac000000-0000-4000-8000-0000000ac001",
+      "email": "admin@example.invalid",
+      "viewport": "desktop",
+      "cold": {
+        "navigationMs": 7,
+        "primaryDataVisibleMs": 20,
+        "status": 200,
+        "ttfbMs": 4,
+        "responseEndMs": 5,
+        "domContentLoadedMs": 8,
+        "firstContentfulPaintMs": null,
+        "cumulativeLayoutShift": 0,
+        "requestCount": 1,
+        "transferredBytes": 370,
+        "providerCalls": 0,
+        "providerMs": 0
+      },
+      "warm": {
+        "navigationMs": {
+          "n": 5,
+          "min": 6,
+          "p50": 6,
+          "p95": 6,
+          "max": 6
+        },
+        "primaryDataVisibleMs": {
+          "n": 5,
+          "min": 15,
+          "p50": 15,
+          "p95": 16,
+          "max": 16
+        },
+        "ttfbMs": {
+          "n": 5,
+          "min": 4,
+          "p50": 4,
+          "p95": 4,
+          "max": 4
+        },
+        "firstContentfulPaintMs": null,
+        "providerCalls": {
+          "n": 5,
+          "min": 0,
+          "p50": 0,
+          "p95": 0,
+          "max": 0
+        },
+        "providerMs": {
+          "n": 5,
+          "min": 0,
+          "p50": 0,
+          "p95": 0,
+          "max": 0
+        },
+        "cumulativeLayoutShift": 0,
+        "requestCount": 1,
+        "transferredBytes": 370
+      }
+    },
+    {
+      "id": "report-view",
+      "label": "Saved report",
+      "path": "/reports/f1f1f1f1-0000-4000-8000-00000000f001",
+      "email": "admin@example.invalid",
+      "viewport": "desktop",
+      "cold": {
+        "navigationMs": 15,
+        "primaryDataVisibleMs": 68,
+        "status": 200,
+        "ttfbMs": 12,
+        "responseEndMs": 13,
+        "domContentLoadedMs": 26,
+        "firstContentfulPaintMs": null,
+        "cumulativeLayoutShift": 0,
+        "requestCount": 13,
+        "transferredBytes": 212396,
+        "providerCalls": 0,
+        "providerMs": 0
+      },
+      "warm": {
+        "navigationMs": {
+          "n": 5,
+          "min": 10,
+          "p50": 24,
+          "p95": 29,
+          "max": 29
+        },
+        "primaryDataVisibleMs": {
+          "n": 5,
+          "min": 36,
+          "p50": 47,
+          "p95": 52,
+          "max": 52
+        },
+        "ttfbMs": {
+          "n": 5,
+          "min": 8,
+          "p50": 21,
+          "p95": 26,
+          "max": 26
+        },
+        "firstContentfulPaintMs": {
+          "n": 4,
+          "min": 28,
+          "p50": 44,
+          "p95": 48,
+          "max": 48
+        },
+        "providerCalls": {
+          "n": 5,
+          "min": 0,
+          "p50": 0,
+          "p95": 0,
+          "max": 0
+        },
+        "providerMs": {
+          "n": 5,
+          "min": 0,
+          "p50": 0,
+          "p95": 0,
+          "max": 0
+        },
+        "cumulativeLayoutShift": 0,
+        "requestCount": 13,
+        "transferredBytes": 10800
+      }
+    },
+    {
+      "id": "clients",
+      "label": "Clients",
+      "path": "/clients",
+      "email": "admin@example.invalid",
+      "viewport": "desktop",
+      "cold": {
+        "navigationMs": 13,
+        "primaryDataVisibleMs": 109,
+        "status": 200,
+        "ttfbMs": 9,
+        "responseEndMs": 15,
+        "domContentLoadedMs": 27,
+        "firstContentfulPaintMs": 84,
+        "cumulativeLayoutShift": 0,
+        "requestCount": 32,
+        "transferredBytes": 219251,
+        "providerCalls": 0,
+        "providerMs": 0
+      },
+      "warm": {
+        "navigationMs": {
+          "n": 5,
+          "min": 13,
+          "p50": 22,
+          "p95": 29,
+          "max": 29
+        },
+        "primaryDataVisibleMs": {
+          "n": 5,
+          "min": 38,
+          "p50": 58,
+          "p95": 832,
+          "max": 832
+        },
+        "ttfbMs": {
+          "n": 5,
+          "min": 8,
+          "p50": 17,
+          "p95": 19,
+          "max": 19
+        },
+        "firstContentfulPaintMs": {
+          "n": 4,
+          "min": 32,
+          "p50": 36,
+          "p95": 40,
+          "max": 40
+        },
+        "providerCalls": {
+          "n": 5,
+          "min": 0,
+          "p50": 0,
+          "p95": 0,
+          "max": 0
+        },
+        "providerMs": {
+          "n": 5,
+          "min": 0,
+          "p50": 0,
+          "p95": 0,
+          "max": 0
+        },
+        "cumulativeLayoutShift": 0,
+        "requestCount": 12,
+        "transferredBytes": 12969
+      }
+    },
+    {
+      "id": "empty-client",
+      "label": "Analytics for a client with no data",
+      "path": "/analytics?client=cccccccc-0000-4000-8000-000000000003",
+      "email": "admin@example.invalid",
+      "viewport": "desktop",
+      "cold": {
+        "navigationMs": 12,
+        "primaryDataVisibleMs": 73,
+        "status": 200,
+        "ttfbMs": 9,
+        "responseEndMs": 10,
+        "domContentLoadedMs": 23,
+        "firstContentfulPaintMs": null,
+        "cumulativeLayoutShift": 0,
+        "requestCount": 12,
+        "transferredBytes": 208225,
+        "providerCalls": 0,
+        "providerMs": 0
+      },
+      "warm": {
+        "navigationMs": {
+          "n": 5,
+          "min": 13,
+          "p50": 24,
+          "p95": 27,
+          "max": 27
+        },
+        "primaryDataVisibleMs": {
+          "n": 5,
+          "min": 45,
+          "p50": 47,
+          "p95": 50,
+          "max": 50
+        },
+        "ttfbMs": {
+          "n": 5,
+          "min": 9,
+          "p50": 18,
+          "p95": 23,
+          "max": 23
+        },
+        "firstContentfulPaintMs": {
+          "n": 4,
+          "min": 40,
+          "p50": 44,
+          "p95": 48,
+          "max": 48
+        },
+        "providerCalls": {
+          "n": 5,
+          "min": 0,
+          "p50": 0,
+          "p95": 0,
+          "max": 0
+        },
+        "providerMs": {
+          "n": 5,
+          "min": 0,
+          "p50": 0,
+          "p95": 0,
+          "max": 0
+        },
+        "cumulativeLayoutShift": 0,
+        "requestCount": 12,
+        "transferredBytes": 10101
+      }
+    },
+    {
+      "id": "scoped-specialist",
+      "label": "Dashboard as a clinic-scoped specialist",
+      "path": "/",
+      "email": "specialist-a@example.invalid",
+      "viewport": "desktop",
+      "cold": {
+        "navigationMs": 44,
+        "primaryDataVisibleMs": 78,
+        "status": 200,
+        "ttfbMs": 40,
+        "responseEndMs": 42,
+        "domContentLoadedMs": 73,
+        "firstContentfulPaintMs": null,
+        "cumulativeLayoutShift": 0,
+        "requestCount": 12,
+        "transferredBytes": 203353,
+        "providerCalls": 0,
+        "providerMs": 0
+      },
+      "warm": {
+        "navigationMs": {
+          "n": 5,
+          "min": 50,
+          "p50": 53,
+          "p95": 75,
+          "max": 75
+        },
+        "primaryDataVisibleMs": {
+          "n": 5,
+          "min": 73,
+          "p50": 75,
+          "p95": 98,
+          "max": 98
+        },
+        "ttfbMs": {
+          "n": 5,
+          "min": 46,
+          "p50": 48,
+          "p95": 69,
+          "max": 69
+        },
+        "firstContentfulPaintMs": {
+          "n": 5,
+          "min": 68,
+          "p50": 72,
+          "p95": 92,
+          "max": 92
+        },
+        "providerCalls": {
+          "n": 5,
+          "min": 0,
+          "p50": 0,
+          "p95": 0,
+          "max": 0
+        },
+        "providerMs": {
+          "n": 5,
+          "min": 0,
+          "p50": 0,
+          "p95": 0,
+          "max": 0
+        },
+        "cumulativeLayoutShift": 0,
+        "requestCount": 12,
+        "transferredBytes": 10908
+      }
+    }
+  ],
+  "wixScenarios": [
+    {
+      "scenario": "normal",
+      "description": "One page of submissions, answered immediately.",
+      "status": 200,
+      "serverMs": 13,
+      "renderedMs": 24,
+      "providerCalls": 3,
+      "providerMs": 0,
+      "providerByPath": {
+        "/form-schema-service/v4/forms/eeeeeeee-0000-4000-8000-00000000e001": 1,
+        "/form-submission-service/v4/submissions/namespace/query": 2
+      },
+      "state": "list rendered",
+      "rowCount": "25 matching enquiries",
+      "sourceNoticeShown": false
+    },
+    {
+      "scenario": "slow",
+      "description": "A normal response delayed by delayMs, to measure a slow provider.",
+      "status": 200,
+      "serverMs": 1527,
+      "renderedMs": 1592,
+      "providerCalls": 3,
+      "providerMs": 4506,
+      "providerByPath": {
+        "/form-schema-service/v4/forms/eeeeeeee-0000-4000-8000-00000000e001": 1,
+        "/form-submission-service/v4/submissions/namespace/query": 2
+      },
+      "state": "list rendered",
+      "rowCount": "25 matching enquiries",
+      "sourceNoticeShown": false
+    },
+    {
+      "scenario": "provider-error",
+      "description": "HTTP 500 from the submissions query.",
+      "status": 200,
+      "serverMs": 9,
+      "renderedMs": 20,
+      "providerCalls": 3,
+      "providerMs": 0,
+      "providerByPath": {
+        "/form-schema-service/v4/forms/eeeeeeee-0000-4000-8000-00000000e001": 1,
+        "/form-submission-service/v4/submissions/namespace/query": 2
+      },
+      "state": "no enquiries available",
+      "rowCount": null,
+      "sourceNoticeShown": true
+    },
+    {
+      "scenario": "multi-page",
+      "description": "Several cursor pages, so sequential paging is measured.",
+      "status": 200,
+      "serverMs": 62,
+      "renderedMs": 184,
+      "providerCalls": 7,
+      "providerMs": 0,
+      "providerByPath": {
+        "/form-schema-service/v4/forms/eeeeeeee-0000-4000-8000-00000000e001": 1,
+        "/form-submission-service/v4/submissions/namespace/query": 6
+      },
+      "state": "list rendered",
+      "rowCount": "75 matching enquiries",
+      "sourceNoticeShown": false
+    },
+    {
+      "scenario": "expired-auth",
+      "description": "HTTP 401 invalid_grant on the token call.",
+      "status": 200,
+      "serverMs": 10,
+      "renderedMs": 21,
+      "providerCalls": 3,
+      "providerMs": 0,
+      "providerByPath": {
+        "/form-schema-service/v4/forms/eeeeeeee-0000-4000-8000-00000000e001": 1,
+        "/form-submission-service/v4/submissions/namespace/query": 2
+      },
+      "state": "no enquiries available",
+      "rowCount": null,
+      "sourceNoticeShown": true
+    },
+    {
+      "scenario": "zero-submissions",
+      "description": "A successful response with a genuinely empty list.",
+      "status": 200,
+      "serverMs": 56,
+      "renderedMs": 101,
+      "providerCalls": 3,
+      "providerMs": 0,
+      "providerByPath": {
+        "/form-schema-service/v4/forms/eeeeeeee-0000-4000-8000-00000000e001": 1,
+        "/form-submission-service/v4/submissions/namespace/query": 2
+      },
+      "state": "list rendered",
+      "rowCount": "0 matching enquiries",
+      "sourceNoticeShown": false
+    },
+    {
+      "scenario": "timeout",
+      "description": "No response at all, so the caller's 15 second timeout decides.",
+      "status": 200,
+      "serverMs": 15030,
+      "renderedMs": 15129,
+      "providerCalls": 3,
+      "providerMs": 0,
+      "providerByPath": {
+        "/form-schema-service/v4/forms/eeeeeeee-0000-4000-8000-00000000e001": 1,
+        "/form-submission-service/v4/submissions/namespace/query": 2
+      },
+      "state": "no enquiries available",
+      "rowCount": null,
+      "sourceNoticeShown": true
+    }
+  ],
+  "concurrency": [
+    {
+      "sessions": 1,
+      "wallMs": 234,
+      "perSessionMs": {
+        "n": 1,
+        "min": 234,
+        "p50": 234,
+        "p95": 234,
+        "max": 234
+      },
+      "backends": {
+        "samples": 5,
+        "peakTotal": 3,
+        "peakActive": 0,
+        "peakIdleInTransaction": 0
+      },
+      "note": "Pool limits were not changed. APP_POOL_OPTIONS.max is 8 per server process."
+    },
+    {
+      "sessions": 5,
+      "wallMs": 696,
+      "perSessionMs": {
+        "n": 5,
+        "min": 687,
+        "p50": 696,
+        "p95": 696,
+        "max": 696
+      },
+      "backends": {
+        "samples": 9,
+        "peakTotal": 8,
+        "peakActive": 5,
+        "peakIdleInTransaction": 3
+      },
+      "note": "Pool limits were not changed. APP_POOL_OPTIONS.max is 8 per server process."
+    },
+    {
+      "sessions": 10,
+      "wallMs": 8866,
+      "perSessionMs": {
+        "n": 10,
+        "min": 8859,
+        "p50": 8862,
+        "p95": 8865,
+        "max": 8865
+      },
+      "backends": {
+        "samples": 17,
+        "peakTotal": 8,
+        "peakActive": 3,
+        "peakIdleInTransaction": 8
+      },
+      "note": "Pool limits were not changed. APP_POOL_OPTIONS.max is 8 per server process."
+    }
+  ]
+}
