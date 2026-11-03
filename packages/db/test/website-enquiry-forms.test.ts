@@ -8,7 +8,8 @@ import {
   WixBindingRuleError,
 } from "../src/services/wix-enquiry-binding";
 import { createClient, createWebsite } from "../src/services/registry";
-import { asContext, clientBySlug, staffByEmail, staffCtx } from "./helpers";
+import { resetWixFormsTableCache } from "../src/services/wix-enquiry-binding";
+import { adminPool, asContext, clientBySlug, staffByEmail, staffCtx } from "./helpers";
 
 const INSTANCE = "11111111-2222-4333-8444-555555555555";
 const FORM_A = "aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa";
@@ -163,5 +164,36 @@ describe("permissions and client isolation", () => {
       expect(scoped.some((row) => row.websiteId === mine.id)).toBe(true);
       expect(scoped.some((row) => row.websiteId === theirs.id)).toBe(false);
     });
+  });
+});
+
+describe("database without migration 0044", () => {
+  it("falls back to the single binding on websites, so the reader still works", async () => {
+    // The shared database may not have 0044 yet. Hiding the table reproduces that.
+    const client = await adminPool.connect();
+    try {
+      await client.query("begin");
+      const owner = (await client.query("select id from clients limit 1")).rows[0].id;
+      await client.query(
+        `insert into websites (client_id, name, url, platform, environment, enquiry_key, enquiry_source,
+           wix_instance_id, wix_form_id, wix_form_namespace, wix_form_key, wix_counts_in_totals)
+         values ($1, 'Pre-0044 reader', 'https://example.invalid/', 'Wix', 'production', $2, 'wix',
+           $3, $4, 'wix.form_app.form', 'contact', true)`,
+        [owner, `pre0044-${Math.random().toString(36).slice(2, 7)}`, INSTANCE, FORM_A],
+      );
+      await client.query("alter table website_enquiry_forms rename to website_enquiry_forms_hidden");
+      resetWixFormsTableCache();
+      const rows = (await listWixEnquiryBindings(client, null)).filter((row) => row.websiteName === "Pre-0044 reader");
+      expect(rows).toHaveLength(1);
+      expect(rows[0]!.formId).toBe(FORM_A);
+      expect(rows[0]!.instanceId).toBe(INSTANCE);
+      expect(rows[0]!.namespace).toBe("wix.form_app.form");
+      // The production-counting setting must survive the fallback unchanged.
+      expect(rows[0]!.countsInTotals).toBe(true);
+    } finally {
+      await client.query("rollback").catch(() => {});
+      client.release();
+      resetWixFormsTableCache();
+    }
   });
 });

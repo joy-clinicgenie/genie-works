@@ -37,8 +37,32 @@ function status(value: string): WixFollowUpStatus | null {
   return STATUSES.find((item) => item === value) ?? null;
 }
 
+/**
+ * Whether migration 0044 has run on this database. Cached per process: the schema
+ * does not change while the server is up, and the cost model here is round trips,
+ * so this must not add a query to every read. Until 0044 is applied the reader
+ * falls back to the single binding on `websites` (D31), which is what 0044
+ * backfills from, so both paths return the same bindings.
+ */
+let formsTable: boolean | undefined;
+
+async function hasFormsTable(db: Queryable): Promise<boolean> {
+  if (formsTable !== undefined) return formsTable;
+  const { rows } = await db.query<{ present: boolean }>(
+    "select to_regclass('public.website_enquiry_forms') is not null as present",
+  );
+  formsTable = rows[0]?.present === true;
+  return formsTable;
+}
+
+/** Test seam: forget the cached check after a migration runs inside one process. */
+export function resetWixFormsTableCache(): void {
+  formsTable = undefined;
+}
+
 /** Websites the caller may read. The instance id stays on the server. */
 export async function listWixEnquiryBindings(db: Queryable, scope: string[] | null): Promise<WixEnquiryBinding[]> {
+  const perForm = await hasFormsTable(db);
   const { rows } = await db.query<{
     website_id: string;
     client_id: string;
@@ -54,18 +78,31 @@ export async function listWixEnquiryBindings(db: Queryable, scope: string[] | nu
     namespace: string;
     counts_in_totals: boolean;
   }>(
-    `select w.id as website_id, w.client_id, c.slug as client_slug, c.name as client_name,
-            w.name as website_name, w.url as website_url, w.environment,
-            w.enquiry_key, f.form_key,
-            w.wix_instance_id as instance_id, f.provider_form_id as form_id,
-            f.provider_namespace as namespace, f.counts_in_totals
-     from website_enquiry_forms f
-     join websites w on w.id = f.website_id
-     join clients c on c.id = w.client_id
-     where w.status = 'active'
-       and w.enquiry_source = 'wix'
-       and ($1::text[] is null or c.slug = any($1))
-     order by c.name, w.name, f.form_key`,
+    perForm
+      ? `select w.id as website_id, w.client_id, c.slug as client_slug, c.name as client_name,
+                w.name as website_name, w.url as website_url, w.environment,
+                w.enquiry_key, f.form_key,
+                w.wix_instance_id as instance_id, f.provider_form_id as form_id,
+                f.provider_namespace as namespace, f.counts_in_totals
+         from website_enquiry_forms f
+         join websites w on w.id = f.website_id
+         join clients c on c.id = w.client_id
+         where w.status = 'active'
+           and w.enquiry_source = 'wix'
+           and ($1::text[] is null or c.slug = any($1))
+         order by c.name, w.name, f.form_key`
+      : `select w.id as website_id, w.client_id, c.slug as client_slug, c.name as client_name,
+                w.name as website_name, w.url as website_url, w.environment,
+                w.enquiry_key, w.wix_form_key as form_key,
+                w.wix_instance_id as instance_id, w.wix_form_id as form_id,
+                w.wix_form_namespace as namespace, w.wix_counts_in_totals as counts_in_totals
+         from websites w
+         join clients c on c.id = w.client_id
+         where w.status = 'active'
+           and w.enquiry_source = 'wix'
+           and w.wix_form_id is not null
+           and ($1::text[] is null or c.slug = any($1))
+         order by c.name, w.name`,
     [scope],
   );
   return rows.map((row) => ({
@@ -179,7 +216,7 @@ export async function bindWixEnquiryForm(
     if (err instanceof WixBindingRuleError) throw err;
     throw err;
   }
-  await db.query(
+  if (await hasFormsTable(db)) await db.query(
     `insert into website_enquiry_forms (website_id, client_id, source, form_key, provider_form_id, provider_namespace, counts_in_totals)
      values ($1, $2, 'wix', $3, $4, $5, false)
      on conflict (website_id, form_key)
@@ -208,7 +245,9 @@ export async function clearWixEnquiryForm(db: Queryable, input: { clientId: stri
      where id = $1 and client_id = $2`,
     [input.websiteId, input.clientId],
   );
-  await db.query("delete from website_enquiry_forms where website_id = $1 and client_id = $2", [input.websiteId, input.clientId]);
+  if (await hasFormsTable(db)) {
+    await db.query("delete from website_enquiry_forms where website_id = $1 and client_id = $2", [input.websiteId, input.clientId]);
+  }
   if (!rowCount) throw new WixBindingRuleError("That website is not available for this client.", "websiteId");
   await recordAudit(db, {
     actorType: "staff",
@@ -236,6 +275,9 @@ export async function addWixEnquiryForm(
   const formKey = input.formKey.trim().toLowerCase();
   if (!UUID.test(formId)) throw new WixBindingRuleError("The Wix form id has to be the UUID for that form.", "formId");
   if (!FORM_KEY.test(formKey)) throw new WixBindingRuleError("The form key uses lowercase letters, numbers and hyphens.", "formKey");
+  if (!(await hasFormsTable(db))) {
+    throw new WixBindingRuleError("Several forms for one website need database migration 0044. Apply it first.", "formId");
+  }
   const site = (await db.query<{ id: string }>(
     "select id from websites where id = $1 and client_id = $2 and enquiry_source = 'wix' and wix_instance_id is not null",
     [input.websiteId, input.clientId],
@@ -272,6 +314,9 @@ export async function removeWixEnquiryForm(
   input: { clientId: string; websiteId: string; formKey: string },
   actorUserId: string,
 ): Promise<void> {
+  if (!(await hasFormsTable(db))) {
+    throw new WixBindingRuleError("Several forms for one website need database migration 0044. Apply it first.", "formKey");
+  }
   const { rowCount } = await db.query(
     "delete from website_enquiry_forms where website_id = $1 and client_id = $2 and form_key = $3",
     [input.websiteId, input.clientId, input.formKey.trim().toLowerCase()],
