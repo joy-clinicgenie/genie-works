@@ -29,6 +29,8 @@ export const BACKUP_TABLES = [
   "websites",
   "website_forms",
   "website_enquiry_forms",
+  "wix_inbox_messages",
+  "wix_inbox_coverage",
   "enquiry_status_events",
   "enquiry_follow_ups",
   "enquiry_reads",

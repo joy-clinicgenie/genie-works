@@ -1,4 +1,4 @@
-import { formatDateTime, listClients } from "@clinic-genie/db";
+import { formatDateTime, listClients, listInboxCoverage } from "@clinic-genie/db";
 import { requireAccess } from "@/lib/session";
 import { staffTx } from "@/lib/db";
 import { PageHeader, Card } from "@/components/ui/Card";
@@ -25,10 +25,12 @@ export default async function EnquiryFormsPage({ searchParams }: { searchParams:
   const scope = submissionClinicScope(access);
   const denied = Boolean(params.clinic && scope !== null && !scope.includes(params.clinic));
   const clinic = denied ? undefined : params.clinic && /^[a-z0-9-]{1,64}$/.test(params.clinic) ? params.clinic : undefined;
-  const [forms, clients] = await Promise.all([
+  const [forms, clients, inbox] = await Promise.all([
     listConnectedForms(access, clinic ? [clinic] : scope),
     staffTx(access, (db) => listClients(db)),
+    staffTx(access, (db) => listInboxCoverage(db, clinic ? [clinic] : scope)),
   ]);
+  const inboxActive = inbox.filter((row) => row.messageCount > 0);
   const clientOptions = clients.map((client) => ({ value: client.slug, label: clientLabel(client) }));
   const unreadable = forms.filter((form) => form.state !== "readable" && form.state !== "empty");
   const misbound = forms.filter((form) => form.boundSiteMatch === "different");
@@ -52,6 +54,44 @@ export default async function EnquiryFormsPage({ searchParams }: { searchParams:
             The bound Wix site is not the website address recorded for that clinic. Enquiries submitted on the recorded address are not in the bound form, so a readable result is not a working connection for that website. The binding was left unchanged.
           </Notice>
         </div>
+      )}
+      {inboxActive.length > 0 && (
+        <Card className="mb-4">
+          <div className="p-4">
+            <h2 className="text-sm font-semibold">Wix Inbox</h2>
+            <p className="text-xs text-muted mt-1">
+              Legacy form submissions that reached Wix Inbox. Wix has no endpoint that lists conversations, so these are the
+              messages discovered since the Inbox event was subscribed, plus any conversation an administrator registered.
+              This is not every enquiry the clinic has ever received.
+            </p>
+            <Table>
+              <thead>
+                <tr>
+                  <Th>Client / website</Th>
+                  <Th>Source</Th>
+                  <Th>Form-submission messages</Th>
+                  <Th>Coverage starts</Th>
+                </tr>
+              </thead>
+              <tbody>
+                {inboxActive.map((row) => (
+                  <tr key={row.websiteId}>
+                    <Td>
+                      <div>{row.clientSlug}</div>
+                      <div className="text-xs text-muted">{row.websiteName}</div>
+                    </Td>
+                    <Td>Wix Inbox</Td>
+                    <Td>{row.messageCount}</Td>
+                    <Td>
+                      {row.coverageStartAt ? formatDateTime(row.coverageStartAt) : "No messages yet"}
+                      <div className="text-xs text-muted">Earlier enquiries are not covered</div>
+                    </Td>
+                  </tr>
+                ))}
+              </tbody>
+            </Table>
+          </div>
+        </Card>
       )}
       <FilterBar clearHref="/enquiries/forms">
         <FilterSelect name="clinic" label="Client" value={clinic} allLabel="All clients" options={clientOptions} />

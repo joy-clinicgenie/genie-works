@@ -28,6 +28,7 @@ Used by the embedded database on this machine. `npm run db:rehearse` creates `cl
 | `ENQUIRY_STAGING_STAFF_URL` | Staff role for Genie Works. `ENQUIRY_DATABASE_URL` in this application uses this credential. |
 | `FORMS_WIX_APP_ID` | Wix app id for reading a form that is bound to a website. Empty leaves those reads unavailable. This is not the analytics app. |
 | `FORMS_WIX_APP_SECRET` | Matching forms app secret. The site instance and form id are stored on the website row, not in these variables. |
+| `FORMS_WIX_WEBHOOK_PUBLIC_KEY` | Public key for the forms app, from the app dashboard. The Wix Inbox webhook at `/api/wix/inbox` verifies every delivery against it and refuses an unverified request. Empty leaves the route answering 503 and nothing is recorded. This is a public key, not a secret, and it is never sent to a browser. |
 | `FORMS_WIX_NEW_INSTANCE_*` | Wix Forms (new) instance for one website marked Wix: Aqua, Cedar, Joyful, MSDC, SBSN, SDIC, Sunrise, TAC, and Forms test. Empty until that website is identified. This is not the old Forms and Payments instance, and it does not choose the form. |
 | `ANALYTICS_GOOGLE_CLIENT_ID` | Google OAuth client for analytics connections. |
 | `ANALYTICS_GOOGLE_CLIENT_SECRET` | Matching client secret. |
