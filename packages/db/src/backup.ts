@@ -28,6 +28,7 @@ export const BACKUP_TABLES = [
   "memberships",
   "websites",
   "website_forms",
+  "website_enquiry_forms",
   "enquiry_status_events",
   "enquiry_follow_ups",
   "enquiry_reads",

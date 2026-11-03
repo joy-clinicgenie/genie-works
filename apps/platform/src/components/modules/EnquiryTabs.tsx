@@ -6,8 +6,11 @@ import { InnerNavFrame, InnerNavGroup, InnerNavLink } from "@/components/shell/I
 
 const TABS = [
   ["/enquiries", "Enquiries"],
+  ["/enquiries/forms", "Forms"],
   ["/enquiries/notifications", "Notification status"],
 ] as const;
+
+const EXACT = ["/enquiries/forms", "/enquiries/notifications"] as const;
 
 export function EnquiryTabs({ children }: { children: ReactNode }) {
   const pathname = usePathname();
@@ -17,9 +20,9 @@ export function EnquiryTabs({ children }: { children: ReactNode }) {
       nav={
         <InnerNavGroup title="Enquiries">
           {TABS.map(([href, name]) => {
-            const active = href === "/enquiries/notifications"
-              ? pathname.startsWith(href)
-              : pathname === "/enquiries" || (pathname.startsWith("/enquiries/") && !pathname.startsWith("/enquiries/notifications"));
+            const active = href === "/enquiries"
+              ? pathname === "/enquiries" || (pathname.startsWith("/enquiries/") && !EXACT.some((exact) => pathname.startsWith(exact)))
+              : pathname.startsWith(href);
             return <InnerNavLink key={href} href={href} current={active}>{name}</InnerNavLink>;
           })}
         </InnerNavGroup>

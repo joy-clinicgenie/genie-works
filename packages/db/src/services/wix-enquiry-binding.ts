@@ -23,6 +23,8 @@ export interface WixEnquiryBinding {
   clientSlug: string;
   clientName: string;
   websiteName: string;
+  websiteUrl: string | null;
+  environment: string;
   enquiryKey: string;
   formKey: string;
   instanceId: string;
@@ -43,6 +45,8 @@ export async function listWixEnquiryBindings(db: Queryable, scope: string[] | nu
     client_slug: string;
     client_name: string;
     website_name: string;
+    website_url: string | null;
+    environment: string;
     enquiry_key: string;
     form_key: string;
     instance_id: string;
@@ -51,15 +55,17 @@ export async function listWixEnquiryBindings(db: Queryable, scope: string[] | nu
     counts_in_totals: boolean;
   }>(
     `select w.id as website_id, w.client_id, c.slug as client_slug, c.name as client_name,
-            w.name as website_name, w.enquiry_key, w.wix_form_key as form_key,
-            w.wix_instance_id as instance_id, w.wix_form_id as form_id,
-            w.wix_form_namespace as namespace, w.wix_counts_in_totals as counts_in_totals
-     from websites w
+            w.name as website_name, w.url as website_url, w.environment,
+            w.enquiry_key, f.form_key,
+            w.wix_instance_id as instance_id, f.provider_form_id as form_id,
+            f.provider_namespace as namespace, f.counts_in_totals
+     from website_enquiry_forms f
+     join websites w on w.id = f.website_id
      join clients c on c.id = w.client_id
      where w.status = 'active'
        and w.enquiry_source = 'wix'
        and ($1::text[] is null or c.slug = any($1))
-     order by c.name, w.name`,
+     order by c.name, w.name, f.form_key`,
     [scope],
   );
   return rows.map((row) => ({
@@ -68,6 +74,8 @@ export async function listWixEnquiryBindings(db: Queryable, scope: string[] | nu
     clientSlug: row.client_slug,
     clientName: row.client_name,
     websiteName: row.website_name,
+    websiteUrl: row.website_url,
+    environment: row.environment,
     enquiryKey: row.enquiry_key,
     formKey: row.form_key,
     instanceId: row.instance_id,
@@ -171,6 +179,14 @@ export async function bindWixEnquiryForm(
     if (err instanceof WixBindingRuleError) throw err;
     throw err;
   }
+  await db.query(
+    `insert into website_enquiry_forms (website_id, client_id, source, form_key, provider_form_id, provider_namespace, counts_in_totals)
+     values ($1, $2, 'wix', $3, $4, $5, false)
+     on conflict (website_id, form_key)
+       do update set provider_form_id = excluded.provider_form_id,
+                     provider_namespace = excluded.provider_namespace`,
+    [site.id, input.clientId, formKey, formId, WIX_FORM_NAMESPACE],
+  );
   await recordAudit(db, {
     actorType: "staff",
     actorUserId,
@@ -192,6 +208,7 @@ export async function clearWixEnquiryForm(db: Queryable, input: { clientId: stri
      where id = $1 and client_id = $2`,
     [input.websiteId, input.clientId],
   );
+  await db.query("delete from website_enquiry_forms where website_id = $1 and client_id = $2", [input.websiteId, input.clientId]);
   if (!rowCount) throw new WixBindingRuleError("That website is not available for this client.", "websiteId");
   await recordAudit(db, {
     actorType: "staff",
@@ -202,5 +219,72 @@ export async function clearWixEnquiryForm(db: Queryable, input: { clientId: stri
     clientId: input.clientId,
     outcome: "success",
     metadata: {},
+  });
+}
+
+/**
+ * Adds a further Wix form to a website that already reads one. The website keeps its
+ * single app instance; each form is one row. Production counting stays off until it is
+ * set deliberately, so a new form never changes a clinic's totals on its own.
+ */
+export async function addWixEnquiryForm(
+  db: Queryable,
+  input: { clientId: string; websiteId: string; formId: string; formKey: string; displayName?: string | null },
+  actorUserId: string,
+): Promise<void> {
+  const formId = input.formId.trim().toLowerCase();
+  const formKey = input.formKey.trim().toLowerCase();
+  if (!UUID.test(formId)) throw new WixBindingRuleError("The Wix form id has to be the UUID for that form.", "formId");
+  if (!FORM_KEY.test(formKey)) throw new WixBindingRuleError("The form key uses lowercase letters, numbers and hyphens.", "formKey");
+  const site = (await db.query<{ id: string }>(
+    "select id from websites where id = $1 and client_id = $2 and enquiry_source = 'wix' and wix_instance_id is not null",
+    [input.websiteId, input.clientId],
+  )).rows[0];
+  if (!site) throw new WixBindingRuleError("Connect this website to Wix before adding another form.", "websiteId");
+  try {
+    await db.query(
+      `insert into website_enquiry_forms (website_id, client_id, source, form_key, provider_form_id, provider_namespace, display_name, counts_in_totals, updated_by)
+       values ($1, $2, 'wix', $3, $4, $5, $6, false, $7)`,
+      [site.id, input.clientId, formKey, formId, WIX_FORM_NAMESPACE, input.displayName?.trim() || null, actorUserId],
+    );
+  } catch (err) {
+    const code = (err as { code?: string }).code;
+    if (code === "23505") {
+      throw new WixBindingRuleError("That form key or Wix form is already connected. The same form is never read twice.", "formId");
+    }
+    throw err;
+  }
+  await recordAudit(db, {
+    actorType: "staff",
+    actorUserId,
+    action: "wix_enquiry.form_add",
+    targetType: "website",
+    targetId: site.id,
+    clientId: input.clientId,
+    outcome: "success",
+    metadata: { formKey, namespace: WIX_FORM_NAMESPACE },
+  });
+}
+
+/** Stops reading one form. The website and its other forms are unchanged. */
+export async function removeWixEnquiryForm(
+  db: Queryable,
+  input: { clientId: string; websiteId: string; formKey: string },
+  actorUserId: string,
+): Promise<void> {
+  const { rowCount } = await db.query(
+    "delete from website_enquiry_forms where website_id = $1 and client_id = $2 and form_key = $3",
+    [input.websiteId, input.clientId, input.formKey.trim().toLowerCase()],
+  );
+  if (!rowCount) throw new WixBindingRuleError("That form is not connected to this website.", "formKey");
+  await recordAudit(db, {
+    actorType: "staff",
+    actorUserId,
+    action: "wix_enquiry.form_remove",
+    targetType: "website",
+    targetId: input.websiteId,
+    clientId: input.clientId,
+    outcome: "success",
+    metadata: { formKey: input.formKey.trim().toLowerCase() },
   });
 }
