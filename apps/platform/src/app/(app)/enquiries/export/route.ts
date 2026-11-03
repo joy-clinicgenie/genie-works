@@ -1,12 +1,15 @@
 import { NextResponse } from "next/server";
-import { canExport, listFormWebsites, recordAudit } from "@clinic-genie/db";
+import { canExport, listFormWebsites, openedEnquiryIdentities, recordAudit } from "@clinic-genie/db";
 import { requireAccess } from "@/lib/session";
 import { staffTx } from "@/lib/db";
 import {
   canSearchEnquiryPerson,
   enquiryConnection,
   enquiryCsv,
+  enquiryHandling,
+  enquiryIdentity,
   enquiryWindow,
+  handlingFilter,
   listEnquiryBoard,
   notificationFilter,
   submissionClinicScope,
@@ -47,7 +50,16 @@ export async function GET(request: Request) {
   }
   const websites = await staffTx(access, (db) => listFormWebsites(db, null));
   const websiteNames = new Map(websites.flatMap((site) => site.enquiry_key ? [[site.enquiry_key, site.name] as const] : []));
-  const rows = board.items.filter((item) => !item.isSynthetic);
+  const production = board.items.filter((item) => !item.isSynthetic);
+  const opened = new Set(
+    production.length === 0
+      ? []
+      : await staffTx(access, (db) => openedEnquiryIdentities(db, production.map((item) => ({ id: item.id, source: item.source ?? "database" })))),
+  );
+  const handling = handlingFilter(url.searchParams.get("handling") ?? undefined);
+  const rows = handling
+    ? production.filter((item) => enquiryHandling(item.status, opened.has(enquiryIdentity(item))) === handling)
+    : production;
   const clinics = new Map<string, number>();
   for (const row of rows) clinics.set(row.clinicId, (clinics.get(row.clinicId) ?? 0) + 1);
   await staffTx(access, (db) => recordAudit(db, {
@@ -66,12 +78,13 @@ export async function GET(request: Request) {
       form: filters.formKey ?? null,
       status: filters.status ?? null,
       notification: filters.notification ?? null,
+      handling: handling ?? null,
       personSearch: Boolean(filters.person),
       contactDetails: contact,
       clinics: [...clinics].map(([slug, count]) => ({ slug, count })),
     },
   }));
-  return new NextResponse(enquiryCsv(rows, websiteNames, { contact }), {
+  return new NextResponse(enquiryCsv(rows, websiteNames, { contact, opened }), {
     headers: {
       "Content-Type": "text/csv; charset=utf-8",
       "Content-Disposition": "attachment; filename=\"enquiries.csv\"",

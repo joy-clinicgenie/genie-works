@@ -10,8 +10,11 @@ import {
   enquiryConnection,
   enquiryCsv,
   enquiryConnectorLabel,
+  enquiryHandling,
   enquiryIdentity,
   enquiryNotificationLabel,
+  handlingFilter,
+  pageHandledEnquiries,
   enquiryPage,
   enquiryWindow,
   getFormSubmission,
@@ -41,7 +44,13 @@ describe("enquiry comparison and export", () => {
     expect(enquiryChange(1, 4)).toContain("%");
   });
 
-  it("defaults the enquiry window to this month and the period before it", () => {
+  it("defaults the enquiry window to the last 30 days and the 30 days before it", () => {
+    expect(enquiryWindow(undefined, undefined, "2026-11-03")).toEqual({
+      from: "2026-10-05",
+      to: "2026-11-03",
+      previousFrom: "2026-09-05",
+      previousTo: "2026-10-04",
+    });
     expect(enquiryWindow(undefined, undefined, "2026-10-30")).toEqual({
       from: "2026-10-01",
       to: "2026-10-30",
@@ -86,7 +95,7 @@ describe("enquiry comparison and export", () => {
     expect(csv).toContain("TEST-1");
     expect(csv).toContain("TEST-2");
     expect(csv).not.toContain("TEST-DEMO");
-    expect(csv.startsWith("Received,Reference,Client,Website,Form,Follow-up status,Notification")).toBe(true);
+    expect(csv.startsWith("Received,Reference,Client,Website,Form,Follow-up status,Handling")).toBe(true);
     expect(csv).not.toContain("Name");
     expect(csv).not.toContain("Telephone");
     expect(csv).not.toContain("Email");
@@ -125,9 +134,25 @@ describe("enquiry comparison and export", () => {
     expect(csv).not.toMatch(/(^|,)@/);
   });
 
-  it("labels a Wix clinic email as unavailable", () => {
+  it("labels a Wix clinic email as unavailable and the list handling separately", () => {
     expect(enquiryNotificationLabel({ notificationStatus: null, notificationDelivery: "unavailable" })).toBe("Unavailable");
     expect(enquiryNotificationLabel({ notificationStatus: "sent" })).toBe("Sent");
+    expect(enquiryHandling("new", false)).toBe("unopened");
+    expect(enquiryHandling("new", true)).toBe("read");
+    expect(enquiryHandling("acknowledged", false)).toBe("read");
+    expect(enquiryHandling("closed", false)).toBe("resolved");
+    expect(enquiryHandling("closed", true)).toBe("resolved");
+    expect(handlingFilter("read")).toBe("read");
+    expect(handlingFilter("sent")).toBeUndefined();
+    const rows = [sample("TEST-1", false), { ...sample("TEST-2", false), id: "22222222-2222-4222-8222-222222222202", status: "closed" as const }];
+    const opened = new Set([enquiryIdentity(rows[0]!)]);
+    const page = pageHandledEnquiries(rows, "unopened", opened, 1);
+    expect(page.total).toBe(0);
+    expect(pageHandledEnquiries(rows, "read", opened, 1).items.map((row) => row.reference)).toEqual(["TEST-1"]);
+    expect(pageHandledEnquiries(rows, "resolved", opened, 1).items.map((row) => row.reference)).toEqual(["TEST-2"]);
+    expect(enquiryCsv(rows, new Map(), { opened })).toContain("Read");
+    expect(enquiryCsv(rows, new Map(), { opened })).toContain("Resolved");
+    expect(enquiryCsv(rows, new Map(), { opened })).not.toContain("Unavailable");
   });
 
   it("keeps a website database and a Wix form as separate enquiries", () => {
@@ -231,7 +256,7 @@ describe("isolated enquiry fixture", () => {
     const exported = await listEnquiryBoard(null, { page: "all", productionOnly: true, contact: true }, october);
     expect(exported.total).toBe(0);
     const csv = enquiryCsv(exported.items, new Map(), { contact: true });
-    expect(csv).toBe("Received,Reference,Client,Website,Form,Name,Telephone,Email,Follow-up status,Notification");
+    expect(csv).toBe("Received,Reference,Client,Website,Form,Name,Telephone,Email,Follow-up status,Handling");
     expect(csv).not.toContain("Synthetic test enquiry");
     expect(csv).not.toContain("example.invalid");
   });

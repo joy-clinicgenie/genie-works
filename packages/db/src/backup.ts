@@ -30,6 +30,7 @@ export const BACKUP_TABLES = [
   "website_forms",
   "enquiry_status_events",
   "enquiry_follow_ups",
+  "enquiry_reads",
   "blog_articles",
   "blog_article_versions",
   "blog_activity",

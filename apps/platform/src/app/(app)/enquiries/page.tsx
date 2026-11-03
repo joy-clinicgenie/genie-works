@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { canExport, formatDateTime, listClients, listFormWebsites } from "@clinic-genie/db";
+import { canExport, formatDateTime, listClients, listFormWebsites, openedEnquiryIdentities } from "@clinic-genie/db";
 import { requireAccess } from "@/lib/session";
 import { staffTx } from "@/lib/db";
 import { PageHeader, Card } from "@/components/ui/Card";
@@ -18,18 +18,21 @@ import {
   canSearchEnquiryPerson,
   enquiryConnection,
   enquiryConnectorLabel,
+  enquiryHandling,
   enquiryIdentity,
   enquiryUnavailableCopy,
   enquiryWindow,
   formName,
+  HANDLING_LABEL,
+  handlingFilter,
   listEnquiryBoard,
   listSubmissionForms,
-  notificationFilter,
-  enquiryNotificationLabel,
+  pageHandledEnquiries,
   submissionClinicScope,
   submissionFormKey,
   submissionStatus,
   submissionWebsiteKey,
+  type EnquiryHandling,
   type SubmissionStatus,
 } from "@/lib/form-submissions";
 
@@ -37,13 +40,7 @@ export const dynamic = "force-dynamic";
 export const metadata = { title: "Enquiries" };
 
 const STATUS_TONE: Record<SubmissionStatus, "info" | "warn" | "neutral"> = { new: "info", acknowledged: "warn", closed: "neutral" };
-const NOTIFICATION_TONE: Record<string, "info" | "warn" | "neutral" | "good" | "bad"> = {
-  pending: "warn",
-  sent: "good",
-  failed: "bad",
-  exhausted: "bad",
-  unconfigured: "neutral",
-};
+const HANDLING_TONE: Record<EnquiryHandling, "info" | "warn" | "good"> = { unopened: "info", read: "warn", resolved: "good" };
 
 function queryHref(values: Record<string, string | undefined>, page?: number): string {
   const search = new URLSearchParams();
@@ -61,7 +58,7 @@ export default async function EnquiriesPage({ searchParams }: { searchParams: Pr
   const status = submissionStatus(params.status);
   const form = submissionFormKey(params.form);
   const website = submissionWebsiteKey(params.website);
-  const notification = notificationFilter(params.notification);
+  const handling = handlingFilter(params.handling);
   const reference = params.q?.trim().slice(0, 80) || undefined;
   const personRequested = params.person?.trim().slice(0, 80) || undefined;
   const personAllowed = canSearchEnquiryPerson(access);
@@ -69,12 +66,21 @@ export default async function EnquiriesPage({ searchParams }: { searchParams: Pr
   const page = Math.max(1, Number(params.page) || 1);
   const denied = Boolean(params.clinic && scope !== null && !scope.includes(params.clinic));
   const clinic = denied ? undefined : params.clinic && /^[a-z0-9-]{1,64}$/.test(params.clinic) ? params.clinic : undefined;
-  const filters = { clinicId: clinic, websiteKey: website, formKey: form, status, notification, reference, person, from: window.from, to: window.to, page };
+  const filters = { clinicId: clinic, websiteKey: website, formKey: form, status, reference, person, from: window.from, to: window.to, page };
+  // Handling is resolved from this platform's read rows, not from the website source, so that filter pages here.
   const [board, forms, directory] = await Promise.all([
-    listEnquiryBoard(scope, filters, window, access),
+    listEnquiryBoard(scope, handling ? { ...filters, page: "all" as const } : filters, window, access),
     listSubmissionForms(scope),
     staffTx(access, async (db) => ({ clients: await listClients(db), websites: await listFormWebsites(db, null) })),
   ]);
+  const opened = new Set(
+    board.items.length === 0
+      ? []
+      : await staffTx(access, (db) => openedEnquiryIdentities(db, board.items.map((item) => ({ id: item.id, source: item.source ?? "database" })))),
+  );
+  const rowHandling = (item: (typeof board.items)[number]): EnquiryHandling => enquiryHandling(item.status, opened.has(enquiryIdentity(item)));
+  const shown = handling ? pageHandledEnquiries(board.items, handling, opened, page) : { items: board.items, total: board.total, page: board.page };
+  const productionTotal = handling ? board.items.filter((item) => !item.isSynthetic && rowHandling(item) === handling).length : board.currentTotal;
   const websiteNames = new Map(directory.websites.flatMap((site) => site.enquiry_key ? [[site.enquiry_key, site.name] as const] : []));
   const clientOptions = new Map(directory.clients.map((client) => [client.slug, clientLabel(client)]));
   for (const item of board.clinics) if (!clientOptions.has(item.id)) clientOptions.set(item.id, item.name);
@@ -89,14 +95,14 @@ export default async function EnquiriesPage({ searchParams }: { searchParams: Pr
   }
   const formOptions = new Map(KNOWN_FORMS.map((item) => [item.key, item.name]));
   for (const item of forms) formOptions.set(item.key, item.name);
-  const preserved = { clinic, website, form, status, notification, q: reference, person, from: window.from, to: window.to };
+  const preserved = { clinic, website, form, status, handling, q: reference, person, from: window.from, to: window.to };
   const source = board.connected ? null : await enquiryConnection();
-  const lastPage = Math.max(1, Math.ceil(board.total / ENQUIRY_PAGE_SIZE));
+  const lastPage = Math.max(1, Math.ceil(shown.total / ENQUIRY_PAGE_SIZE));
   return (
     <EnquiryTabs>
       <PageHeader
         title="Enquiries"
-        description="Wix sites are read through the Wix Forms API. Vibe-coded sites are read from that website’s enquiry database. Each row stays with its client, website and form. Each website keeps its own notification sender. Genie Works does not send email and does not require every website to use the same provider. Enquiry messages are not copied here."
+        description="Wix enquiries use the Forms API; vibe-coded sites use their own databases. Genie Works tracks enquiries without copying messages or sending emails. Handling and notification statuses remain separate, with each site managing its own email delivery."
       />
       {denied && <div className="mb-4"><Notice tone="bad" title="Not available">You do not have access to that clinic.</Notice></div>}
       {board.sourceNotice && <div className="mb-4"><Notice tone="warn">{board.sourceNotice}</Notice></div>}
@@ -112,18 +118,18 @@ export default async function EnquiriesPage({ searchParams }: { searchParams: Pr
             <FilterSelect name="website" label="Website" value={website} allLabel="All websites" options={[...websiteOptions].map(([value, label]) => ({ value, label }))} />
             <FilterSelect name="form" label="Form" value={form} allLabel="All forms" options={[...formOptions].map(([value, label]) => ({ value, label }))} />
             <FilterSelect name="status" label="Follow-up status" value={status} allLabel="Any status" options={[{ value: "new", label: "New" }, { value: "acknowledged", label: "Acknowledged" }, { value: "closed", label: "Closed" }]} />
-            <FilterSelect name="notification" label="Notification" value={notification} allLabel="Any notification" options={[{ value: "pending", label: "Pending" }, { value: "sent", label: "Sent" }, { value: "failed", label: "Failed" }, { value: "unconfigured", label: "Not configured" }, { value: "unavailable", label: "Unavailable" }, { value: "none", label: "No notification recorded" }]} />
+            <FilterSelect name="handling" label="Handling" value={handling} allLabel="Any handling" options={[{ value: "unopened", label: HANDLING_LABEL.unopened }, { value: "read", label: HANDLING_LABEL.read }, { value: "resolved", label: HANDLING_LABEL.resolved }]} />
             <FilterInput name="q" label="Reference" value={reference} placeholder="Reference" />
             {personAllowed && <FilterInput name="person" label="Name, email or telephone" value={person} placeholder="Restricted search" />}
           </FilterBar>
           <p className="mb-3 text-sm text-ink-soft">
-            {board.total === 1 ? "1 matching enquiry" : `${board.total} matching enquiries`}
-            {board.total !== board.currentTotal && " The comparison above leaves demonstration submissions out."}
+            {shown.total === 1 ? "1 matching enquiry" : `${shown.total} matching enquiries`}
+            {shown.total !== productionTotal && " The comparison above leaves demonstration submissions out."}
           </p>
           {canExport(access) && (
             <form method="get" action="/enquiries/export" className="card mb-5 space-y-3 p-4">
               {Object.entries(preserved).map(([key, value]) => value ? <input key={key} type="hidden" name={key} value={value} /> : null)}
-              <p className="text-sm">This export includes {board.currentTotal === 1 ? "1 production record" : `${board.currentTotal} production records`} for the current filters. Demonstration submissions are not included.</p>
+              <p className="text-sm">This export includes {productionTotal === 1 ? "1 production record" : `${productionTotal} production records`} for the current filters. Demonstration submissions are not included.</p>
               <label className="flex min-h-11 items-start gap-2 text-sm">
                 <input type="checkbox" name="details" value="1" className="mt-1 size-4 accent-action" />
                 <span>Include contact details. This adds name, telephone and email. The message and other free-text details stay out of the file.</span>
@@ -141,11 +147,11 @@ export default async function EnquiriesPage({ searchParams }: { searchParams: Pr
                   <Th>Form</Th>
                   <Th>Name</Th>
                   <Th>Follow-up status</Th>
-                  <Th>Notification</Th>
+                  <Th>Handling</Th>
                 </tr>
               </thead>
               <tbody>
-                {board.items.map((item) => (
+                {shown.items.map((item) => (
                   <tr key={enquiryIdentity(item)} className="hover:bg-surface-muted/60">
                     <Td className="whitespace-nowrap">
                       <Link href={`/enquiries/${item.id}`} className="font-medium text-action hover:underline">{formatDateTime(item.submittedAt)}</Link>
@@ -162,10 +168,10 @@ export default async function EnquiriesPage({ searchParams }: { searchParams: Pr
                       {item.isSynthetic && <div className="text-xs text-muted">Demonstration data</div>}
                     </Td>
                     <Td><Badge tone={STATUS_TONE[item.status]}>{STATUS_LABEL[item.status]}</Badge></Td>
-                    <Td><Badge tone={item.notificationDelivery === "unavailable" ? "neutral" : item.notificationStatus ? NOTIFICATION_TONE[item.notificationStatus] : "neutral"}>{enquiryNotificationLabel(item)}</Badge></Td>
+                    <Td><Badge tone={HANDLING_TONE[rowHandling(item)]}>{HANDLING_LABEL[rowHandling(item)]}</Badge></Td>
                   </tr>
                 ))}
-                {board.items.length === 0 && (
+                {shown.items.length === 0 && (
                   <tr>
                     <td colSpan={7} className="px-3 py-6 text-center text-sm text-muted">
                       {scope !== null && scope.length === 0 ? "No clinic access is assigned to you." : "No enquiries match this search."}
@@ -174,12 +180,12 @@ export default async function EnquiriesPage({ searchParams }: { searchParams: Pr
                 )}
               </tbody>
             </Table>
-            {board.total > 0 && (
+            {shown.total > 0 && (
               <div className="flex flex-wrap items-center justify-between gap-3 px-5 py-3 text-sm">
-                <p>Showing {(board.page - 1) * ENQUIRY_PAGE_SIZE + 1}–{Math.min(board.page * ENQUIRY_PAGE_SIZE, board.total)} of {board.total}</p>
+                <p>Showing {(shown.page - 1) * ENQUIRY_PAGE_SIZE + 1}–{Math.min(shown.page * ENQUIRY_PAGE_SIZE, shown.total)} of {shown.total}</p>
                 <div className="flex gap-3">
-                  {board.page > 1 && <Link href={queryHref(preserved, board.page - 1)} className="text-action underline">Previous</Link>}
-                  {board.page < lastPage && <Link href={queryHref(preserved, board.page + 1)} className="text-action underline">Next</Link>}
+                  {shown.page > 1 && <Link href={queryHref(preserved, shown.page - 1)} className="text-action underline">Previous</Link>}
+                  {shown.page < lastPage && <Link href={queryHref(preserved, shown.page + 1)} className="text-action underline">Next</Link>}
                 </div>
               </div>
             )}

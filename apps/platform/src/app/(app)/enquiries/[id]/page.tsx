@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { canEditClient, formatDate, formatDateTime, getClientBySlug, listAuditEvents, listEnquiryStatusEvents, recordAudit } from "@clinic-genie/db";
+import { canEditClient, formatDate, formatDateTime, getClientBySlug, listAuditEvents, listEnquiryStatusEvents, markEnquiryRead, recordAudit } from "@clinic-genie/db";
 import { requireAccess } from "@/lib/session";
 import { staffTx } from "@/lib/db";
 import { PageHeader, Card, KeyValue } from "@/components/ui/Card";
@@ -31,6 +31,15 @@ export default async function EnquiryPage({ params }: { params: Promise<{ id: st
       ? await listAuditEvents(db, { action: "notification.retry", targetIds: [submission.notification.id], limit: 50 })
       : [],
   }));
+  // Opening records one read row. Follow-up status is untouched (D45).
+  if (client) {
+    await staffTx(access, (db) => markEnquiryRead(db, {
+      clientId: client.id,
+      externalId: submission.id,
+      source: submission.source === "wix" ? "wix" : "database",
+      userId: access.user.id,
+    }));
+  }
   await staffTx(access, (db) => recordAudit(db, {
     actorType: "staff",
     actorUserId: access.user.id,

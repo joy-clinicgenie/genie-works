@@ -24,7 +24,7 @@ export function enquiryDashboardHref(input: { status?: "new" | "acknowledged" | 
   return `/enquiries?${params.toString()}`;
 }
 
-/** The notifications page defaults to this month. A wide window keeps older failures that the dashboard still counts. */
+/** The notifications page defaults to the last 30 days. A wide window keeps older failures that the dashboard still counts. */
 export function notificationFailureHref(clinic?: string | null, today = todayIso()): string {
   const params = new URLSearchParams({
     notification: "failed",

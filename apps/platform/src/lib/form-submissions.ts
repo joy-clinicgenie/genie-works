@@ -2,7 +2,7 @@ import { randomBytes } from "node:crypto";
 import pg from "pg";
 import { assertEnquirySourceUrl, canManageRegistry, enquiryStatusCountQuery, formatDateTime, setEnquiryFollowUp, todaySgt, websiteFormConfigPresent, type AccessProfile } from "@clinic-genie/db";
 import { customWindow, periodRange } from "@/lib/period-range";
-import { loadWixEnquirySlice, readWixEnquiryDetail, type WixEnquirySlice } from "@/lib/wix-enquiries";
+import { countWixEnquiryStatuses, loadWixEnquirySlice, readWixEnquiryDetail, type WixEnquirySlice } from "@/lib/wix-enquiries";
 
 const STATUSES = ["new", "acknowledged", "closed"] as const;
 export type SubmissionStatus = (typeof STATUSES)[number];
@@ -158,10 +158,10 @@ export function canSearchEnquiryPerson(access: AccessProfile): boolean {
   return access.user.platform_role === "admin" || access.user.platform_role === "manager" || access.user.platform_role === "specialist";
 }
 
-/** This month, or a valid custom range, and the equal-length period before it. */
+/** The last 30 days, or a valid custom range, and the equal-length period before it. */
 export function enquiryWindow(from?: string, to?: string, today = todaySgt()): EnquiryWindow {
   const chosen = from || to ? customWindow(from, to, today) : null;
-  const range = chosen ?? periodRange("month", today);
+  const range = chosen ?? periodRange("last30", today);
   return {
     from: range.current.start,
     to: range.current.end,
@@ -198,6 +198,42 @@ export function notificationLabel(status: NotificationStatus | null): string {
 export function enquiryNotificationLabel(row: Pick<SubmissionListItem, "notificationStatus" | "notificationDelivery">): string {
   if (row.notificationDelivery === "unavailable") return "Unavailable";
   return notificationLabel(row.notificationStatus);
+}
+
+const HANDLING = ["unopened", "read", "resolved"] as const;
+export type EnquiryHandling = (typeof HANDLING)[number];
+
+export const HANDLING_LABEL: Record<EnquiryHandling, string> = {
+  unopened: "Unopened",
+  read: "Read",
+  resolved: "Resolved",
+};
+
+export function handlingFilter(value: string | undefined): EnquiryHandling | undefined {
+  return HANDLING.find((status) => status === value);
+}
+
+/**
+ * Closed is Resolved. Acknowledged, or a recorded open, is Read.
+ * New with no recorded open is Unopened. Opening does not change follow-up status.
+ */
+export function enquiryHandling(status: SubmissionStatus, opened: boolean): EnquiryHandling {
+  if (status === "closed") return "resolved";
+  if (opened || status === "acknowledged") return "read";
+  return "unopened";
+}
+
+export function pageHandledEnquiries(
+  items: SubmissionListItem[],
+  handling: EnquiryHandling,
+  opened: ReadonlySet<string>,
+  page: number,
+  pageSize = ENQUIRY_PAGE_SIZE,
+): { items: SubmissionListItem[]; total: number; page: number } {
+  const matched = items.filter((item) => enquiryHandling(item.status, opened.has(enquiryIdentity(item))) === handling);
+  const safe = Number.isFinite(page) && page > 0 ? Math.floor(page) : 1;
+  const start = (safe - 1) * pageSize;
+  return { items: matched.slice(start, start + pageSize), total: matched.length, page: safe };
 }
 
 /** The read connector. It is not the visitor attribution source. */
@@ -465,6 +501,44 @@ export async function submissionStatusCounts(
   const counts: Record<SubmissionStatus, number> = { new: 0, acknowledged: 0, closed: 0 };
   for (const row of rows) if (row.status in counts) counts[row.status] = Number(row.count);
   return { connected: true, counts };
+}
+
+export function combineEnquiryCounts(
+  database: { connected: true; counts: Record<SubmissionStatus, number> } | { connected: false },
+  wix: { configured: boolean; failed: boolean; counts: Record<SubmissionStatus, number> },
+): { connected: true; counts: Record<SubmissionStatus, number> } | { connected: false } {
+  const counts: Record<SubmissionStatus, number> = { new: 0, acknowledged: 0, closed: 0 };
+  let connected = false;
+  if (database.connected) {
+    connected = true;
+    for (const status of STATUSES) counts[status] += database.counts[status];
+  }
+  const wixTotal = STATUSES.reduce((sum, status) => sum + wix.counts[status], 0);
+  if (wix.configured && (!wix.failed || wixTotal > 0)) {
+    connected = true;
+    for (const status of STATUSES) counts[status] += wix.counts[status];
+  }
+  return connected ? { connected: true, counts } : { connected: false };
+}
+
+/** Database submissions plus production Wix forms. The result is counts only. */
+export async function dashboardEnquiryCounts(
+  access: AccessProfile,
+  scope: string[] | null,
+  window?: { from?: string | null; to?: string | null; clinicId?: string | null },
+): Promise<{ connected: true; counts: Record<SubmissionStatus, number>; wixNotice: string | null } | { connected: false; wixNotice: string | null }> {
+  const [database, wix] = await Promise.all([
+    submissionStatusCounts(scope, window),
+    countWixEnquiryStatuses(access, scope, window).catch(() => ({
+      configured: true,
+      failed: true,
+      notice: "A Wix form could not be read. Other websites are unchanged. Nothing was copied.",
+      counts: { new: 0, acknowledged: 0, closed: 0 } satisfies Record<SubmissionStatus, number>,
+    })),
+  ]);
+  const combined = combineEnquiryCounts(database, wix);
+  if (!combined.connected) return { connected: false, wixNotice: wix.notice };
+  return { connected: true, counts: combined.counts, wixNotice: wix.notice };
 }
 
 export async function notificationAttention(scope: string[] | null, clinicId?: string | null): Promise<{ connected: true; pending: number; failed: number; unconfigured: number } | { connected: false }> {
@@ -1080,11 +1154,11 @@ function csvCell(value: string): string {
 }
 
 /** Production export. Contact details are optional. Message and other free text are never included. */
-export function enquiryCsv(rows: SubmissionListItem[], websiteNames: Map<string, string> = new Map(), options: { contact?: boolean } = {}): string {
+export function enquiryCsv(rows: SubmissionListItem[], websiteNames: Map<string, string> = new Map(), options: { contact?: boolean; opened?: ReadonlySet<string> } = {}): string {
   const contact = options.contact === true;
   const header = ["Received", "Reference", "Client", "Website", "Form"];
   if (contact) header.push("Name", "Telephone", "Email");
-  header.push("Follow-up status", "Notification");
+  header.push("Follow-up status", "Handling");
   const lines = rows.filter((row) => !row.isSynthetic).map((row) => {
     const cells = [
       formatDateTime(row.submittedAt),
@@ -1094,7 +1168,8 @@ export function enquiryCsv(rows: SubmissionListItem[], websiteNames: Map<string,
       formName(row.formKey),
     ];
     if (contact) cells.push(row.submitterName, row.contactNumber ?? "", row.email ?? "");
-    cells.push(STATUS_LABEL[row.status], enquiryNotificationLabel(row));
+    const opened = options.opened?.has(enquiryIdentity(row)) ?? false;
+    cells.push(STATUS_LABEL[row.status], HANDLING_LABEL[enquiryHandling(row.status, opened)]);
     return cells.map(csvCell).join(",");
   });
   return [header.join(","), ...lines].join("\n");

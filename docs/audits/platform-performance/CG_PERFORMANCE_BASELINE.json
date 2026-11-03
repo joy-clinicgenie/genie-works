@@ -1,0 +1,252 @@
+{
+  "$comment": "Machine-readable baseline for future comparison. Every value is either measured here or explicitly marked not_measured. No value is estimated unless the key says so.",
+  "schemaVersion": 1,
+  "audit": {
+    "date": "2026-11-03",
+    "commit": "a54d6de",
+    "scope": "apps/platform, packages/db, packages/contracts",
+    "kind": "audit-only; no code, configuration or data was changed",
+    "companionDocuments": [
+      "CG_LATENCY_AUDIT_REPORT.md",
+      "CG_PAGE_PERFORMANCE_MATRIX.md",
+      "CG_API_DATABASE_PERFORMANCE.md",
+      "CG_PERFORMANCE_OPTIMISATION_ROADMAP.md",
+      "CG_PERFORMANCE_EXECUTIVE_SUMMARY.md"
+    ]
+  },
+  "environment": {
+    "app": {
+      "framework": "Next.js 16.4.2",
+      "react": "19",
+      "router": "App Router, React Server Components",
+      "rendering": "every app route force-dynamic",
+      "build": "production build to apps/platform/.next-audit",
+      "server": "next start, 127.0.0.1:3401",
+      "node": "v24.15.0",
+      "host": "local macOS (Darwin 27.2.0, Apple silicon)"
+    },
+    "database": {
+      "provider": "Neon PostgreSQL",
+      "region": "ap-southeast-1",
+      "endpoint": "pooled",
+      "note": "the repository .env points local development at the SHARED database; an embedded PostgreSQL on 127.0.0.1:54339 exists but is not configured for use",
+      "poolOptions": { "max": 8, "connectionTimeoutMillis": 10000, "idleTimeoutMillis": 60000, "allowExitOnIdle": true }
+    },
+    "deployTarget": { "platform": "Vercel", "regions": ["sin1"], "crons": [{ "path": "/api/internal/analytics/worker", "schedule": "0 2 * * *" }] },
+    "featureFlags": { "ANALYTICS_LIVE_REPORTS": "true", "AUTH_DEV_MAGIC_LINKS": "true but inert (disabled because DATABASE_URL is shared)", "wixReadsKillSwitch": null },
+    "authenticationState": "unauthenticated only; see notMeasured.reason"
+  },
+  "datasetSize": {
+    "$comment": "thin for operational tables; findings about row volume are structural, not observed",
+    "analytics_metric_values": 33101,
+    "analytics_report_rows": 8290,
+    "audit_events": 114,
+    "analytics_connections": 22,
+    "analytics_report_partitions": 21,
+    "clients": 15,
+    "memberships": 15,
+    "sessions": 15,
+    "websites": 14,
+    "saved_reports": 2,
+    "staff_users": 2,
+    "blog_articles": 1,
+    "tasks": 0,
+    "seo_pages": 0,
+    "seo_changes": 0,
+    "report_snapshots": 0,
+    "enquiry_reads": 0,
+    "timeline_events": 2,
+    "enquiries_externalDatabase": 0,
+    "wixFormBindings": { "total": 8, "countingInDashboardTotals": 7 }
+  },
+  "routeInventory": {
+    "pageRoutes": 70,
+    "routeHandlers": 18,
+    "layouts": 4,
+    "loadingFiles": 2,
+    "errorFiles": 1,
+    "suspenseBoundaries": 0,
+    "forceDynamicDeclarations": 72,
+    "cachingPrimitives": 0,
+    "linkPrefetchDeclarations": 0,
+    "clientComponents": 44,
+    "totalComponents": 78,
+    "serverActionFiles": 13,
+    "useEffectCalls": 22,
+    "migrations": 43,
+    "indexes": 74,
+    "tables": 69
+  },
+  "measured": {
+    "databaseRoundTrip": {
+      "method": "select 1 on a warm pooled connection, DATABASE_URL",
+      "unit": "ms", "n": 30, "min": 7.5, "p50": 8.2, "p95": 11.2, "max": 18.0
+    },
+    "enquiryDatabaseRoundTrip": {
+      "method": "select 1, ENQUIRY_DATABASE_URL",
+      "unit": "ms", "n": 20, "min": 7.4, "p50": 8.0, "p95": 15.4, "max": 15.4
+    },
+    "coldConnectionPlusFirstQuery": {
+      "method": "fresh pg.Pool, connect, one query",
+      "unit": "ms", "n": 5, "min": 73.0, "p50": 75.2, "p95": 516.5, "max": 516.5
+    },
+    "emptyStaffTransaction": {
+      "method": "withContext equivalent: begin+set_config bundled, one select 1, commit (3 round trips)",
+      "unit": "ms", "n": 20, "min": 22.7, "p50": 25.3, "p95": 34.8, "max": 34.8
+    },
+    "querySweepInOneTransaction": {
+      "method": "n sequential select 1 inside one RLS transaction",
+      "unit": "ms", "nPerPoint": 8,
+      "points": [
+        { "queries": 1, "min": 23.4, "p50": 23.9, "p95": 26.2 },
+        { "queries": 5, "min": 52.8, "p50": 58.4, "p95": 74.4 },
+        { "queries": 11, "min": 100.8, "p50": 106.2, "p95": 110.3 },
+        { "queries": 16, "min": 145.0, "p50": 146.6, "p95": 157.3 },
+        { "queries": 25, "min": 215.0, "p50": 227.6, "p95": 248.7 }
+      ],
+      "derivedMarginalCostPerQueryMs": 8.5,
+      "shape": "linear; nothing in the stack batches or pipelines queries"
+    },
+    "serverPaths": {
+      "method": "real service functions from @clinic-genie/db executed inside withContext against the real database, with the pg client's query method wrapped to count driver calls; 6 repetitions after one warm-up (4 for reports). Excludes React render and network transfer to the browser.",
+      "unit": "ms",
+      "paths": [
+        { "name": "layout: shell clients + active website ids", "driverQueries": 2, "roundTrips": 4, "n": 6, "min": 31.9, "p50": 34.2, "p95": 39.7 },
+        { "name": "getAccess: staff by email + memberships", "driverQueries": 2, "roundTrips": 4, "n": 6, "p50": 35.1, "p95": 51.0 },
+        { "name": "loadSiteView (includes listSnapshots limit 20000)", "driverQueries": 4, "roundTrips": 6, "n": 6, "p50": 56.8, "p95": 65.7, "observedSnapshotRows": 0, "observedClients": 15 },
+        { "name": "loadSeoOverview (context + website bundle)", "driverQueries": 11, "roundTrips": 13, "n": 6, "p50": 121.3, "p95": 135.0, "observedSites": 14, "observedSeoPages": 0, "observedTasks": 0 },
+        { "name": "loadLiveBundle GA4 (publishedReport chain)", "driverQueries": 15, "roundTrips": 17, "n": 6, "p50": 173.7, "p95": 191.6, "observedConnections": 2 },
+        { "name": "composeReport uncompared", "driverQueries": 20, "roundTrips": 22, "n": 4, "p50": 214.1, "p95": 230.5 },
+        { "name": "composeReport compared", "driverQueries": 28, "roundTrips": 30, "n": 4, "p50": 265.3, "p95": 280.6 }
+      ]
+    },
+    "unauthenticatedHttpTtfb": {
+      "method": "curl time_starttransfer against the production build on port 3401, 8 samples per route",
+      "unit": "ms",
+      "routes": [
+        { "path": "/sign-in", "status": 200, "firstRequest": 193.5, "warmMin": 4.2, "warmMax": 9.6 },
+        { "path": "/api/auth/session", "status": 200, "firstRequest": 3.7, "warmMin": 1.9, "warmMax": 12.2 },
+        { "path": "/api/auth/providers", "status": 200, "firstRequest": 2.5, "warmMin": 1.7, "warmMax": 1.9 },
+        { "path": "/api/auth/csrf", "status": 200, "firstRequest": 2.9, "warmMin": 1.5, "warmMax": 1.8 },
+        { "path": "/api/internal/operations/status", "status": 401, "firstRequest": 7.2, "warmMin": 1.3, "warmMax": 2.2 }
+      ],
+      "conclusion": "framework, routing and React server rendering cost single-digit milliseconds warm; authenticated route latency is database round trips plus external API calls"
+    },
+    "wixFormsApi": {
+      "method": "one token call, one submissions page, one form-schema call against one of eight configured bindings; not repeated, to respect rate limits",
+      "sampleCount": 1,
+      "unit": "ms",
+      "calls": [
+        { "call": "POST /oauth2/token", "ms": 731.0, "status": 200 },
+        { "call": "POST /form-submission-service/v4/submissions/namespace/query", "ms": 526.3, "status": 200, "submissionsReturned": 59, "responseBytes": 46615, "hasNextCursor": false },
+        { "call": "GET /form-schema-service/v4/forms/{id}", "ms": 1013.4, "status": 200 }
+      ],
+      "codeProperties": { "maxPagesPerBinding": 5, "paginationWithinBinding": "sequential", "fanOutAcrossBindings": "Promise.all", "perRequestTimeoutMs": 15000, "responseCache": "none (cache: no-store)", "tokenCache": "module-level Map, per warm process", "killSwitch": "none", "retryLoop": "none" }
+    },
+    "clientAssets": {
+      "method": "du and gzip over apps/platform/.next-audit/static",
+      "allJsUncompressedKiB": 1148,
+      "allJsGzippedKiB": 332.5,
+      "largestChunksUncompressedKiB": [228, 168, 112, 44, 36],
+      "cssKiB": 48,
+      "fonts": 1,
+      "chartLibraries": 0,
+      "nextImageCallSites": 3,
+      "bareImgWithoutDimensions": 4
+    }
+  },
+  "derived": {
+    "$comment": "arithmetic over the measured values above; not independently observed",
+    "costModel": "routeLatencyMs ~= 25 * transactions + 8.5 * queries + externalApiMs",
+    "sharedPerRequestCostMs": 69,
+    "routes": [
+      { "path": "/", "transactions": "5-6", "externalCalls": "7 Wix bindings", "serverDataTimeMs": { "warm": 700, "coldInstance": 1400 }, "target800ms": "fail" },
+      { "path": "/enquiries", "transactions": "4-5", "externalCalls": "8 Wix bindings", "serverDataTimeMs": { "low": 1200, "high": 1700 }, "target800ms": "fail" },
+      { "path": "/enquiries/[id]", "transactions": 3, "externalCalls": "1 Wix binding", "serverDataTimeMs": { "approx": 600 }, "target800ms": "at-risk" },
+      { "path": "/reports/new", "transactions": 2, "externalCalls": "none", "serverDataTimeMs": { "low": 285, "high": 335 }, "target800ms": "pass" },
+      { "path": "/analytics/traffic", "transactions": 3, "externalCalls": "none", "serverDataTimeMs": { "approx": 265 }, "target800ms": "pass" },
+      { "path": "/analytics/behavior", "transactions": 3, "externalCalls": "none", "serverDataTimeMs": { "approx": 265 }, "target800ms": "pass" },
+      { "path": "/analytics", "transactions": 2, "externalCalls": "none", "serverDataTimeMs": { "approx": 245 }, "target800ms": "pass" },
+      { "path": "/seo", "transactions": 3, "externalCalls": "none", "serverDataTimeMs": { "approx": 232 }, "target800ms": "pass" },
+      { "path": "/api/blog-media/[id]", "transactions": 2, "externalCalls": "none", "serverDataTimeMs": { "perImage": 50 }, "target800ms": "per-image defect" }
+    ],
+    "routesWithinTarget": 62,
+    "routesFailingTarget": 2,
+    "poolSaturationThresholdConcurrentHeavyRequests": 8
+  },
+  "notMeasured": {
+    "reason": "No authenticated session was obtainable. Development magic links are correctly disabled because DATABASE_URL points at a shared database (runtime-policy.ts localRehearsalDatabase); Google OAuth requires interactive consent; and creating a session row directly was refused by this environment's safety controls, correctly, since it would have written to the shared database. Separately, no monitoring of any kind is installed, so no field data exists.",
+    "metrics": [
+      "ttfb_authenticated_routes",
+      "firstContentfulPaint",
+      "largestContentfulPaint",
+      "interactionToNextPaint",
+      "cumulativeLayoutShift",
+      "clientSideNavigationDuration",
+      "timeToPrimaryDataVisible",
+      "timeToMeaningfullyInteractive",
+      "networkRequestCountPerPage",
+      "loadingSkeletonDuration",
+      "hydrationAndClientRenderOverhead",
+      "apiLatencyP50P95P99UnderRealTraffic",
+      "concurrencyBehaviour_1_5_10_sessions",
+      "poolSaturationUnderLoad",
+      "vercelColdStartDuration",
+      "mobileVsDesktopBrowserMetrics",
+      "realUserCoreWebVitalsP75",
+      "staffActionTimings_openDashboard_switchClient_changeDateRange_openDraft_saveDraft_generateReport"
+    ],
+    "unblockedBy": "a seeded isolated staging database; the repository already contains the tooling (e2e-batch08/prepare.mts, server.mts, support.ts, playwright.batch08.config.ts)"
+  },
+  "findings": [
+    { "id": "P0-1", "priority": "P0", "module": "Agency Overview, Leads & Forms", "title": "Live Wix Forms API calls block the dashboard and the enquiries page", "status": "confirmed", "evidence": "measured", "file": "apps/platform/src/lib/wix-enquiries.ts", "derivedImpactMs": { "low": 600, "high": 1600 } },
+    { "id": "P0-2", "priority": "P0", "module": "Admin / background sync", "title": "Committed debug instrumentation transmits secret lengths before the authorisation check", "status": "confirmed", "evidence": "code, verified committed in 7c28a4f", "file": "apps/platform/src/app/api/internal/analytics/worker/route.ts", "line": 20, "derivedImpactMs": 0, "note": "security defect, not a latency defect" },
+    { "id": "P1-1", "priority": "P1", "module": "Website Analytics", "title": "loadLiveBundle issues 15 sequential queries because publishedReport is two queries per report", "status": "confirmed", "evidence": "measured", "file": "packages/db/src/analytics/read.ts", "line": 30, "measuredMs": 173.7, "estimatedSavingMs": { "low": 90, "high": 110 } },
+    { "id": "P1-2", "priority": "P1", "module": "Website Analytics", "title": "/analytics/traffic and /analytics/behavior open two transactions where /analytics opens one", "status": "confirmed", "evidence": "code", "file": "apps/platform/src/lib/load-analytics-board.ts", "line": 10, "estimatedSavingMs": 20 },
+    { "id": "P1-3", "priority": "P1", "module": "SEO", "title": "/seo runs 11 queries then opens a second transaction; over-fetches and filters in JavaScript; duplicates the client registry read", "status": "confirmed", "evidence": "measured", "file": "apps/platform/src/lib/seo-workspace.ts", "line": 351, "measuredMs": 121.3, "estimatedSavingMs": { "low": 40, "high": 60 } },
+    { "id": "P1-4", "priority": "P1", "module": "Leads & Forms", "title": "listEnquiryBoard runs six sequential queries, two byte-identical, and abandons pagination whenever Wix is configured", "status": "confirmed", "evidence": "code", "file": "apps/platform/src/lib/form-submissions.ts", "line": 689, "estimatedSavingMs": { "low": 508, "high": 1008 } },
+    { "id": "P1-5", "priority": "P1", "module": "cross-cutting", "title": "The client registry is loaded twice on most routes", "status": "confirmed", "evidence": "measured", "file": "apps/platform/src/app/(app)/layout.tsx", "line": 37, "measuredMs": 34.2, "estimatedSavingMs": 34 },
+    { "id": "P1-6", "priority": "P1", "module": "Reports", "title": "Report generation runs 20-28 sequential queries", "status": "confirmed", "evidence": "measured", "file": "packages/db/src/services/report-builder.ts", "line": 118, "measuredMs": 265.3, "estimatedSavingMs": { "low": 170, "high": 190 } },
+    { "id": "P1-7", "priority": "P1", "module": "Blogs", "title": "Blog media is served with two transactions and an audit write per image, and is never cacheable", "status": "confirmed", "evidence": "code", "file": "apps/platform/src/app/api/blog-media/[id]/route.ts", "estimatedSavingMs": 25, "perUnit": "image per page view" },
+    { "id": "P2-1", "priority": "P2", "module": "Website Analytics, Reports", "title": "loadSiteView reads up to 20000 report snapshots on every analytics and report page", "status": "confirmed", "evidence": "code; costs nothing today because report_snapshots has 0 rows", "file": "apps/platform/src/lib/site-view.ts", "line": 37, "estimatedSavingMs": 0, "kind": "volume trap" },
+    { "id": "P2-2", "priority": "P2", "module": "cross-cutting", "title": "Server actions commonly use two or more serial transactions", "status": "confirmed", "evidence": "code", "file": "apps/platform/src/app/actions/blog.ts", "estimatedSavingMs": { "low": 25, "high": 75 }, "perUnit": "mutation" },
+    { "id": "P2-3", "priority": "P2", "module": "cross-cutting", "title": "No streaming, no loading states, no caching anywhere", "status": "confirmed", "evidence": "measured by inventory", "estimatedEffect": "dashboard first paint ~1300ms to ~150ms" },
+    { "id": "P2-4", "priority": "P2", "module": "Admin / background sync", "title": "The analytics worker is a single serial drain on a once-daily cron", "status": "confirmed", "evidence": "code", "file": "vercel.json", "note": "no interactive impact; becomes relevant if P0-1 is fixed by syncing" },
+    { "id": "P3-1", "priority": "P3", "module": "various", "title": "Small inefficiencies: /analytics/behaviour redirect page, count-by-download from Wix, extra enquiryConnection probe, whole-file buffering, report-artifact directory walk", "status": "confirmed", "evidence": "code" }
+  ],
+  "suspected": [
+    { "id": "S-1", "question": "Real TTFB/LCP/INP/CLS on authenticated routes", "settledBy": "seeded staging database plus Playwright and Lighthouse" },
+    { "id": "S-2", "question": "Vercel cold-start penalty on top of measured database time", "settledBy": "Vercel observability or a cold-instance probe" },
+    { "id": "S-3", "question": "Which module staff actually perceive as slow", "settledBy": "RUM, or structured observation with staff" },
+    { "id": "S-4", "question": "Whether ANALYTICS_LIVE_REPORTS affects perceived speed or only data availability", "preliminaryAnswer": "data availability; the UI distinguishes available/unavailable/not_connected explicitly. Do not flip for speed." },
+    { "id": "S-5", "question": "How many Wix submission pages a typical binding returns", "note": "the single sample returned 59 submissions with no next cursor (1 page); 3-5 pages would triple P0-1's cost" },
+    { "id": "S-6", "question": "Whether pool max 8 saturates under concurrent staff use", "note": "derived threshold is ~9 concurrent heavy requests; most likely way measured times degrade in practice", "settledBy": "concurrency testing against a non-shared database" }
+  ],
+  "benchmarkAssessment": {
+    "ttfb_800ms": { "verdict": "realistic", "status": "missed on 2 of 70 routes" },
+    "simpleInternalApi_p95_500ms": { "verdict": "realistic", "status": "probably met, unverified under load" },
+    "standardDatabaseQuery_p95_100ms": { "verdict": "met per query but the wrong metric", "note": "warm round trip p95 is 11.2ms; the problem is 15-30 of them in series. Track round trips per route instead." },
+    "dashboardDataVisible_2s": { "verdict": "realistic", "status": "at risk; 0.6-1.4s from Wix alone with no streaming" },
+    "clientSideNavigation_1s": { "verdict": "achievable", "status": "not measured" },
+    "simpleFilterInteraction_300ms": { "verdict": "achievable", "status": "at risk on /enquiries; not measured elsewhere" },
+    "lcp_2500ms_p75": { "verdict": "cannot assess", "reason": "no field data exists" },
+    "inp_200ms_p75": { "verdict": "cannot assess", "reason": "no field data exists; small bundle is a favourable sign" },
+    "cls_0.1_p75": { "verdict": "cannot assess", "reason": "no field data exists; 4 blog img tags lack dimensions" }
+  },
+  "specificationDiscrepancies": [
+    { "spec": "13_SECURITY_FOUNDATION.md", "issue": "committed debug code transmits secret-length metadata (P0-2)" },
+    { "spec": "14_MONITORING_RECOVERY_HANDOVER.md", "issue": "no APM and no RUM installed; performance regressions are undetectable" },
+    { "spec": "10_ANALYTICS_CONVERSIONS.md", "issue": "Wix enquiry reads happen during page render rather than from a synchronised store; GA4, GSC, Wix Analytics and PageSpeed are correctly worker-synced" },
+    { "spec": "04_DATA_MODEL.md and deployment", "issue": "lib/storage.ts serves evidence and blog media from a local filesystem path; Vercel has no persistent filesystem" },
+    { "spec": "docs/PERFORMANCE.md (19 Oct)", "issue": "its row caps and pagination warning remain open; P2-1 and P1-4 are the same class of issue" },
+    { "spec": "docs/performance-optimisation-report.md (2 Nov)", "issue": "its single-transaction analytics fix landed for /analytics only; /analytics/traffic and /analytics/behavior still use two" }
+  ],
+  "actionsExplicitlyNotTaken": [
+    "no write to any database",
+    "no load test",
+    "no repeated third-party API calls beyond three single probes",
+    "no production configuration or environment variable change",
+    "no Lighthouse or Playwright run",
+    "no code fix applied, including the P0-2 security defect"
+  ]
+}

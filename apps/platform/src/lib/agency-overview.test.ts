@@ -10,7 +10,7 @@ import {
   reportsLibraryHref,
   sessionComparison,
 } from "./agency-overview";
-import { submissionStatusCounts } from "./form-submissions";
+import { submissionStatusCounts, combineEnquiryCounts } from "./form-submissions";
 
 describe("dashboard enquiry and navigation helpers", () => {
   it("keeps dashboard enquiry counts free of personal details and treats a missing database as disconnected", async () => {
@@ -26,6 +26,20 @@ describe("dashboard enquiry and navigation helpers", () => {
       if (previous === undefined) delete process.env.ENQUIRY_DATABASE_URL;
       else process.env.ENQUIRY_DATABASE_URL = previous;
     }
+  });
+
+  it("adds production Wix counts and leaves a failed empty Wix read off the total", () => {
+    const database = { connected: true as const, counts: { new: 1, acknowledged: 0, closed: 2 } };
+    const wix = { configured: true, failed: false, counts: { new: 4, acknowledged: 1, closed: 0 } };
+    expect(combineEnquiryCounts(database, wix)).toEqual({ connected: true, counts: { new: 5, acknowledged: 1, closed: 2 } });
+    expect(combineEnquiryCounts(
+      { connected: false },
+      { configured: true, failed: true, counts: { new: 0, acknowledged: 0, closed: 0 } },
+    )).toEqual({ connected: false });
+    expect(combineEnquiryCounts(
+      { connected: false },
+      { configured: true, failed: false, counts: { new: 3, acknowledged: 0, closed: 0 } },
+    )).toEqual({ connected: true, counts: { new: 3, acknowledged: 0, closed: 0 } });
   });
 
   it("opens enquiries, analytics and the exact report from the dashboard filters", () => {
@@ -47,6 +61,8 @@ describe("dashboard enquiry and navigation helpers", () => {
   it("does not load enquiry rows or legacy session exports on the home page", () => {
     const page = readFileSync(fileURLToPath(new URL("../app/(app)/page.tsx", import.meta.url)), "utf8");
     expect(page).not.toContain("listFormSubmissions");
+    expect(page).not.toContain("listEnquiryBoard");
+    expect(page).toContain("dashboardEnquiryCounts");
     expect(page).not.toContain("report_snapshots");
     expect(page).not.toContain("127.0.0.1:7835");
     expect(page).not.toContain("LaunchDashboard");

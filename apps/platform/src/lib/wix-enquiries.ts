@@ -36,6 +36,7 @@ export interface WixEnquirySlice {
 const NO_WIX: WixEnquirySlice = { configured: false, failed: false, notice: null, current: [], productionPrevious: [] };
 
 const tokens = new Map<string, { token: string; expiresAt: number }>();
+const tokenRequests = new Map<string, Promise<string | null>>();
 
 export async function loadWixEnquirySlice(
   access: AccessProfile,
@@ -50,20 +51,26 @@ export async function loadWixEnquirySlice(
     return { configured: true, failed: true, notice: "A Wix form is connected, but the forms app is not configured on this server.", current: [], productionPrevious: [] };
   }
   const currentRange = rangeFor(window?.from ?? filters.from, window?.to ?? filters.to);
+  const loaded = await Promise.all(bindings.map(async (binding) => {
+    const [labels, current, previous] = await Promise.all([
+      formLabels(binding),
+      querySubmissions(binding, currentRange),
+      binding.countsInTotals && window
+        ? querySubmissions(binding, rangeFor(window.previousFrom, window.previousTo))
+        : Promise.resolve(null),
+    ]);
+    return { binding, labels, current, previous };
+  }));
   let failed = false;
   let truncated = false;
   const currentRows: Array<{ binding: WixEnquiryBinding; row: WixSubmissionRecord; labels: Map<string, string> }> = [];
   const previousRows: Array<{ binding: WixEnquiryBinding; row: WixSubmissionRecord }> = [];
-  for (const binding of bindings) {
-    const labels = await formLabels(binding);
-    const current = await querySubmissions(binding, currentRange);
-    failed = failed || current.failed;
-    truncated = truncated || current.truncated;
-    for (const row of current.rows) currentRows.push({ binding, row, labels });
-    if (!binding.countsInTotals || !window) continue;
-    const previous = await querySubmissions(binding, rangeFor(window.previousFrom, window.previousTo));
-    failed = failed || previous.failed;
-    for (const row of previous.rows) previousRows.push({ binding, row });
+  for (const item of loaded) {
+    failed = failed || item.current.failed || Boolean(item.previous?.failed);
+    truncated = truncated || item.current.truncated;
+    for (const row of item.current.rows) currentRows.push({ binding: item.binding, row, labels: item.labels });
+    if (!item.previous) continue;
+    for (const row of item.previous.rows) previousRows.push({ binding: item.binding, row });
   }
   const statuses = await followUpStatuses(access, [...currentRows, ...previousRows].map((item) => item.row.id));
   const current = currentRows.flatMap((item) => {
@@ -87,6 +94,40 @@ export async function loadWixEnquirySlice(
     current,
     productionPrevious,
   };
+}
+
+const EMPTY_STATUS_COUNTS = (): Record<SubmissionStatus, number> => ({ new: 0, acknowledged: 0, closed: 0 });
+
+/** Home-page totals. Production Wix forms only, and only ids plus follow-up status. */
+export async function countWixEnquiryStatuses(
+  access: AccessProfile,
+  scope: string[] | null,
+  window?: { from?: string | null; to?: string | null; clinicId?: string | null },
+): Promise<{ configured: boolean; failed: boolean; notice: string | null; counts: Record<SubmissionStatus, number> }> {
+  const counts = EMPTY_STATUS_COUNTS();
+  if (!wixReadsAllowed()) return { configured: false, failed: false, notice: null, counts };
+  const bindings = (await staffTx(access, (db) => listWixEnquiryBindings(db, scope)))
+    .filter((binding) => binding.countsInTotals)
+    .filter((binding) => !window?.clinicId || binding.clientSlug === window.clinicId);
+  if (bindings.length === 0) return { configured: false, failed: false, notice: null, counts };
+  if (!process.env.FORMS_WIX_APP_ID || !process.env.FORMS_WIX_APP_SECRET) {
+    return { configured: true, failed: true, notice: "A Wix form is connected, but the forms app is not configured on this server.", counts };
+  }
+  const range = rangeFor(window?.from ?? undefined, window?.to ?? undefined);
+  const loaded = await Promise.all(bindings.map(async (binding) => ({ binding, result: await querySubmissions(binding, range) })));
+  const failed = loaded.some((item) => item.result.failed);
+  const truncated = loaded.some((item) => item.result.truncated);
+  const ids = loaded.flatMap((item) => item.result.rows.flatMap((row) => {
+    if (row.formId !== item.binding.formId.toLowerCase()) return [];
+    if (row.namespace && row.namespace !== item.binding.namespace) return [];
+    return [row.id];
+  }));
+  const statuses = await followUpStatuses(access, ids);
+  for (const id of ids) {
+    const status = statuses.get(id) ?? "new";
+    counts[status] += 1;
+  }
+  return { configured: true, failed, notice: noticeFor(failed, truncated), counts };
 }
 
 export async function readWixEnquiryDetail(
@@ -286,6 +327,18 @@ async function accessToken(instanceId: string): Promise<string | null> {
   if (!instance || !clientId || !clientSecret) return null;
   const cached = tokens.get(instance);
   if (cached && cached.expiresAt > Date.now()) return cached.token;
+  const pending = tokenRequests.get(instance);
+  if (pending) return pending;
+  const request = requestAccessToken(instance, clientId, clientSecret);
+  tokenRequests.set(instance, request);
+  try {
+    return await request;
+  } finally {
+    tokenRequests.delete(instance);
+  }
+}
+
+async function requestAccessToken(instance: string, clientId: string, clientSecret: string): Promise<string | null> {
   const response = await wixFetch(WIX_TOKEN_URL, null, {
     grant_type: "client_credentials",
     client_id: clientId,
