@@ -184,6 +184,8 @@ Not done:
 
 **Addendum 4 (preview deployment, at the owner's instruction):** `vercel deploy` from `analytics-phase1-closure` produced `dpl_5PLoLfzxQ5RTfBcnvLwpkjLiv56W`, target `preview`, status Ready. It is behind Vercel Authentication, so its pages could not be fetched without a Vercel login, and sign-in and the empty client list are **not yet verified**. The URL is unique to the deployment; it is not an alias, so it cannot be registered as a stable Google redirect URI. Production was not deployed or changed (sign-in page still 200).
 
+**Addendum 5:** a second preview administrator was added to the preview database (2 rows, both `admin`). The alias `genie-works-preview.vercel.app` was set to the preview deployment at the owner's request. It is behind Vercel Authentication. The Google client must list `https://genie-works-preview.vercel.app/api/auth/callback/google` before sign-in can work; re-run `vercel alias set` after each new preview deployment. Remove with `vercel alias rm genie-works-preview.vercel.app`.
+
 Rollback: set `target` of the 21 entries back to Production+Preview with the same API call; remove the four Preview variables; `vercel integration resource disconnect genie-works-preview genie-works`.
 
 # Part D: closure re-verification (12 Nov, evening)
