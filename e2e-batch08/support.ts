@@ -2,7 +2,7 @@ import { createHash, randomBytes } from "node:crypto";
 import { readFileSync } from "node:fs";
 import pg from "pg";
 import type { Browser, BrowserContext, Page } from "@playwright/test";
-import { PLATFORM_DB, PROD_ORIGIN, DEV_ORIGIN, adminUrl } from "./targets.ts";
+import { PROD_ORIGIN, DEV_ORIGIN, adminUrl, suiteTargets, type SuiteName } from "./targets.ts";
 
 export { PROD_ORIGIN, DEV_ORIGIN };
 
@@ -17,18 +17,20 @@ export function loadContext(): BatchContext {
   return JSON.parse(readFileSync("e2e-batch08/.run/context.json", "utf8")) as BatchContext;
 }
 
-function platformAdminUrl(): string {
-  const url = adminUrl(PLATFORM_DB);
+/** Suite-scoped admin URL. The name is checked by targets.ts, and the host must still be local. */
+function platformAdminUrl(suite: SuiteName = "b08"): string {
+  const database = suiteTargets(suite).platformDb;
+  const url = adminUrl(database);
   const parsed = new URL(url);
-  if (parsed.hostname !== "127.0.0.1" || parsed.pathname !== `/${PLATFORM_DB}`) {
-    throw new Error("Refusing session setup outside the isolated batch database.");
+  if (parsed.hostname !== "127.0.0.1" || parsed.pathname !== `/${database}`) {
+    throw new Error("Refusing session setup outside the isolated suite database.");
   }
   return url;
 }
 
-export async function insertSession(email: string): Promise<string> {
+export async function insertSession(email: string, suite: SuiteName = "b08"): Promise<string> {
   const token = randomBytes(24).toString("hex");
-  const client = new pg.Client({ connectionString: platformAdminUrl() });
+  const client = new pg.Client({ connectionString: platformAdminUrl(suite) });
   await client.connect();
   try {
     const staff = await client.query("select 1 from staff_users where email = $1 and active", [email]);
@@ -85,13 +87,19 @@ export async function issueBlogReadToken(websiteId: string, clientId: string, ad
   return token;
 }
 
-export async function openAs(browser: Browser, email: string): Promise<{ page: Page; context: BrowserContext; close: () => Promise<void> }> {
-  const token = await insertSession(email);
-  const context = await browser.newContext();
+export async function openAs(
+  browser: Browser,
+  email: string,
+  suite: SuiteName = "b08",
+  contextOptions?: Parameters<Browser["newContext"]>[0],
+): Promise<{ page: Page; context: BrowserContext; close: () => Promise<void> }> {
+  const token = await insertSession(email, suite);
+  const targets = suiteTargets(suite);
+  const context = await browser.newContext(contextOptions);
   const cookie = { name: "authjs.session-token", value: token, httpOnly: true, sameSite: "Lax" as const };
   await context.addCookies([
-    { ...cookie, url: PROD_ORIGIN },
-    { ...cookie, url: DEV_ORIGIN },
+    { ...cookie, url: targets.prodOrigin },
+    { ...cookie, url: targets.devOrigin },
   ]);
   const page = await context.newPage();
   return { page, context, close: () => context.close() };

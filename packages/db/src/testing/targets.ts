@@ -256,3 +256,42 @@ export function maintenanceUrl(adminUrl: string): string {
   target.pathname = "/postgres";
   return target.toString();
 }
+
+/** The real Wix Forms API. Nothing but an explicitly approved local mock may replace it. */
+export const WIX_API_BASE_URL = "https://www.wixapis.com";
+
+/**
+ * Resolves the Wix Forms API origin. The default is always the real provider.
+ *
+ * `FORMS_WIX_BASE_URL` redirects Wix reads at a local mock so enquiry pages can be measured without
+ * contacting a production Wix account. Three things must all hold, or the override is refused:
+ *
+ * 1. The mock host is local.
+ * 2. `VERCEL_ENV` is unset, so nothing deployed can use it whatever its value.
+ * 3. `DATABASE_URL` is a local database, which is the same "local rehearsal" test
+ *    `localRehearsalDatabase` already applies to development sign-in links.
+ *
+ * NODE_ENV is deliberately not the gate: `next start` sets it to production for a local production
+ * build, which is exactly the build a baseline needs to measure. The database check is the stronger
+ * signal, because a process pointed at the shared database is refused even when it looks local.
+ */
+export function resolveWixApiBaseUrl(env: Record<string, string | undefined> = process.env): string {
+  const override = env.FORMS_WIX_BASE_URL?.trim();
+  if (!override) return WIX_API_BASE_URL;
+  if (env.VERCEL_ENV) {
+    throw new Error("Refusing FORMS_WIX_BASE_URL: a Wix mock is not available in a hosted environment.");
+  }
+  if (isSharedDatabaseUrl(env.DATABASE_URL ?? "")) {
+    throw new Error("Refusing FORMS_WIX_BASE_URL: a Wix mock is only available alongside a local database.");
+  }
+  let parsed: URL;
+  try {
+    parsed = new URL(override);
+  } catch {
+    throw new Error("Refusing FORMS_WIX_BASE_URL: the value is not a valid URL.");
+  }
+  if (!LOCAL_HOSTS.has(parsed.hostname)) {
+    throw new Error("Refusing FORMS_WIX_BASE_URL: the mock host is not local.");
+  }
+  return override.replace(/\/$/, "");
+}

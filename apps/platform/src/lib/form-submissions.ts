@@ -736,20 +736,12 @@ export async function listEnquiryBoard(scope: string[] | null, filters: EnquiryF
      order by website_key`,
     [scope],
   );
-  let currentTotal = Number(countRows?.[0]?.count ?? 0);
+  // countRows already excludes demonstration rows, because listProduction is true for every read here.
+  // The production total is therefore the same count, and is reused rather than queried a second time.
+  const currentTotal = Number(countRows?.[0]?.count ?? 0);
   let previousTotal = 0;
   let breakdowns: EnquiryBoard["breakdowns"] = { client: [], website: [], form: [], source: [] };
   if (window) {
-    const productionWhere = enquiryWhere(scope, filters, currentDates, true);
-    const productionRows = await readEnquiry<{ count: number }>(
-      `select count(*)::int as count
-       from enquiries e
-       join clinics c on c.id = e.clinic_id
-       ${NOTIFICATION_JOIN}
-       where ${productionWhere.sql}`,
-      productionWhere.params,
-    );
-    if (productionRows) currentTotal = Number(productionRows[0]?.count ?? 0);
     const both = enquiryWhere(scope, filters, { ranges: [{ from: window.from, to: window.to }, { from: window.previousFrom, to: window.previousTo }] }, true);
     const fromRef = `$${both.params.length + 1}`;
     const toRef = `$${both.params.length + 2}`;
