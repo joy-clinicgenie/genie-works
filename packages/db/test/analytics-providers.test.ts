@@ -1,9 +1,23 @@
 import { describe, expect, it } from "vitest";
-import { checkCompatibility, parseGa4AccountSummaries } from "../src/analytics/providers/ga4";
+import { GA4_TEMPLATES, checkCompatibility, ga4ReportBody, parseGa4AccountSummaries } from "../src/analytics/providers/ga4";
 import { parseGscSites } from "../src/analytics/providers/gsc";
 import { parseSemanticModel, WIX_DATA_HISTORY_DAYS, wixDataWindow, wixDueWindow } from "../src/analytics/providers/wix";
 import { daysBetween } from "../src/services/dates";
 import { safeSearchQuery } from "../src/analytics/measure";
+
+describe("GA4 empty rows (D52)", () => {
+  it("asks GA4 for zero-visit days on date reports so a recorded zero is stored as zero", () => {
+    const body = ga4ReportBody({ start: "2026-11-01", end: "2026-11-07", ...GA4_TEMPLATES["ga4.traffic_daily"]! }) as { keepEmptyRows: boolean };
+    expect(body.keepEmptyRows).toBe(true);
+  });
+
+  it("leaves empty rows out of breakdowns, where a zero row adds nothing", () => {
+    for (const key of ["ga4.traffic_range", "ga4.acquisition", "ga4.landing", "ga4.device", "ga4.country"]) {
+      const body = ga4ReportBody({ start: "2026-11-01", end: "2026-11-07", ...GA4_TEMPLATES[key]! }) as { keepEmptyRows: boolean };
+      expect(body.keepEmptyRows, key).toBe(false);
+    }
+  });
+});
 
 describe("analytics provider fixtures", () => {
   it("treats fixture discovery as labelled and refuses an unknown dimension", () => {

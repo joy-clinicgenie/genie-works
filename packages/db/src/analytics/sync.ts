@@ -85,7 +85,7 @@ class ReconnectError extends Error {
 }
 
 const TEMPLATES: Record<AnalyticsProvider, string[]> = {
-  ga4: ["ga4.traffic_daily", "ga4.traffic_range", "ga4.acquisition", "ga4.landing", "ga4.device", "ga4.country"],
+  ga4: ["ga4.traffic_daily", "ga4.traffic_range", "ga4.acquisition", "ga4.landing", "ga4.device", "ga4.country", "ga4.engagement", "ga4.pages", "ga4.visitor_type"],
   wix: ["wix.data_daily"],
   gsc: ["gsc.totals", "gsc.pages", "gsc.queries"],
 };

@@ -22,7 +22,9 @@ export function ga4ReportBody(input: {
     dimensions: (input.dimensions ?? []).map((name) => ({ name })),
     limit: input.limit ?? 10000,
     offset: input.offset ?? 0,
-    keepEmptyRows: false,
+    // GA4 returns a recorded zero-visit day only when asked. A day it never recorded is still
+    // absent and stays unavailable; it is not filled in (D52).
+    keepEmptyRows: (input.dimensions ?? []).includes("date"),
   };
 }
 
@@ -56,6 +58,10 @@ export const GA4_TEMPLATES: Record<string, { metrics: string[]; dimensions: stri
   "ga4.landing": { metrics: ["sessions"], dimensions: ["landingPage"] },
   "ga4.device": { metrics: ["sessions"], dimensions: ["deviceCategory"] },
   "ga4.country": { metrics: ["sessions"], dimensions: ["country"] },
+  // Behaviour (D53). GA4 returns the two rates as fractions; the board shows them as percentages.
+  "ga4.engagement": { metrics: ["engagementRate", "averageSessionDuration", "screenPageViewsPerSession", "bounceRate"], dimensions: [] },
+  "ga4.pages": { metrics: ["screenPageViews", "userEngagementDuration", "activeUsers"], dimensions: ["pagePath"] },
+  "ga4.visitor_type": { metrics: ["activeUsers"], dimensions: ["newVsReturning"] },
 };
 
 export function ga4Template(template: string): { metrics: string[]; dimensions: string[] } {
