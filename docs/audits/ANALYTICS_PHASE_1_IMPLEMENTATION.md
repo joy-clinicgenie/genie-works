@@ -182,6 +182,8 @@ Not done:
 
 **Addendum 3:** the first preview administrator was inserted into the preview database (`staff_users`: 1 row, role `admin`). It is the owner's Workspace address, which is deliberately not written in this report. Preview sign-in still needs the redirect URI on the Google client, and a preview deployment to confirm it.
 
+**Addendum 4 (preview deployment, at the owner's instruction):** `vercel deploy` from `analytics-phase1-closure` produced `dpl_5PLoLfzxQ5RTfBcnvLwpkjLiv56W`, target `preview`, status Ready. It is behind Vercel Authentication, so its pages could not be fetched without a Vercel login, and sign-in and the empty client list are **not yet verified**. The URL is unique to the deployment; it is not an alias, so it cannot be registered as a stable Google redirect URI. Production was not deployed or changed (sign-in page still 200).
+
 Rollback: set `target` of the 21 entries back to Production+Preview with the same API call; remove the four Preview variables; `vercel integration resource disconnect genie-works-preview genie-works`.
 
 # Part D: closure re-verification (12 Nov, evening)
