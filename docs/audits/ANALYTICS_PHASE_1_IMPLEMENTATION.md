@@ -5,7 +5,7 @@ Decision: D54 in `docs/DECISIONS.md`
 Branch: `analytics-data-fixes`, working tree only. Nothing is committed, pushed or deployed.
 Scope: environment safeguards only. No synchronisation repair was started.
 
-**Phase 1 status after closure (12 Nov, afternoon): CONDITIONAL PASS. Preview isolation is BLOCKED on an approval.** See C10.
+**Phase 1 status after closure (12 Nov, afternoon): CONDITIONAL PASS. Preview isolation is BLOCKED on an approval.** See C10 and Part D (re-verified in the evening).
 
 This report has three parts. **Part C** is the closure pass and is current. **Part F** is the finalisation written at 11:30. **Part I** is the implementation record written earlier the same day. Where they differ, the later part is right.
 
@@ -156,6 +156,26 @@ To reach PASS:
 3. Delete the editor-history copies in C2, or record a decision to keep them.
 
 Phase 2 must not start before then.
+
+# Part D: closure re-verification (12 Nov, evening)
+
+Read-only re-check of Part C on branch `analytics-phase1-closure` at `c2d1507`. Nothing was deployed, no variable was changed, no schedule was enabled, no production row was read or written and no key was rotated.
+
+| Item | Status | Evidence |
+| --- | --- | --- |
+| 1. No credential in `.env.example` or staged changes | PASS | Values from the secrets backup (names-only script) compared with `.env.example` in the working tree and in all 14 revisions, every tracked file and the development `.env`: no credential matches. Only non-secret local settings match (`EMBEDDED_PG_DIR`, `SEED_ALLOWED_DB_PATTERN`, `AUTH_URL`, `APP_ENVIRONMENT_LABEL`, `UPLOADS_DIR`). Nothing is staged |
+| 2. Editor history and backups | PASS (investigated, not deleted) | Unchanged from C2. Deleting the three history folders is still the owner's decision |
+| 3. Production credentials out of development | PASS | The development `.env` holds no backup value apart from the non-secret settings above |
+| 4. Independent empty Neon database | CONDITIONAL | `genie-works-preview` exists (`vercel integration list --all`), Available, connected to no project. Not migrated, so "empty" rests on it being a new project |
+| 5. Preview shares no production credential | **BLOCKED** | `vercel env ls` still shows `DATABASE_URL`, `DATABASE_URL_UNPOOLED`, `AUTH_SECRET`, `FORMS_WIX_APP_ID`, `FORMS_WIX_APP_SECRET` and 14 Neon entries targeting Preview and Production. Needs approval of the C5 steps |
+| 6. Production analytics preserved | PASS (not re-measured) | No write since Part F, F3 |
+| 7. Root Directory and cron unchanged | PASS | No change made; see C7 |
+| 8. Tests and guards | PASS | `packages/db` 37 files, 217 passed. `apps/platform` 22 files, 131 passed. Typecheck and lint exit 0. `test:decisions` 8 passed, 0 failed. `db:migrate` and `analytics:work` with an unlisted remote host both refused |
+| 9. Clean commit | PASS | Only this report changes. No `.env`, backup or debug file is included |
+
+Also noted: `.cursor/debug-af0448.log`, `debug-c3d738.log` and `debug-f8030a.log` are tracked, from earlier commits. They hold no credential, but they are debug output and could be removed from tracking. Not changed here.
+
+**Phase 1 status: CONDITIONAL PASS.** Item 5 is BLOCKED until the C5 changes to shared variables are approved. Phase 2 must not start.
 
 # Part F: finalisation
 
