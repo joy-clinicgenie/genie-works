@@ -1,7 +1,7 @@
 import type { Queryable } from "../client";
 import { addDays, daysBetween } from "../services/dates";
 import { recordAudit } from "../services/audit";
-import { decryptSecret, encryptSecret } from "./crypto";
+import { decryptSecret, encryptSecret, tokenKeyConfigured } from "./crypto";
 import { queryHash, safeAnalyticsPath, safeSearchQuery, type AnalyticsProvider } from "./measure";
 import { checkCompatibility, ga4PropertyPath, ga4ReportBody, ga4Template, isInvalidGrant, parseGa4Report } from "./providers/ga4";
 import { GSC_ROW_LIMIT, GSC_TIME_ZONE, encodeSiteUrl, gscHasAnotherPage, gscQueryBody, parseGscQuery } from "./providers/gsc";
@@ -150,6 +150,41 @@ export function dueWindow(provider: AnalyticsProvider, now: Date, timezone: stri
   return { start: addDays(today, -29), end: today };
 }
 
+/** Rolling period lengths the analytics and SEO pages offer as presets. */
+export const PRESET_LENGTHS = [7, 30, 90] as const;
+/** GA4 daily history kept fresh each run: the longest preset and its previous period, both ending yesterday. */
+const GA4_DAILY_DAYS = 2 * 90;
+const GA4_RANGE_TEMPLATES = TEMPLATES.ga4.filter((key) => key !== "ga4.traffic_daily");
+/** GA4 reports the pages also read for the previous window. The rest are read for the selected window only. */
+const GA4_COMPARED_TEMPLATES = new Set(["ga4.traffic_range", "ga4.acquisition"]);
+
+/** Each preset length ending on `end`, with or without the equal-length window just before it. */
+function presetWindows(end: string, withPrevious = true): Array<{ start: string; end: string }> {
+  return PRESET_LENGTHS.flatMap((length) => {
+    const start = addDays(end, 1 - length);
+    const previousEnd = addDays(start, -1);
+    return withPrevious ? [{ start, end }, { start: addDays(previousEnd, 1 - length), end: previousEnd }] : [{ start, end }];
+  });
+}
+
+/**
+ * Every report and window a due run queues for one connection (D52). Range reports are read by
+ * exact dates, so they follow the page presets: GA4 on the Asia/Singapore reporting calendar,
+ * ending yesterday; Search Console on the Pacific days it has published.
+ */
+export function dueJobs(provider: AnalyticsProvider, now: Date, timezone: string | null): Array<{ templateKey: string; start: string; end: string }> {
+  if (provider === "gsc") {
+    const end = gscDueWindow(now).end;
+    return TEMPLATES.gsc.flatMap((templateKey) => presetWindows(end).map((window) => ({ templateKey, ...window })));
+  }
+  if (provider === "wix") return TEMPLATES.wix.map((templateKey) => ({ templateKey, ...dueWindow("wix", now, timezone) }));
+  const today = civilDate(timezone || "Asia/Singapore", now);
+  const daily = { templateKey: "ga4.traffic_daily", start: addDays(today, -GA4_DAILY_DAYS), end: today };
+  const reportingYesterday = addDays(civilDate("Asia/Singapore", now), -1);
+  return [daily, ...GA4_RANGE_TEMPLATES.flatMap((templateKey) =>
+    presetWindows(reportingYesterday, GA4_COMPARED_TEMPLATES.has(templateKey)).map((window) => ({ templateKey, ...window })))];
+}
+
 export function dateChunks(start: string, end: string, size: number): Array<{ start: string; end: string }> {
   const chunks: Array<{ start: string; end: string }> = [];
   let cursor = start;
@@ -221,8 +256,69 @@ export async function enqueueDue(db: Queryable, now: Date, websiteId?: string): 
   );
   let created = 0;
   for (const connection of rows) {
-    const window = dueWindow(connection.provider, now, connection.provider_timezone);
-    for (const templateKey of TEMPLATES[connection.provider]) {
+    for (const due of dueJobs(connection.provider, now, connection.provider_timezone)) {
+      const job = await enqueueJob(db, {
+        clientId: connection.client_id,
+        websiteId: connection.website_id,
+        connectionId: connection.id,
+        templateKey: due.templateKey,
+        start: due.start,
+        end: due.end,
+      });
+      if (!job.reused) created += 1;
+    }
+  }
+  return created;
+}
+
+export type RangeJobStatus = "ready" | "preparing" | "not_prepared" | "not_connected";
+
+async function rangeConnection(db: Queryable, input: { clientId: string; websiteId: string }): Promise<ConnectionRow | null> {
+  const { rows } = await db.query<ConnectionRow>(
+    `select id, client_id, website_id, provider, external_property_id, stream_or_site_ref, secret_ref, provider_timezone, status
+     from analytics_connections
+     where client_id = $1 and website_id = $2 and provider = 'ga4' and status = 'connected' and disconnected_at is null
+     limit 1`,
+    [input.clientId, input.websiteId],
+  );
+  return rows[0] ?? null;
+}
+
+function previousWindow(start: string, end: string): { start: string; end: string } {
+  const previousEnd = addDays(start, -1);
+  return { start: addDays(previousEnd, 1 - windowLength(start, end)), end: previousEnd };
+}
+
+/** Whether GA4 range reports for an exact window are stored, queued or not yet asked for. */
+export async function rangeJobStatus(db: Queryable, input: { clientId: string; websiteId: string; start: string; end: string }): Promise<RangeJobStatus> {
+  const connection = await rangeConnection(db, input);
+  if (!connection) return "not_connected";
+  const ready = await db.query(
+    `select 1 from analytics_report_partitions
+     where connection_id = $1 and template_key = 'ga4.traffic_range' and start_date = $2 and end_date = $3 and published limit 1`,
+    [connection.id, input.start, input.end],
+  );
+  if (ready.rows[0]) return "ready";
+  const queued = await db.query(
+    `select 1 from analytics_jobs
+     where connection_id = $1 and template_key = 'ga4.traffic_range' and start_date = $2 and end_date = $3 and state in ('queued', 'leased') limit 1`,
+    [connection.id, input.start, input.end],
+  );
+  return queued.rows[0] ? "preparing" : "not_prepared";
+}
+
+/**
+ * Queues GA4 range reports for one requested window and the equal window before it (D52).
+ * The website must belong to the client. Returns the number of new jobs; repeats add none.
+ */
+export async function enqueueRangeJobs(db: Queryable, input: { clientId: string; websiteId: string; start: string; end: string }): Promise<number> {
+  const connection = await rangeConnection(db, input);
+  if (!connection) return 0;
+  let created = 0;
+  const current = { start: input.start, end: input.end };
+  for (const templateKey of GA4_RANGE_TEMPLATES) {
+    const windows = GA4_COMPARED_TEMPLATES.has(templateKey) ? [current, previousWindow(input.start, input.end)] : [current];
+    for (const window of windows) {
       const job = await enqueueJob(db, {
         clientId: connection.client_id,
         websiteId: connection.website_id,
@@ -407,7 +503,8 @@ export async function leaseNext(db: Queryable, owner: string, now: Date): Promis
            select 1 from analytics_jobs active
            where active.connection_id = candidate.connection_id and active.state = 'leased'
          )
-       order by candidate.next_attempt_at, candidate.created_at, candidate.id
+       -- Newest reporting windows first, so an older backlog cannot hold back current figures (D52).
+       order by candidate.end_date desc, candidate.next_attempt_at, candidate.created_at, candidate.id
        for update skip locked
        limit 1
      )
