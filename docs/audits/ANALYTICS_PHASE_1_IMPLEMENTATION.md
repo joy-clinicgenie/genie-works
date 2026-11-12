@@ -180,6 +180,8 @@ Not done:
 
 **Addendum 2:** `AUTH_GOOGLE_HD` (the Workspace domain, a public value) was added for Preview only, so Preview sign-in is limited to that domain. Production has no such entry in Vercel and was not changed.
 
+**Addendum 3:** the first preview administrator was inserted into the preview database (`staff_users`: 1 row, role `admin`). It is the owner's Workspace address, which is deliberately not written in this report. Preview sign-in still needs the redirect URI on the Google client, and a preview deployment to confirm it.
+
 Rollback: set `target` of the 21 entries back to Production+Preview with the same API call; remove the four Preview variables; `vercel integration resource disconnect genie-works-preview genie-works`.
 
 # Part D: closure re-verification (12 Nov, evening)
