@@ -22,13 +22,15 @@ const EMPTY_OUTCOME = {
 };
 
 describe("analytics worker route authorisation", () => {
-  const original = { worker: process.env.ANALYTICS_WORKER_SECRET, cron: process.env.CRON_SECRET };
+  const original = { worker: process.env.ANALYTICS_WORKER_SECRET, cron: process.env.CRON_SECRET, database: process.env.DATABASE_URL };
 
   beforeEach(() => {
     mocks.drainMaintenance.mockReset();
     mocks.drainMaintenance.mockResolvedValue(EMPTY_OUTCOME);
     process.env.ANALYTICS_WORKER_SECRET = "worker-secret-value";
     process.env.CRON_SECRET = "cron-secret-value";
+    // The worker refuses a database it may not use (D54). These tests use a local target.
+    process.env.DATABASE_URL = "postgresql://cg_app:cg_app_dev@127.0.0.1:54339/clinic_genie";
   });
 
   afterEach(() => {
@@ -36,6 +38,8 @@ describe("analytics worker route authorisation", () => {
     else process.env.ANALYTICS_WORKER_SECRET = original.worker;
     if (original.cron === undefined) delete process.env.CRON_SECRET;
     else process.env.CRON_SECRET = original.cron;
+    if (original.database === undefined) delete process.env.DATABASE_URL;
+    else process.env.DATABASE_URL = original.database;
   });
 
   it("refuses an unauthorised request on GET and POST and runs no job", async () => {
@@ -68,6 +72,18 @@ describe("analytics worker route authorisation", () => {
       await expect(response.json()).resolves.toMatchObject({ worked: false, jobs: 0 });
     }
     expect(mocks.drainMaintenance).toHaveBeenCalledTimes(2);
+  });
+
+  it("refuses an authorised request when the database is remote, and runs no job", async () => {
+    process.env.DATABASE_URL = "postgresql://cg_app:not-a-real-password@db.unlisted.example.test:5432/clinic_genie";
+    const { GET, POST } = await import("@/app/api/internal/analytics/worker/route");
+    for (const call of [GET, POST]) {
+      const response = await call(new Request(URL_UNDER_TEST, { method: call === POST ? "POST" : "GET", headers: { authorization: "Bearer worker-secret-value" } }));
+      expect(response.status).toBe(409);
+      const body = await response.text();
+      expect(body).not.toMatch(/example\.test|not-a-real-password|postgresql/);
+    }
+    expect(mocks.drainMaintenance).not.toHaveBeenCalled();
   });
 
   it("never reports secret values or secret metadata in the refusal", async () => {

@@ -1,6 +1,7 @@
 export * from "@clinic-genie/contracts";
 export * from "./client";
 export * from "./env";
+export * from "./database-environment";
 export * from "./migrate";
 export * from "./services/audit";
 export * from "./services/auth";
