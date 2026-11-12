@@ -27,6 +27,19 @@ describe("analytics worker scheduler preparation", () => {
     expect(route).toContain("drainMaintenance");
   });
 
+  it("keeps debugging instrumentation and secret metadata out of the worker route", () => {
+    const route = readFileSync(resolve(root, "apps/platform/src/app/api/internal/analytics/worker/route.ts"), "utf8");
+    expect(route).not.toContain("127.0.0.1:7835");
+    expect(route).not.toContain("X-Debug-Session-Id");
+    expect(route).not.toMatch(/agent log/i);
+    expect(route).not.toMatch(/bearerLength|secretLength|workerSecretSet|cronSecretSet/);
+    // Nothing is read from the environment and nothing is sent anywhere before the authorisation gate.
+    const handler = route.slice(route.indexOf("async function handle"));
+    const gate = handler.indexOf("workerAuthorized");
+    expect(gate).toBeGreaterThan(0);
+    expect(handler.slice(0, gate)).not.toMatch(/fetch|process\.env/i);
+  });
+
   it("uses durable claims, separate execution and safe lease recovery", () => {
     const source = readFileSync(resolve(root, "packages/db/src/analytics/sync.ts"), "utf8");
     expect(source).toContain("claimNextJob");

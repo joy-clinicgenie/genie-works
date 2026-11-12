@@ -14,6 +14,11 @@ const nextConfig: NextConfig = {
   async rewrites() {
     return [{ source: "/favicon.ico", destination: "/brandmark.svg" }];
   },
+  async redirects() {
+    // British spelling alias for the Behaviour tab. Query values are passed through, and
+    // permanent: false keeps the 307 the previous alias page returned.
+    return [{ source: "/analytics/behaviour", destination: "/analytics/behavior", permanent: false }];
+  },
   headers: async () => [
     {
       source: "/blog/:id/preview",

@@ -1,16 +1,15 @@
-import { AnalyticsShell, loadAnalytics, NoWebsites, UnavailableClient } from "@/components/modules/AnalyticsShell";
+import { AnalyticsShell, NoWebsites, UnavailableClient } from "@/components/modules/AnalyticsShell";
 import { AnalyticsBehaviour, analyticsHrefs } from "@/components/modules/AnalyticsPanels";
-import { loadAnalyticsBoard } from "@/lib/load-analytics-board";
+import { loadAnalyticsOverview } from "@/lib/load-analytics-board";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Behaviour" };
 
-export default async function BehaviorPage({ searchParams }: { searchParams: Promise<{ client?: string; website?: string; range?: string; from?: string; to?: string }> }) {
+export default async function BehaviourPage({ searchParams }: { searchParams: Promise<{ client?: string; website?: string; range?: string; from?: string; to?: string }> }) {
   const params = await searchParams;
-  const { denied, view, rangeId, from, to, reportLinks } = await loadAnalytics(params.client, params.range, params.from, params.to, params.website);
+  const { denied, view, rangeId, from, to, reportLinks, board } = await loadAnalyticsOverview(params);
   if (denied) return <UnavailableClient />;
-  if (!view || !reportLinks) return <NoWebsites />;
-  const board = await loadAnalyticsBoard(view);
+  if (!view || !reportLinks || !board) return <NoWebsites />;
   const hrefs = analyticsHrefs(view.clientId, view.clientSlug, view.websiteId);
   return (
     <AnalyticsShell view={view} range={rangeId} from={from} to={to} title="Behaviour">

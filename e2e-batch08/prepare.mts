@@ -1,9 +1,22 @@
+/**
+ * Builds an isolated suite database from nothing: create, migrate, seed, then load the suite fixture.
+ *
+ * Usage:
+ *   npx tsx e2e-batch08/prepare.mts [b08|perf]          prepare the suite
+ *   npx tsx e2e-batch08/prepare.mts [b08|perf] drop     drop the suite databases
+ *
+ * Every database name is checked by e2e-batch08/targets.ts before a maintenance connection opens, so a
+ * shared or production database is refused rather than migrated over. No production data is read.
+ */
 import { mkdir, writeFile } from "node:fs/promises";
 import { spawn } from "node:child_process";
 import pg from "pg";
-import { ENQUIRY_DB, PLATFORM_DB, adminUrl, appUrl, maintenanceUrl } from "./targets.ts";
+import { adminUrl, appUrl, maintenanceUrl, suiteDatabases, suiteName, suiteTargets } from "./targets.ts";
 
-const mode = process.argv[2] === "drop" ? "drop" : "prepare";
+const args = process.argv.slice(2);
+const mode = args.includes("drop") ? "drop" : "prepare";
+const suite = suiteName(args.find((arg) => arg !== "drop"));
+const targets = suiteTargets(suite);
 
 function envFor(database: string): NodeJS.ProcessEnv {
   const env = { ...process.env };
@@ -16,13 +29,13 @@ function envFor(database: string): NodeJS.ProcessEnv {
   return env;
 }
 
-function run(command: string, args: string[], env: NodeJS.ProcessEnv): Promise<void> {
+function run(command: string, commandArgs: string[], env: NodeJS.ProcessEnv): Promise<void> {
   return new Promise((resolve, reject) => {
-    const child = spawn(command, args, { env, stdio: "inherit" });
+    const child = spawn(command, commandArgs, { env, stdio: "inherit" });
     child.on("error", reject);
     child.on("exit", (code) => {
       if (code === 0) resolve();
-      else reject(new Error(`${command} ${args.join(" ")} exited ${code}`));
+      else reject(new Error(`${command} ${commandArgs.join(" ")} exited ${code}`));
     });
   });
 }
@@ -44,8 +57,12 @@ async function databaseExists(name: string): Promise<boolean> {
   });
 }
 
+function assertSuiteDatabase(name: string): void {
+  if (!suiteDatabases().includes(name)) throw new Error(`Refusing ${name}: it is not an isolated suite database.`);
+}
+
 async function dropDatabase(name: string): Promise<void> {
-  if (name !== PLATFORM_DB && name !== ENQUIRY_DB) throw new Error(`Refusing to drop ${name}.`);
+  assertSuiteDatabase(name);
   await withMaintenance(async (client) => {
     const found = await client.query("select 1 from pg_database where datname = $1", [name]);
     if ((found.rowCount ?? 0) === 0) {
@@ -59,7 +76,7 @@ async function dropDatabase(name: string): Promise<void> {
 }
 
 async function createDatabase(name: string): Promise<void> {
-  if (name !== PLATFORM_DB && name !== ENQUIRY_DB) throw new Error(`Refusing to create ${name}.`);
+  assertSuiteDatabase(name);
   await withMaintenance(async (client) => {
     const found = await client.query("select 1 from pg_database where datname = $1", [name]);
     if ((found.rowCount ?? 0) > 0) return;
@@ -91,23 +108,9 @@ async function dropEmptyStandardFixture(existedBefore: boolean): Promise<void> {
   });
 }
 
-async function prepare(): Promise<void> {
-  process.env.NODE_ENV = "development";
-  delete process.env.VERCEL_ENV;
-  process.env.DATABASE_URL = appUrl(PLATFORM_DB);
-  process.env.DATABASE_ADMIN_URL = adminUrl(PLATFORM_DB);
-  process.env.APP_DB_PASSWORD = "cg_app_dev";
-  delete process.env.ENQUIRY_DATABASE_URL;
-  const standardExisted = await databaseExists("clinic_genie_enquiry_test");
-  await dropDatabase(PLATFORM_DB);
-  await dropDatabase(ENQUIRY_DB);
-  await createDatabase(PLATFORM_DB);
-  await createDatabase(ENQUIRY_DB);
-  const env = envFor(PLATFORM_DB);
-  await run("npm", ["run", "db:migrate"], env);
-  await run("npm", ["run", "db:seed"], env);
-
-  const admin = new pg.Client({ connectionString: adminUrl(PLATFORM_DB) });
+/** The batch-08 journey fixture: the internal agency client plus one website. */
+async function prepareBatch08(): Promise<void> {
+  const admin = new pg.Client({ connectionString: adminUrl(targets.platformDb) });
   await admin.connect();
   try {
     const actor = await admin.query<{ id: string }>("select id from staff_users where email = 'admin@example.invalid'");
@@ -155,20 +158,59 @@ async function prepare(): Promise<void> {
         meridianWebsiteId: website.rows[0].id,
       }, null, 2),
     );
-    console.log(`platform database ${PLATFORM_DB}: clinic-genie website ready`);
+    console.log(`platform database ${targets.platformDb}: clinic-genie website ready`);
   } finally {
     await admin.end();
   }
-
   const { resetEnquiryFixture } = await import("../packages/db/src/testing/enquiry-fixture.ts");
-  const summary = await resetEnquiryFixture(adminUrl(ENQUIRY_DB));
+  const summary = await resetEnquiryFixture(adminUrl(targets.enquiryDb));
   console.log(`enquiry database ${summary.database}: ${summary.enquiries} fictional enquiries, ${summary.notifications} notifications`);
+}
+
+/** The performance fixture: Demo Clinic A and B, an empty clinic, and a larger enquiry dataset. */
+async function preparePerf(): Promise<void> {
+  const { loadPerfFixture } = await import("../packages/db/src/testing/perf-fixture.ts");
+  const platform = await loadPerfFixture(adminUrl(targets.platformDb));
+  console.log(`platform database ${platform.database}: fixture ${platform.version}, anchor ${platform.anchorDate}`);
+  console.log(`  ${JSON.stringify(platform.counts)}`);
+
+  const { resetPerfEnquiryFixture } = await import("../packages/db/src/testing/perf-enquiry-fixture.ts");
+  const enquiry = await resetPerfEnquiryFixture(adminUrl(targets.enquiryDb));
+  console.log(`enquiry database ${enquiry.database}: fixture ${enquiry.version}, ${enquiry.enquiries} enquiries, ${enquiry.notifications} notifications`);
+  console.log(`  follow-up ${JSON.stringify(enquiry.byStatus)}`);
+  console.log(`  notification ${JSON.stringify(enquiry.byNotificationState)}`);
+
+  await mkdir("e2e-batch08/.run", { recursive: true });
+  await writeFile(
+    "e2e-batch08/.run/perf-context.json",
+    JSON.stringify({ suite: "perf", platform, enquiry }, null, 2),
+  );
+}
+
+async function prepare(): Promise<void> {
+  process.env.NODE_ENV = "development";
+  delete process.env.VERCEL_ENV;
+  process.env.DATABASE_URL = appUrl(targets.platformDb);
+  process.env.DATABASE_ADMIN_URL = adminUrl(targets.platformDb);
+  process.env.APP_DB_PASSWORD = "cg_app_dev";
+  delete process.env.ENQUIRY_DATABASE_URL;
+  const standardExisted = await databaseExists("clinic_genie_enquiry_test");
+  await dropDatabase(targets.platformDb);
+  await dropDatabase(targets.enquiryDb);
+  await createDatabase(targets.platformDb);
+  await createDatabase(targets.enquiryDb);
+  const env = envFor(targets.platformDb);
+  await run("npm", ["run", "db:migrate"], env);
+  await run("npm", ["run", "db:seed"], env);
+  if (suite === "perf") await preparePerf();
+  else await prepareBatch08();
   await dropEmptyStandardFixture(standardExisted);
+  console.log(`suite ${suite} ready on ${targets.prodOrigin} (production build) and ${targets.devOrigin} (dev server)`);
 }
 
 if (mode === "drop") {
-  await dropDatabase(PLATFORM_DB);
-  await dropDatabase(ENQUIRY_DB);
+  await dropDatabase(targets.platformDb);
+  await dropDatabase(targets.enquiryDb);
 } else {
   await prepare();
 }

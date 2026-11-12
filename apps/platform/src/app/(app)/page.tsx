@@ -1,6 +1,7 @@
-import { agencySessionSummary, dashboardReportAttention, listShellClients, type AgencySessionSummary } from "@clinic-genie/db";
+import { agencySessionSummary, dashboardReportAttention, type AgencySessionSummary } from "@clinic-genie/db";
 import { requireAccess } from "@/lib/session";
 import { staffTx } from "@/lib/db";
+import { shellClients } from "@/lib/client-registry";
 import { AgencyOverview } from "@/components/modules/AgencyOverview";
 import { dashboardEnquiryCounts, enquiryConnection, notificationAttention, submissionClinicScope } from "@/lib/form-submissions";
 import { periodRange } from "@/lib/period-range";
@@ -27,7 +28,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
   const requestedClient = params.client && CLIENT_ID.test(params.client) ? params.client : null;
 
   const registry = await settle(staffTx(access, async (db) => {
-    const clients = await listShellClients(db);
+    const clients = await shellClients(db);
     const websites = await db.query<{ client_id: string; count: number }>("select client_id, count(*)::int as count from websites group by client_id");
     return {
       clients: clients.map((client) => ({

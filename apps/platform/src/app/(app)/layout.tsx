@@ -2,8 +2,9 @@ import { cookies } from "next/headers";
 import { LogOut } from "lucide-react";
 import { signOut } from "@/lib/auth";
 import { requireAccess } from "@/lib/session";
-import { canEditClient, canManageRegistry, canManageUsers, listActiveWebsiteClientIds, listShellClients } from "@clinic-genie/db";
+import { canEditClient, canManageRegistry, canManageUsers, listActiveWebsiteClientIds } from "@clinic-genie/db";
 import { staffTx } from "@/lib/db";
+import { shellClients } from "@/lib/client-registry";
 import { Shell, type NavItem } from "@/components/shell/Shell";
 import { Badge } from "@/components/ui/Badge";
 import { clientLabel } from "@/lib/client-label";
@@ -34,7 +35,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   }
 
   const { clients, websiteClientIds } = await staffTx(access, async (db) => ({
-    clients: await listShellClients(db),
+    clients: await shellClients(db),
     websiteClientIds: await listActiveWebsiteClientIds(db),
   }));
   const adds = [

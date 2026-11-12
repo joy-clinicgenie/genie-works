@@ -21,7 +21,8 @@ import {
   suiteEnquiryFixtureUrl,
 } from "./targets";
 
-const SCHEMA = `
+/** Shared by the performance fixture, which loads a larger dataset into its own isolated database. */
+export const ENQUIRY_FIXTURE_SCHEMA = `
 create table clinics (
   id text primary key,
   display_name text not null,
@@ -261,7 +262,7 @@ export async function disposeSuiteEnquiryDatabase(adminUrl: string, slot: keyof 
 async function applySchema(client: pg.PoolClient): Promise<void> {
   await client.query("drop schema if exists public cascade");
   await client.query("create schema public");
-  await client.query(SCHEMA);
+  await client.query(ENQUIRY_FIXTURE_SCHEMA);
 }
 
 async function insertRows(client: pg.PoolClient): Promise<void> {

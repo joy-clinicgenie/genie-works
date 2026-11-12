@@ -32,7 +32,13 @@
     "enquiry:reset": "npm run enquiry:reset -w @clinic-genie/db",
     "enquiry:link": "npm run enquiry:link -w @clinic-genie/db",
     "enquiry:staging-prepare": "npm run enquiry:staging-prepare -w @clinic-genie/db",
-    "consumers:check": "npm run consumers:check -w @clinic-genie/db"
+    "consumers:check": "npm run consumers:check -w @clinic-genie/db",
+    "perf:prepare": "tsx e2e-batch08/prepare.mts perf",
+    "perf:drop": "tsx e2e-batch08/prepare.mts perf drop",
+    "perf:build": "NEXT_DIST_DIR=.next-perf npm run build -w @clinic-genie/platform",
+    "perf:server": "tsx e2e-batch08/server.mts perf start",
+    "perf:baseline": "tsx e2e-batch08/perf-baseline.mts",
+    "perf:query-counts": "tsx e2e-batch08/perf-query-counts.mts"
   },
   "devDependencies": {
     "@playwright/test": "^1.64.1",

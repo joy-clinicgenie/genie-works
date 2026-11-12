@@ -11,7 +11,7 @@ import { Button } from "@/components/ui/Button";
 import { EnquiryTabs } from "@/components/modules/EnquiryTabs";
 import { EnquiryOverview } from "@/components/modules/EnquiryOverview";
 import { clientLabel } from "@/lib/client-label";
-import { KNOWN_FORMS } from "@/lib/form-catalogue";
+import { connectedFormOptions, listConnectedForms } from "@/lib/connected-forms";
 import {
   ENQUIRY_PAGE_SIZE,
   STATUS_LABEL,
@@ -68,9 +68,10 @@ export default async function EnquiriesPage({ searchParams }: { searchParams: Pr
   const clinic = denied ? undefined : params.clinic && /^[a-z0-9-]{1,64}$/.test(params.clinic) ? params.clinic : undefined;
   const filters = { clinicId: clinic, websiteKey: website, formKey: form, status, reference, person, from: window.from, to: window.to, page };
   // Handling is resolved from this platform's read rows, not from the website source, so that filter pages here.
-  const [board, forms, directory] = await Promise.all([
+  const [board, forms, connected, directory] = await Promise.all([
     listEnquiryBoard(scope, handling ? { ...filters, page: "all" as const } : filters, window, access),
     listSubmissionForms(scope),
+    listConnectedForms(access, scope),
     staffTx(access, async (db) => ({ clients: await listClients(db), websites: await listFormWebsites(db, null) })),
   ]);
   const opened = new Set(
@@ -93,7 +94,9 @@ export default async function EnquiriesPage({ searchParams }: { searchParams: Pr
     if (clinic && site.clinicId !== clinic) continue;
     if (!websiteOptions.has(site.key)) websiteOptions.set(site.key, websiteNames.get(site.key) ?? site.key);
   }
-  const formOptions = new Map(KNOWN_FORMS.map((item) => [item.key, item.name]));
+  // Form options come from the connected sources, not a fixed list, so a connected
+  // Wix form is selectable before its first submission arrives.
+  const formOptions = new Map(connectedFormOptions(connected, clinic).map((item) => [item.value, item.label]));
   for (const item of forms) formOptions.set(item.key, item.name);
   const preserved = { clinic, website, form, status, handling, q: reference, person, from: window.from, to: window.to };
   const source = board.connected ? null : await enquiryConnection();

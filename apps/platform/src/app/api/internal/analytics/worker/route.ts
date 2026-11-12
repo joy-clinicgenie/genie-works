@@ -14,12 +14,6 @@ function jobLimit(): number {
 
 async function handle(request: Request) {
   const header = request.headers.get("authorization");
-  const bearerLength = header?.startsWith("Bearer ") ? header.length - "Bearer ".length : 0;
-  const workerSecretLength = process.env.ANALYTICS_WORKER_SECRET?.length ?? 0;
-  const cronSecretLength = process.env.CRON_SECRET?.length ?? 0;
-  // #region agent log
-  fetch('http://127.0.0.1:7835/ingest/72ef6d47-30f8-4096-872c-0a56133bbce5',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'c3d738'},body:JSON.stringify({sessionId:'c3d738',runId:'auth-check',hypothesisId:'A',location:'worker/route.ts:16',message:'worker bearer lengths',data:{headerPresent:Boolean(header),bearerPrefix:header?.startsWith("Bearer ")??false,bearerLength,workerSecretSet:workerSecretLength>0,workerSecretLength,cronSecretSet:cronSecretLength>0,cronSecretLength,lengthMatchesWorker:bearerLength>0&&bearerLength===workerSecretLength,lengthMatchesCron:bearerLength>0&&bearerLength===cronSecretLength},timestamp:Date.now()})}).catch(()=>{});
-  // #endregion
   if (!workerAuthorized(header)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }

@@ -1,4 +1,4 @@
-import { addDays, listWixEnquiryBindings, listWixFollowUpStatuses, type AccessProfile, type WixEnquiryBinding } from "@clinic-genie/db";
+import { addDays, listWixEnquiryBindings, listWixFollowUpStatuses, resolveWixApiBaseUrl, type AccessProfile, type WixEnquiryBinding } from "@clinic-genie/db";
 import { staffTx } from "@/lib/db";
 import type { EnquiryFilters, EnquiryWindow, SubmissionDetail, SubmissionListItem, SubmissionStatus } from "@/lib/form-submissions";
 import {
@@ -12,8 +12,10 @@ import {
   type WixSubmissionRecord,
 } from "@/lib/wix-form-map";
 
-const WIX_TOKEN_URL = "https://www.wixapis.com/oauth2/token";
-const WIX_QUERY_URL = "https://www.wixapis.com/form-submission-service/v4/submissions/namespace/query";
+/** Real provider by default. resolveWixApiBaseUrl only ever allows a local mock, and never in a hosted environment. */
+const wixApi = (path: string) => `${resolveWixApiBaseUrl()}${path}`;
+const WIX_TOKEN_PATH = "/oauth2/token";
+const WIX_QUERY_PATH = "/form-submission-service/v4/submissions/namespace/query";
 const PAGE_LIMIT = 100;
 const MAX_PAGES = 5;
 
@@ -171,6 +173,122 @@ export async function readWixEnquiryDetail(
   return { detail: null, failed };
 }
 
+/**
+ * One connected Wix form, as the Forms view reports it. Live read, nothing stored.
+ * The states are deliberately distinct: a site without the Wix Forms app is not a
+ * permission failure, and a readable form with no submissions is not an error.
+ */
+export type WixFormState = "readable" | "empty" | "missing" | "unsupported" | "permission" | "unconfigured" | "disabled_read";
+
+export interface WixFormProbe {
+  state: WixFormState;
+  boundSiteUrl: string | null;
+  boundSiteName: string | null;
+  boundSiteId: string | null;
+  formName: string | null;
+  active: boolean | null;
+  fields: string[];
+  submissions: number | null;
+  more: boolean;
+  checkedAt: Date | null;
+}
+
+interface ProbeSignals {
+  credentials: boolean;
+  token: boolean;
+  formsStatus: number;
+  namespaceRefused: boolean;
+  formFound: boolean;
+  submissionsStatus: number;
+  submissions: number;
+}
+
+/** Pure, so the state table is testable without touching Wix. */
+export function classifyWixForm(signals: ProbeSignals): WixFormState {
+  if (!signals.credentials) return "unconfigured";
+  if (signals.namespaceRefused) return "unsupported";
+  if (!signals.token || signals.formsStatus === 401 || signals.formsStatus === 403) return "permission";
+  if (signals.formsStatus !== 200) return "permission";
+  if (!signals.formFound) return "missing";
+  if (signals.submissionsStatus === 401 || signals.submissionsStatus === 403) return "permission";
+  if (signals.submissionsStatus !== 200) return "permission";
+  return signals.submissions > 0 ? "readable" : "empty";
+}
+
+/** True when Wix refused the namespace itself, which means the site has no Wix Forms app. */
+function namespaceRefused(body: unknown): boolean {
+  if (!body || typeof body !== "object") return false;
+  const message = (body as { message?: unknown }).message;
+  return typeof message === "string" && message.includes("Permissions for given namespace not found");
+}
+
+function formFields(form: unknown): string[] {
+  if (!form || typeof form !== "object") return [];
+  const fields = (form as { fields?: unknown }).fields;
+  if (!Array.isArray(fields)) return [];
+  return fields.flatMap((field) => {
+    if (!field || typeof field !== "object") return [];
+    const target = (field as { target?: unknown }).target;
+    return typeof target === "string" && target ? [target] : [];
+  });
+}
+
+export async function probeWixForm(binding: WixEnquiryBinding): Promise<WixFormProbe> {
+  const idle: WixFormProbe = { state: "disabled_read", boundSiteUrl: null, boundSiteName: null, boundSiteId: null, formName: null, active: null, fields: [], submissions: null, more: false, checkedAt: null };
+  if (!wixReadsAllowed()) return idle;
+  const credentials = Boolean(process.env.FORMS_WIX_APP_ID && process.env.FORMS_WIX_APP_SECRET);
+  if (!credentials) return { ...idle, state: "unconfigured" };
+  const formId = canonicalUuid(binding.formId);
+  const token = formId ? await accessToken(binding.instanceId) : null;
+  const instance = token ? await wixFetch(wixApi("/apps/v1/instance"), token) : { ok: false, status: 0, body: null };
+  const site = instance.ok && instance.body && typeof instance.body === "object"
+    ? (instance.body as { site?: { url?: unknown; siteDisplayName?: unknown; siteId?: unknown } }).site
+    : undefined;
+  const forms = token
+    ? await wixFetch(wixApi("/form-schema-service/v4/forms/query"), token, {
+        query: { filter: { namespace: binding.namespace }, cursorPaging: { limit: PAGE_LIMIT } },
+      })
+    : { ok: false, status: 0, body: null };
+  const refused = namespaceRefused(forms.body);
+  const list = forms.ok && forms.body && typeof forms.body === "object" ? (forms.body as { forms?: unknown }).forms : null;
+  const match = Array.isArray(list)
+    ? list.find((form) => form && typeof form === "object" && String((form as { id?: unknown }).id ?? "").toLowerCase() === formId)
+    : undefined;
+  const properties = match && typeof match === "object" ? (match as { properties?: { name?: unknown; disabled?: unknown } }).properties : undefined;
+  const submissions = match && token
+    ? await wixFetch(wixApi(WIX_QUERY_PATH), token, {
+        query: {
+          filter: { $and: [{ namespace: binding.namespace }, { formId: binding.formId }] },
+          sort: [{ fieldName: "createdDate", order: "DESC" }],
+          cursorPaging: { limit: PAGE_LIMIT },
+        },
+      })
+    : { ok: false, status: 0, body: null };
+  const parsed = submissions.ok ? parseWixSubmissionList(submissions.body) : null;
+  const state = classifyWixForm({
+    credentials,
+    token: Boolean(token),
+    formsStatus: forms.status,
+    namespaceRefused: refused,
+    formFound: Boolean(match),
+    submissionsStatus: submissions.status,
+    submissions: parsed?.submissions.length ?? 0,
+  });
+  const read = state === "readable" || state === "empty";
+  return {
+    state,
+    boundSiteUrl: typeof site?.url === "string" ? site.url : null,
+    boundSiteName: typeof site?.siteDisplayName === "string" ? site.siteDisplayName : null,
+    boundSiteId: typeof site?.siteId === "string" ? site.siteId : null,
+    formName: typeof properties?.name === "string" ? properties.name : null,
+    active: typeof properties?.disabled === "boolean" ? !properties.disabled : null,
+    fields: formFields(match),
+    submissions: read ? parsed?.submissions.length ?? 0 : null,
+    more: Boolean(parsed?.next),
+    checkedAt: read ? new Date() : null,
+  };
+}
+
 function wixReadsAllowed(): boolean {
   return !process.env.VITEST && process.env.ANALYTICS_FIXTURE_MODE !== "1";
 }
@@ -269,7 +387,7 @@ async function formLabels(binding: WixEnquiryBinding): Promise<Map<string, strin
   if (!formId) return new Map();
   const token = await accessToken(binding.instanceId);
   if (!token) return new Map();
-  const response = await wixFetch(`https://www.wixapis.com/form-schema-service/v4/forms/${formId}`, token);
+  const response = await wixFetch(wixApi(`/form-schema-service/v4/forms/${formId}`), token);
   if (!response.ok) return new Map();
   return labelsByTarget(response.body);
 }
@@ -298,7 +416,7 @@ async function querySubmissions(
             cursorPaging: { limit: PAGE_LIMIT },
           },
         };
-    const response = await wixFetch(WIX_QUERY_URL, token, body);
+    const response = await wixFetch(wixApi(WIX_QUERY_PATH), token, body);
     if (!response.ok) return { rows, failed: response.status !== 404, truncated: false };
     const parsed = parseWixSubmissionList(response.body);
     rows.push(...parsed.submissions);
@@ -314,7 +432,7 @@ async function getSubmission(
 ): Promise<{ row: WixSubmissionRecord | null; failed: boolean }> {
   const token = await accessToken(binding.instanceId);
   if (!token) return { row: null, failed: true };
-  const response = await wixFetch(`https://www.wixapis.com/form-submission-service/v4/submissions/${id}`, token);
+  const response = await wixFetch(wixApi(`/form-submission-service/v4/submissions/${id}`), token);
   if (response.status === 404) return { row: null, failed: false };
   if (!response.ok) return { row: null, failed: true };
   return { row: parseWixSubmission(response.body), failed: false };
@@ -339,7 +457,7 @@ async function accessToken(instanceId: string): Promise<string | null> {
 }
 
 async function requestAccessToken(instance: string, clientId: string, clientSecret: string): Promise<string | null> {
-  const response = await wixFetch(WIX_TOKEN_URL, null, {
+  const response = await wixFetch(wixApi(WIX_TOKEN_PATH), null, {
     grant_type: "client_credentials",
     client_id: clientId,
     client_secret: clientSecret,

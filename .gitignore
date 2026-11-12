@@ -2,6 +2,7 @@ node_modules/
 .next/
 .next-audit/
 .next-batch*/
+.next-perf*/
 e2e-batch08/.run/
 out/
 dist/

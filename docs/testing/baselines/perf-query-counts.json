@@ -1,0 +1,64 @@
+{
+  "generatedAt": "2026-11-03T04:40:48.247Z",
+  "suite": "perf",
+  "database": "clinic_genie_perf_baseline",
+  "anchorDate": "2026-11-03",
+  "method": "Real service functions inside withContext, with the pg client's query method wrapped. Round trips = driver queries + 2 for begin/set_config and commit.",
+  "note": "Local embedded PostgreSQL. Times are not production latency; the query and round-trip counts are the comparable figures.",
+  "paths": [
+    {
+      "path": "app layout: shell clients + website ids",
+      "driverQueries": 2,
+      "roundTrips": 4,
+      "p50ms": 1
+    },
+    {
+      "path": "getAccess: staff by email + memberships",
+      "driverQueries": 2,
+      "roundTrips": 4,
+      "p50ms": 1
+    },
+    {
+      "path": "loadSiteView: client and site selection",
+      "driverQueries": 4,
+      "roundTrips": 6,
+      "p50ms": 2,
+      "note": "clients=4 snapshotRows=60"
+    },
+    {
+      "path": "loadLiveBundle GA4: published report chain",
+      "driverQueries": 17,
+      "roundTrips": 19,
+      "p50ms": 6,
+      "note": "sessions=available"
+    },
+    {
+      "path": "loadSeoOverview: context + website bundle",
+      "driverQueries": 11,
+      "roundTrips": 13,
+      "p50ms": 4,
+      "note": "sites=3 seoPages=40 tasksLoaded=80"
+    },
+    {
+      "path": "composeReport: single period",
+      "driverQueries": 28,
+      "roundTrips": 30,
+      "p50ms": 5,
+      "note": "blocks=2"
+    },
+    {
+      "path": "composeReport: with a comparison period",
+      "driverQueries": 44,
+      "roundTrips": 46,
+      "p50ms": 8,
+      "note": "blocks=2"
+    },
+    {
+      "path": "listTasks: client task list",
+      "driverQueries": 1,
+      "roundTrips": 3,
+      "p50ms": 1,
+      "note": "rows=54"
+    }
+  ]
+}
