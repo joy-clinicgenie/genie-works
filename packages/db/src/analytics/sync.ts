@@ -77,6 +77,17 @@ class RetryableError extends Error {
   }
 }
 
+/** A server setting is missing. Reconnecting cannot fix it, so the connection keeps its status. */
+class ConfigurationError extends Error {
+  constructor() {
+    super("not_configured");
+    this.name = "ConfigurationError";
+  }
+}
+
+/** How long a job waits after a missing server setting before it is tried again. */
+const NOT_CONFIGURED_WAIT_SECONDS = 6 * 60 * 60;
+
 class ReconnectError extends Error {
   constructor() {
     super("reconnect");
@@ -120,7 +131,7 @@ interface PulledJob {
   capabilities?: Array<{ templateKey: string; metrics: string[]; dimensions: string[]; dependencies: string[]; status: "supported" | "unsupported" }>;
 }
 
-export type WorkerJobResult = "succeeded" | "failed" | "retry" | "reconnect" | "stale";
+export type WorkerJobResult = "succeeded" | "failed" | "retry" | "reconnect" | "not_configured" | "stale";
 
 export function civilDate(timeZone: string, now: Date): string {
   return new Intl.DateTimeFormat("en-CA", { timeZone, year: "numeric", month: "2-digit", day: "2-digit" }).format(now);
@@ -566,6 +577,19 @@ async function failClaimedJob(
     await finish(db, claimed.job.id, claimed.runId, "failed", 0, 0, error.code);
     return { result: exhausted ? "failed" : "retry" };
   }
+  if (error instanceof ConfigurationError) {
+    // The lease counted an attempt; a missing server setting must not use up the retry budget.
+    await db.query(
+      `update analytics_jobs
+       set state = 'queued', attempts = greatest(attempts - 1, 0), next_attempt_at = $2,
+           safe_error_code = 'not_configured', last_error_at = $3, failed_at = null,
+           lease_owner = null, lease_until = null, heartbeat_at = null, updated_at = $3
+       where id = $1`,
+      [claimed.job.id, new Date(now.getTime() + NOT_CONFIGURED_WAIT_SECONDS * 1000).toISOString(), at],
+    );
+    await finish(db, claimed.job.id, claimed.runId, "failed", 0, 0, "not_configured");
+    return { result: "not_configured" };
+  }
   if (error instanceof ReconnectError) {
     await db.query("update analytics_connections set status = 'reconnect_required', updated_at = $2 where id = $1", [claimed.connection.id, at]);
     await db.query(
@@ -837,7 +861,8 @@ async function ensureAccessToken(connection: ConnectionRow, token: TokenBundle, 
 }
 
 async function refreshWix(connection: ConnectionRow, token: TokenBundle, deps: SyncDeps): Promise<TokenBundle> {
-  if (!deps.wixAppId || !deps.wixAppSecret || !connection.stream_or_site_ref) throw new ReconnectError();
+  if (!deps.wixAppId || !deps.wixAppSecret) throw new ConfigurationError();
+  if (!connection.stream_or_site_ref) throw new ReconnectError();
   const response = await deps.fetch("https://www.wixapis.com/oauth2/token", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -852,7 +877,8 @@ async function refreshWix(connection: ConnectionRow, token: TokenBundle, deps: S
 }
 
 async function refreshGoogle(token: TokenBundle, deps: SyncDeps): Promise<TokenBundle> {
-  if (!token.refreshToken || !deps.googleClientId || !deps.googleClientSecret) throw new ReconnectError();
+  if (!deps.googleClientId || !deps.googleClientSecret) throw new ConfigurationError();
+  if (!token.refreshToken) throw new ReconnectError();
   const response = await deps.fetch("https://oauth2.googleapis.com/token", {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
@@ -981,6 +1007,7 @@ async function loadSealedToken(db: Queryable, connection: ConnectionRow): Promis
 function decodeClaimedToken(claimed: ClaimedAnalyticsJob): TokenBundle {
   const secret = claimed.sealedToken;
   if (!secret || secret.client_id !== claimed.connection.client_id) throw new ReconnectError();
+  if (!tokenKeyConfigured()) throw new ConfigurationError();
   try {
     return JSON.parse(decryptSecret(secret.ciphertext, secret.nonce)) as TokenBundle;
   } catch {

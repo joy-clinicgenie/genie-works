@@ -15,6 +15,7 @@ const EMPTY_OUTCOME = {
   failed: 0,
   retryScheduled: 0,
   reconnectRequired: 0,
+  notConfigured: 0,
   stale: 0,
   inspected: 0,
   measured: 0,

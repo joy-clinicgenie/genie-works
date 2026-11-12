@@ -33,6 +33,7 @@ function safeErrorText(code: string): string {
     provider_unavailable: "The provider is temporarily unavailable. A bounded retry is scheduled.",
     worker_deadline: "The worker stopped safely near its time budget. A bounded retry is scheduled.",
     reconnect_required: "The connection needs to be restored.",
+    not_configured: "A server setting for this provider is missing. Reconnecting will not help; an administrator must add it. The job is tried again later.",
     provider_rejected: "The provider rejected the request.",
     lease_expired: "A sync stopped before it finished.",
     page_failed: "A later page failed. The previous complete report is unchanged.",

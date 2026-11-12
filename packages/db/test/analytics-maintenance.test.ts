@@ -13,6 +13,17 @@ describe("analytics maintenance drain", () => {
     expect(result).toMatchObject({ jobs: 3, failed: 1, succeeded: 2 });
   });
 
+  it("counts a missing server setting separately and keeps draining (D51)", async () => {
+    const outcomes = ["not_configured", "succeeded"] as const;
+    let index = 0;
+    const result = await drainProviderJobs(async () => {
+      const outcome = outcomes[index++];
+      return outcome ? { worked: true, result: outcome } : { worked: false };
+    }, { limit: 10, deadlineAt: 1000, now: () => 0 });
+
+    expect(result).toMatchObject({ jobs: 2, notConfigured: 1, succeeded: 1, failed: 0, reconnectRequired: 0 });
+  });
+
   it("stops at the configured limit", async () => {
     let calls = 0;
     const result = await drainProviderJobs(async () => {

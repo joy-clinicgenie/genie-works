@@ -41,6 +41,7 @@ async function handle(request: Request) {
     failed: outcome.failed,
     retryScheduled: outcome.retryScheduled,
     reconnectRequired: outcome.reconnectRequired,
+    notConfigured: outcome.notConfigured,
     stale: outcome.stale,
     inspected: outcome.inspected,
     measured: outcome.measured,
