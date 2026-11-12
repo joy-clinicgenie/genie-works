@@ -3,7 +3,9 @@ import { readdirSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import type pg from "pg";
+import { assertMigrationDatabase, databasePlace } from "./database-environment";
 import { removeImportedDirectoryClients } from "./rehearsal";
+import { todaySgt } from "./services/dates";
 import { databaseTarget } from "./testing/targets";
 
 const MIGRATIONS_DIR = join(dirname(fileURLToPath(import.meta.url)), "..", "migrations");
@@ -84,7 +86,7 @@ export function shouldStripImportedDirectory(applied: string[]): boolean {
 export function describeDatabaseTarget(url: string): string {
   try {
     const target = databaseTarget(url);
-    const place = target.local ? "local" : "remote";
+    const place = databasePlace(url);
     const port = target.port || "default";
     const database = target.database || "(none)";
     return `database target: ${place} port ${port} database ${database}`;
@@ -123,14 +125,59 @@ export function assertSafeTarget(url: string): void {
   }
 }
 
-/** Refuses an accidental migration against a shared database. Remote hosts need an explicit non-production opt-in. */
-export function assertMigrationTarget(url: string): void {
+/**
+ * Refuses an accidental migration against a shared database (D54). A remote host needs
+ * MIGRATE_ALLOW_REMOTE=1 and a listing in NONPRODUCTION_DATABASE_HOSTS. The production database
+ * needs a dated confirmation and a named restore point. Migrations never run inside a deployment.
+ */
+export function assertMigrationTarget(url: string, now: Date = new Date()): "local" | "non_production" | "production" {
   assertNotProduction();
   const target = databaseTarget(url);
   if (target.port === "54329") {
     throw new Error("Refusing: port 54329 is the sibling clinic website database.");
   }
-  if (!target.local && process.env.MIGRATE_ALLOW_REMOTE !== "1") {
-    throw new Error("Refusing: migration target is not local. Set MIGRATE_ALLOW_REMOTE=1 only for an approved non-production host.");
+  return assertMigrationDatabase(url, { database: target.database, today: todaySgt(now) });
+}
+
+export interface MigrationStatus {
+  /** False when the database has never been migrated. */
+  initialised: boolean;
+  applied: string[];
+  pending: string[];
+  /** Applied files whose content no longer matches. `db:migrate` refuses these. */
+  modified: string[];
+  /** Recorded as applied but missing from this checkout. */
+  unknown: string[];
+}
+
+/** What `db:migrate` would do. Runs in a read-only transaction and writes nothing. */
+export async function migrationStatus(pool: pg.Pool): Promise<MigrationStatus> {
+  const files = readdirSync(MIGRATIONS_DIR).filter((f) => f.endsWith(".sql")).sort();
+  const client = await pool.connect();
+  let recorded: Array<{ name: string; checksum: string }> = [];
+  let initialised = false;
+  try {
+    await client.query("begin transaction read only");
+    const exists = await client.query<{ present: boolean }>("select to_regclass('public.schema_migrations') is not null as present");
+    initialised = Boolean(exists.rows[0]?.present);
+    if (initialised) {
+      recorded = (await client.query<{ name: string; checksum: string }>("select name, checksum from schema_migrations")).rows;
+    }
+  } finally {
+    await client.query("rollback").catch(() => {});
+    client.release();
   }
+  const done = new Map(recorded.map((row) => [row.name, row.checksum]));
+  const status: MigrationStatus = { initialised, applied: [], pending: [], modified: [], unknown: [] };
+  for (const file of files) {
+    const existing = done.get(file);
+    if (!existing) {
+      status.pending.push(file);
+      continue;
+    }
+    const checksum = createHash("sha256").update(readFileSync(join(MIGRATIONS_DIR, file), "utf8")).digest("hex");
+    (existing === checksum ? status.applied : status.modified).push(file);
+  }
+  status.unknown = recorded.map((row) => row.name).filter((name) => !files.includes(name)).sort();
+  return status;
 }

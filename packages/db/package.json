@@ -8,6 +8,7 @@
   "scripts": {
     "start": "tsx scripts/start-embedded.ts",
     "migrate": "tsx scripts/migrate.ts",
+    "migrate:status": "tsx scripts/migrate-status.ts",
     "seed": "tsx scripts/seed.ts",
     "rehearse": "tsx scripts/rehearse.ts",
     "reset": "tsx scripts/reset.ts",
