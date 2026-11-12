@@ -178,6 +178,8 @@ Not done:
 
 **Addendum, at the owner's instruction:** `AUTH_GOOGLE_ID` and `AUTH_GOOGLE_SECRET` were extended from Production to Production+Preview (target-only edit, values untouched). This shares the live Google OAuth client with Preview; it shares no database, session secret or client record. The preview URL must still be added to that client's authorised redirect URIs, and `AUTH_URL` remains Production only. To undo, set both targets back to Production.
 
+**Addendum 2:** `AUTH_GOOGLE_HD` (the Workspace domain, a public value) was added for Preview only, so Preview sign-in is limited to that domain. Production has no such entry in Vercel and was not changed.
+
 Rollback: set `target` of the 21 entries back to Production+Preview with the same API call; remove the four Preview variables; `vercel integration resource disconnect genie-works-preview genie-works`.
 
 # Part D: closure re-verification (12 Nov, evening)
