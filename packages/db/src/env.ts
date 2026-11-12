@@ -35,7 +35,7 @@ export function requireEnv(name: string): string {
 }
 
 export function envFlag(name: string, fallback = false): boolean {
-  const v = process.env[name];
+  const v = process.env[name]?.trim();
   if (v === undefined || v === "") return fallback;
   return ["1", "true", "yes", "on"].includes(v.toLowerCase());
 }

@@ -2,11 +2,18 @@ import pg from "pg";
 import { loadRootEnv, requireEnv } from "../src/env";
 import type { PlatformRole } from "@clinic-genie/contracts";
 import { applyContext, type DbContext } from "../src/client";
+import { assertTestDatabase } from "../src/database-environment";
 
 loadRootEnv();
 
-export const adminPool = new pg.Pool({ connectionString: requireEnv("DATABASE_ADMIN_URL"), max: 4 });
-export const appPool = new pg.Pool({ connectionString: requireEnv("DATABASE_URL"), max: 4 });
+// Checked before either pool exists: tests never open the production database or an unlisted remote host (D54).
+const adminUrl = requireEnv("DATABASE_ADMIN_URL");
+const appUrl = requireEnv("DATABASE_URL");
+assertTestDatabase(adminUrl);
+assertTestDatabase(appUrl);
+
+export const adminPool = new pg.Pool({ connectionString: adminUrl, max: 4 });
+export const appPool = new pg.Pool({ connectionString: appUrl, max: 4 });
 
 /** Runs `fn` as the application role with the given context, then rolls back so tests leave no trace. */
 export async function asContext<T>(ctx: DbContext, fn: (db: pg.PoolClient) => Promise<T>, opts: { commit?: boolean } = {}): Promise<T> {

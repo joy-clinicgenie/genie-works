@@ -27,12 +27,19 @@ describe("fixture target guards", () => {
     expect(() => assertMigrationTarget("postgresql://postgres:postgres@db.example.com:5432/clinic_genie")).toThrow(/not local/);
     expect(() => assertMigrationTarget("postgresql://postgres:postgres@127.0.0.1:54329/clinic_genie")).toThrow(/54329/);
     process.env.MIGRATE_ALLOW_REMOTE = "1";
+    // The opt-in alone is not enough: the exact host must also be listed as non-production (D54).
+    const listed = process.env.NONPRODUCTION_DATABASE_HOSTS;
+    delete process.env.NONPRODUCTION_DATABASE_HOSTS;
+    expect(() => assertMigrationTarget("postgresql://postgres:postgres@db.example.com:5432/clinic_genie")).toThrow(/not local/);
+    process.env.NONPRODUCTION_DATABASE_HOSTS = "db.example.com";
     expect(() => assertMigrationTarget("postgresql://postgres:postgres@db.example.com:5432/clinic_genie")).not.toThrow();
     const nodeEnv = process.env.NODE_ENV;
     process.env.NODE_ENV = "production";
     expect(() => assertMigrationTarget("postgresql://postgres:postgres@db.example.com:5432/clinic_genie")).toThrow(/production/);
     if (nodeEnv === undefined) delete process.env.NODE_ENV;
     else process.env.NODE_ENV = nodeEnv;
+    if (listed === undefined) delete process.env.NONPRODUCTION_DATABASE_HOSTS;
+    else process.env.NONPRODUCTION_DATABASE_HOSTS = listed;
     if (previous === undefined) delete process.env.MIGRATE_ALLOW_REMOTE;
     else process.env.MIGRATE_ALLOW_REMOTE = previous;
     expect(shouldStripImportedDirectory(["0001_foundation.sql"])).toBe(true);

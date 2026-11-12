@@ -36,14 +36,35 @@ Used by the embedded database on this machine. `npm run db:rehearse` creates `cl
 | `ANALYTICS_WIX_APP_SECRET` | Wix app secret. |
 | `ANALYTICS_TOKEN_KEY` | Key used to encrypt stored provider tokens. |
 | `ANALYTICS_WORKER_SECRET` | Bearer secret for the analytics worker. A manual call may use POST or GET. |
-| `CRON_SECRET` | Bearer a Vercel Cron sends. The worker accepts this or `ANALYTICS_WORKER_SECRET`. |
+| `CRON_SECRET` | Bearer Vercel sends when the `analytics-worker` schedule calls the worker path (D55). At least 16 random characters. The worker accepts this or `ANALYTICS_WORKER_SECRET`. |
 | `ANALYTICS_LIVE_REPORTS` | Reads promoted provider data when on. |
 | `ANALYTICS_FIXTURE_MODE` | When on, provider calls must stay on this machine. |
 | `PAGESPEED_API_KEY` | Optional key for mobile lab scores. Empty uses the unkeyed endpoint. |
-| `ANALYTICS_ALLOW_REMOTE_WORKER` | Allows the worker database host to be remote. Leave unset for local work. |
-| `MIGRATE_ALLOW_REMOTE` | Allows `db:migrate` to use a remote non-production host. Leave unset for local work. Production still refuses. |
+| `ANALYTICS_ALLOW_REMOTE_WORKER` | With a host listed in `NONPRODUCTION_DATABASE_HOSTS`, allows a development worker to use that remote database. `1` alone is not enough, and the production database is always refused outside the production deployment (D54). Leave unset for local work. |
+| `MIGRATE_ALLOW_REMOTE` | With a host listed in `NONPRODUCTION_DATABASE_HOSTS`, allows `db:migrate` on that remote non-production database. It does not allow production. Set it for one command, not in a file. |
+| `NONPRODUCTION_DATABASE_HOSTS` | Exact host names of approved non-production databases, comma separated. Tests, the worker and `db:migrate` refuse any other remote host. Listing the production host has no effect. |
+| `PRODUCTION_DATABASE_HOSTS` | Extra production database hosts to protect, comma separated. The current production endpoint is recognised in code by a fingerprint. |
+| `DEV_PRODUCTION_DATABASE_ACCESS` | Unset: a development or preview process that opens the production database logs one warning. `refuse`: the application connection is refused. |
+| `MIGRATE_PRODUCTION_CONFIRM` | Command line only. Today's Asia/Singapore date, a colon and the database name. Required by `db:migrate` on production. Yesterday's value is refused. |
+| `MIGRATE_BACKUP_REFERENCE` | Command line only. The name of the restore point taken before a production migration. It is printed in the migration output. |
 | `RECOVERY_ALLOWED_DB_PATTERN` | Name marker required by backup and restore-test. Unset means `rehearsal`. The shared application database, the enquiry database, a remote host and production stay refused. |
 | `GENIE_WORKS_BASE_URL` | Optional local base URL for a consumer probe. |
+
+## Three database environments (D54)
+
+| Environment | Database | Who may write |
+| --- | --- | --- |
+| Development | Embedded local PostgreSQL, `127.0.0.1:54339`, database `clinic_genie`. Fictional seed data. | Local app, tests, `analytics:work`, seed, reset, migrate. |
+| Preview | A separate hosted database on its own endpoint. Not yet created; see `docs/audits/ANALYTICS_PHASE_1_IMPLEMENTATION.md`. | Vercel preview deployments. A developer only with the host listed in `NONPRODUCTION_DATABASE_HOSTS`. |
+| Production | The current hosted database. | The Vercel production deployment. A controlled `db:migrate` under the procedure in `docs/DEPLOYMENT.md`. |
+
+Rules enforced in `packages/db/src/database-environment.ts`:
+
+- Tests refuse any database that is not local or listed. They always refuse production.
+- The analytics worker uses the production database only inside the production deployment.
+- `db:seed`, `db:reset`, backup and restore tests stay local, as before.
+- `npm run db:migrate:status` is read-only and prints `local`, `production`, `approved non-production` or `remote` for the target. Use it to confirm which database a shell is pointed at.
+- No refusal or log line includes a host name or a connection string.
 
 ## Staging
 
@@ -51,7 +72,7 @@ Same names as production, with staging values supplied by the hosting project. N
 
 `VERCEL_ENV=preview` is treated as a hosted environment: magic links and automatic admin creation stay off. `DATABASE_URL` must be a staging database, not the local rehearsal database and not production.
 
-`MIGRATE_ALLOW_REMOTE` may be set only for an approved non-production host. Seed, reset and restore tests stay local.
+`MIGRATE_ALLOW_REMOTE` may be set only for an approved non-production host, and that host must be listed in `NONPRODUCTION_DATABASE_HOSTS`. Seed, reset and restore tests stay local.
 
 ## Production
 
@@ -59,7 +80,7 @@ Same names as production, with staging values supplied by the hosting project. N
 
 | Name | Purpose |
 | --- | --- |
-| `DATABASE_ADMIN_URL` | Owner connection for a controlled migration. Not used by seed or reset. |
+| `DATABASE_ADMIN_URL` | Owner connection for a controlled migration. Not used by seed or reset. Keep it out of developer `.env` files; supply it only for the migration command. |
 | `DATABASE_URL` | Application connection for the production database. |
 | `AUTH_SECRET` | Runtime session secret. A missing value or the build fallback fails the request. |
 | `AUTH_URL` | Production origin. |

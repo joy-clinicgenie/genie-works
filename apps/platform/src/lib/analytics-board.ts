@@ -77,6 +77,8 @@ export interface AnalyticsBoard {
   formStarts: AnalyticsFigure;
   formSubmissions: AnalyticsFigure;
   flows: Array<{ name: string; current: number }>;
+  /** Live mode only: which Behaviour figures are from Google Analytics and which are from the recorded export (D53). */
+  behaviourNote: string | null;
 }
 
 const SNAPSHOT_SOURCE = "Traffic is from the recorded website analytics export. Leads are stored clinic enquiries.";
@@ -270,11 +272,24 @@ export function boardFromSnapshots(view: Pick<SiteView, "snapshots" | "current" 
     formStarts: fromPair(pairStored(view, "form_starts", "manual", "all"), "count"),
     formSubmissions: fromPair(pairStored(view, "form_submissions", "manual", "all"), "count"),
     flows: dimensionRows(view.snapshots, view.current, "nav_flow", "manual").map((row) => ({ name: row.name, current: row.current })),
+    behaviourNote: null,
   };
+}
+
+/** Google Analytics Behaviour figures for the selected window (D53). Rates are GA4 fractions. */
+export interface LiveBehaviourFacts {
+  engagementRate: number | null;
+  averageSessionDuration: number | null;
+  pagesPerSession: number | null;
+  bounceRate: number | null;
+  pages: Array<{ name: string; views: number; engagementSeconds: number | null; activeUsers: number | null }>;
+  newVisitors: number | null;
+  returningVisitors: number | null;
 }
 
 export interface LiveTrafficFacts {
   connected: boolean;
+  provider: "ga4" | "wix" | null;
   sourceNote: string;
   updatedAt: Date | null;
   sessions: number | null;
@@ -287,6 +302,7 @@ export interface LiveTrafficFacts {
   countries: Array<{ name: string; sessions: number }> | null;
   dailyCurrent: Array<{ date: string; value: number | null }>;
   dailyPrevious: Array<{ date: string; value: number | null }>;
+  behaviour: LiveBehaviourFacts | null;
 }
 
 function availableMetric(row: { metrics: Array<{ key: string; value: number | null; state: string }> }, keys: string[]): number | null {
@@ -314,8 +330,35 @@ function sourceNote(bundle: LiveBundle): string {
 }
 
 function latestFetch(bundle: LiveBundle): Date | null {
-  const dates = [bundle.sources, bundle.landing, bundle.devices, bundle.countries].flatMap((report) => (report ? [report.fetchedAt] : []));
+  const dates = [bundle.sources, bundle.landing, bundle.devices, bundle.countries, bundle.engagement, bundle.pages, bundle.visitorType].flatMap((report) => (report ? [report.fetchedAt] : []));
   return dates.reduce<Date | null>((latest, date) => (!latest || date > latest ? date : latest), null);
+}
+
+function behaviourFromBundle(bundle: LiveBundle): LiveBehaviourFacts | null {
+  if (!bundle.engagement && !bundle.pages && !bundle.visitorType) return null;
+  const totals = bundle.engagement?.rows[0];
+  const metric = (key: string) => (totals ? availableMetric(totals, [key]) : null);
+  const visitors = (kind: string) => {
+    const row = bundle.visitorType?.rows.find((item) => item.dimensionKey.toLowerCase() === kind);
+    return row ? availableMetric(row, ["activeUsers"]) : null;
+  };
+  return {
+    engagementRate: metric("engagementRate"),
+    averageSessionDuration: metric("averageSessionDuration"),
+    pagesPerSession: metric("screenPageViewsPerSession"),
+    bounceRate: metric("bounceRate"),
+    pages: (bundle.pages?.rows ?? []).flatMap((row) => {
+      const views = availableMetric(row, ["screenPageViews"]);
+      return views === null ? [] : [{
+        name: row.dimensionKey || "Unknown",
+        views,
+        engagementSeconds: availableMetric(row, ["userEngagementDuration"]),
+        activeUsers: availableMetric(row, ["activeUsers"]),
+      }];
+    }),
+    newVisitors: visitors("new"),
+    returningVisitors: visitors("returning"),
+  };
 }
 
 export function liveFactsFromBundle(bundle: LiveBundle): LiveTrafficFacts {
@@ -326,6 +369,7 @@ export function liveFactsFromBundle(bundle: LiveBundle): LiveTrafficFacts {
     : null;
   return {
     connected,
+    provider: bundle.provider,
     sourceNote: sourceNote(bundle),
     updatedAt: latestFetch(bundle),
     sessions: connected && bundle.sessions.state === "available" ? bundle.sessions.value : null,
@@ -338,6 +382,40 @@ export function liveFactsFromBundle(bundle: LiveBundle): LiveTrafficFacts {
     countries: connected && bundle.countries ? reportNumberRows(bundle.countries, ["sessions"]).map((row) => ({ name: row.name, sessions: row.current })) : connected ? [] : null,
     dailyCurrent: connected ? bundle.dailyCurrent : [],
     dailyPrevious: connected ? bundle.dailyPrevious : [],
+    behaviour: connected && bundle.provider === "ga4" ? behaviourFromBundle(bundle) : null,
+  };
+}
+
+/** A GA4 fraction as a percentage with one decimal, as the board shows rates. */
+function fractionToPercent(value: number | null): number | null {
+  return value === null ? null : Number((value * 100).toFixed(1));
+}
+
+const GA4_BEHAVIOUR_NOTE = "Engagement, page views and new or returning visitors are from Google Analytics; time on page is its engagement time per active user. Form starts, submissions, contact clicks, exit rate and recorded paths are from the recorded export.";
+const UNCONNECTED_BEHAVIOUR_NOTE = "Behaviour figures are from the recorded export.";
+const EXPORT_BEHAVIOUR_NOTE = "Behaviour figures are from the recorded export. Wix behaviour is not synced.";
+
+/** Behaviour figures in live mode (D53). GA4 values replace the export; a missing GA4 value stays unavailable. */
+function liveBehaviour(base: AnalyticsBoard, facts: LiveTrafficFacts): Partial<AnalyticsBoard> {
+  if (facts.provider !== "ga4") return { behaviourNote: EXPORT_BEHAVIOUR_NOTE };
+  const behaviour = facts.behaviour;
+  const pages: PageRow[] = (behaviour?.pages ?? [])
+    .map((row) => ({
+      name: row.name,
+      visits: row.views,
+      time: row.engagementSeconds !== null && row.activeUsers ? Number((row.engagementSeconds / row.activeUsers).toFixed(1)) : null,
+      exitRate: null,
+    }))
+    .sort((a, b) => (b.visits ?? -1) - (a.visits ?? -1) || a.name.localeCompare(b.name));
+  return {
+    behaviourNote: base.behaviourNote ?? GA4_BEHAVIOUR_NOTE,
+    engagementRate: figure(fractionToPercent(behaviour?.engagementRate ?? null), null, "percent"),
+    bounceRate: figure(fractionToPercent(behaviour?.bounceRate ?? null), null, "percent"),
+    duration: figure(behaviour?.averageSessionDuration ?? null, null, "duration"),
+    pagesPerSession: figure(behaviour?.pagesPerSession ?? null, null, "count"),
+    pages,
+    newVisitors: figure(behaviour?.newVisitors ?? null, null, "count"),
+    returningVisitors: figure(behaviour?.returningVisitors ?? null, null, "count"),
   };
 }
 
@@ -346,7 +424,7 @@ export function boardFromLive(base: AnalyticsBoard, facts: LiveTrafficFacts): An
     return {
       ...base,
       sourceNote: facts.sourceNote,
-      updatedAt: facts.updatedAt ?? base.updatedAt,
+      updatedAt: facts.updatedAt,
       sessions: emptyFigure("count"),
       users: emptyFigure("count"),
       organic: emptyFigure("count"),
@@ -357,6 +435,7 @@ export function boardFromLive(base: AnalyticsBoard, facts: LiveTrafficFacts): An
       devices: [],
       countries: [],
       trend: trendFrom(null, null, [], []),
+      behaviourNote: UNCONNECTED_BEHAVIOUR_NOTE,
     };
   }
   const channels = withShare((facts.channels ?? []).map((row) => ({
@@ -379,7 +458,7 @@ export function boardFromLive(base: AnalyticsBoard, facts: LiveTrafficFacts): An
   return {
     ...base,
     sourceNote: facts.sourceNote,
-    updatedAt: facts.updatedAt ?? base.updatedAt,
+    updatedAt: facts.updatedAt,
     sessions: figure(facts.sessions, facts.sessionsPrevious, "count"),
     users: figure(facts.users, facts.usersPrevious, "count"),
     conversionRate: figure(visitorToLeadRate(base.leads.current, facts.users), visitorToLeadRate(base.leads.previous, facts.usersPrevious), "percent"),
@@ -390,5 +469,6 @@ export function boardFromLive(base: AnalyticsBoard, facts: LiveTrafficFacts): An
     devices: (facts.devices ?? []).map((row) => ({ name: row.name, current: row.sessions, previous: null, percent: null })),
     countries: [...(facts.countries ?? [])].sort((a, b) => b.sessions - a.sessions || a.name.localeCompare(b.name)),
     trend: trendFrom(facts.sessions, facts.sessionsPrevious, facts.dailyCurrent, facts.dailyPrevious),
+    ...liveBehaviour(base, facts),
   };
 }

@@ -3,7 +3,7 @@ import { SERVICE, applyContext } from "../src/client";
 import { adminPool, appPool, asContext, clientBySlug, staffByEmail, staffCtx } from "./helpers";
 import { provisionClinic } from "./provision";
 import { bindConnectionFromState, createOAuthState, disconnectConnection, exchangeOAuthState, listConnections, saveConnection, setSourcePolicy } from "../src/analytics/connections";
-import { dueWindow, enqueueDue, enqueueJob, executeJob, leaseNext, listConnectionSyncStatus, retryFailedAnalyticsJobs, sealedToken, type FetchLike, type FetchResponse } from "../src/analytics/sync";
+import { dueWindow, enqueueDue, enqueueJob, enqueueRangeJobs, executeJob, leaseNext, rangeJobStatus, listConnectionSyncStatus, retryFailedAnalyticsJobs, sealedToken, type FetchLike, type FetchResponse } from "../src/analytics/sync";
 import { publishedReport } from "../src/analytics/read";
 import { encryptSecret } from "../src/analytics/crypto";
 import { createClient, createWebsite, grantMembership } from "../src/services/registry";
@@ -162,6 +162,54 @@ describe("analytics tenant isolation and sync", () => {
     });
   });
 
+  it("keeps a job queued as not_configured when server credentials are missing, without asking for a reconnect (D51)", async () => {
+    const admin = await staffByEmail("admin@example.invalid");
+    await asContext(SERVICE, async (db) => {
+      const provisioned = await provisionClinic(db, admin.id);
+      const clientId = provisioned.clientId;
+      const site = provisioned.websiteId;
+      await db.query("update analytics_jobs set state = 'cancelled', lease_owner = null, lease_until = null where state in ('queued', 'leased')");
+      const expired = sealedToken({ accessToken: "old", refreshToken: "refresh", expiresAt: "2020-01-01T00:00:00.000Z" });
+      const connection = await saveConnection(db, {
+        clientId, websiteId: site, provider: "ga4", externalPropertyId: "3131", streamOrSiteRef: null,
+        providerTimezone: "Asia/Singapore", tokenCiphertext: expired.ciphertext, tokenNonce: expired.nonce, actorUserId: admin.id,
+      });
+      const now = new Date("2099-01-01T02:00:00.000Z");
+      const neverCalled: FetchLike = async () => { throw new Error("provider must not be called"); };
+      const state = async (jobId: string) => (await db.query<{ state: string; safe_error_code: string | null; attempts: number; next_attempt_at: Date }>(
+        "select state, safe_error_code, attempts, next_attempt_at from analytics_jobs where id = $1", [jobId])).rows[0]!;
+      const connectionStatus = async () => (await db.query<{ status: string }>("select status from analytics_connections where id = $1", [connection.id])).rows[0]?.status;
+
+      // A missing Google client id cannot be fixed by reconnecting.
+      await enqueueJob(db, { clientId, websiteId: site, connectionId: connection.id, templateKey: "ga4.traffic_daily", start: "2026-10-01", end: "2026-10-02" });
+      const first = await leaseNext(db, "worker-a", now);
+      expect((await executeJob(db, first!, { fetch: neverCalled, now })).result).toBe("not_configured");
+      const afterMissingClient = await state(first!.id);
+      expect(afterMissingClient).toMatchObject({ state: "queued", safe_error_code: "not_configured", attempts: 0 });
+      expect(new Date(afterMissingClient.next_attempt_at).getTime()).toBeGreaterThan(now.getTime());
+      expect(await connectionStatus()).toBe("connected");
+
+      // A missing token key is a server setting too.
+      const key = process.env.ANALYTICS_TOKEN_KEY;
+      await enqueueJob(db, { clientId, websiteId: site, connectionId: connection.id, templateKey: "ga4.traffic_range", start: "2026-10-01", end: "2026-10-07" });
+      const second = await leaseNext(db, "worker-b", now);
+      delete process.env.ANALYTICS_TOKEN_KEY;
+      try {
+        expect((await executeJob(db, second!, { fetch: neverCalled, now, googleClientId: "id", googleClientSecret: "secret" })).result).toBe("not_configured");
+      } finally {
+        process.env.ANALYTICS_TOKEN_KEY = key;
+      }
+      expect(await state(second!.id)).toMatchObject({ state: "queued", safe_error_code: "not_configured", attempts: 0 });
+      expect(await connectionStatus()).toBe("connected");
+      const runs = await db.query<{ result: string; safe_error_code: string }>(
+        "select result, safe_error_code from analytics_sync_runs where connection_id = $1 order by started_at", [connection.id]);
+      expect(runs.rows).toEqual([
+        { result: "failed", safe_error_code: "not_configured" },
+        { result: "failed", safe_error_code: "not_configured" },
+      ]);
+    });
+  });
+
   it("stores an exact-range user total without summing daily rows", async () => {
     const admin = await staffByEmail("admin@example.invalid");
     await asContext(SERVICE, async (db) => {
@@ -269,6 +317,68 @@ describe("analytics tenant isolation and sync", () => {
       const first = await enqueueJob(db, { clientId, websiteId: site, connectionId: connection.id, templateKey: "ga4.traffic_daily", start: "2026-10-02", end: "2026-10-31" });
       const second = await enqueueJob(db, { clientId, websiteId: site, connectionId: connection.id, templateKey: "ga4.traffic_daily", start: "2026-10-02", end: "2026-10-31" });
       expect(second).toEqual({ id: first.id, reused: true });
+    });
+  });
+
+  it("leases the newest reporting window before an older backlog (D52)", async () => {
+    const admin = await staffByEmail("admin@example.invalid");
+    await asContext(SERVICE, async (db) => {
+      const provisioned = await provisionClinic(db, admin.id);
+      const clientId = provisioned.clientId;
+      const site = provisioned.websiteId;
+      await db.query("update analytics_jobs set state = 'cancelled', lease_owner = null, lease_until = null where state in ('queued', 'leased')");
+      const sealed = sealedToken({ accessToken: "order", expiresAt: "2100-01-01T00:00:00.000Z" });
+      const connection = await saveConnection(db, {
+        clientId, websiteId: site, provider: "ga4", externalPropertyId: "5151", streamOrSiteRef: null,
+        providerTimezone: "Asia/Singapore", tokenCiphertext: sealed.ciphertext, tokenNonce: sealed.nonce, actorUserId: admin.id,
+      });
+      const old = await enqueueJob(db, { clientId, websiteId: site, connectionId: connection.id, templateKey: "ga4.acquisition", start: "2026-10-01", end: "2026-10-07" });
+      const current = await enqueueJob(db, { clientId, websiteId: site, connectionId: connection.id, templateKey: "ga4.acquisition", start: "2026-11-05", end: "2026-11-11" });
+      const now = new Date("2099-01-01T00:00:00.000Z");
+      expect((await leaseNext(db, "worker-order", now))?.id).toBe(current.id);
+      expect(old.id).not.toBe(current.id);
+    });
+  });
+
+  it("prepares a custom range on request: GA4 range reports for the window and the one before it (D52)", async () => {
+    const admin = await staffByEmail("admin@example.invalid");
+    await asContext(SERVICE, async (db) => {
+      const provisioned = await provisionClinic(db, admin.id);
+      const clientId = provisioned.clientId;
+      const site = provisioned.websiteId;
+      const range = { clientId, websiteId: site, start: "2026-10-01", end: "2026-10-10" };
+      expect(await rangeJobStatus(db, range)).toBe("not_connected");
+      expect(await enqueueRangeJobs(db, range)).toBe(0);
+
+      const sealed = sealedToken({ accessToken: "custom", expiresAt: "2100-01-01T00:00:00.000Z" });
+      const connection = await saveConnection(db, {
+        clientId, websiteId: site, provider: "ga4", externalPropertyId: "5252", streamOrSiteRef: null,
+        providerTimezone: "Asia/Singapore", tokenCiphertext: sealed.ciphertext, tokenNonce: sealed.nonce, actorUserId: admin.id,
+      });
+      await db.query("update analytics_jobs set state = 'cancelled' where connection_id = $1", [connection.id]);
+      expect(await rangeJobStatus(db, range)).toBe("not_prepared");
+      expect(await enqueueRangeJobs(db, range)).toBe(10);
+      expect(await enqueueRangeJobs(db, range)).toBe(0);
+      expect(await rangeJobStatus(db, range)).toBe("preparing");
+      const queued = await db.query<{ template_key: string; start_date: string; end_date: string }>(
+        "select template_key, start_date::text, end_date::text from analytics_jobs where connection_id = $1 and state = 'queued' order by template_key, start_date", [connection.id]);
+      expect(new Set(queued.rows.map((row) => `${row.start_date}..${row.end_date}`))).toEqual(new Set(["2026-10-01..2026-10-10", "2026-09-21..2026-09-30"]));
+      expect(queued.rows.some((row) => row.template_key === "ga4.traffic_daily")).toBe(false);
+    });
+  });
+
+  it("does not prepare a range for another clinic's website", async () => {
+    const admin = await staffByEmail("admin@example.invalid");
+    await asContext(SERVICE, async (db) => {
+      const first = await provisionClinic(db, admin.id);
+      const second = await provisionClinic(db, admin.id);
+      const sealed = sealedToken({ accessToken: "isolation", expiresAt: "2100-01-01T00:00:00.000Z" });
+      await saveConnection(db, {
+        clientId: first.clientId, websiteId: first.websiteId, provider: "ga4", externalPropertyId: "5353", streamOrSiteRef: null,
+        providerTimezone: "Asia/Singapore", tokenCiphertext: sealed.ciphertext, tokenNonce: sealed.nonce, actorUserId: admin.id,
+      });
+      // Client id from one clinic with the website of the other.
+      expect(await enqueueRangeJobs(db, { clientId: second.clientId, websiteId: first.websiteId, start: "2026-10-01", end: "2026-10-10" })).toBe(0);
     });
   });
 
@@ -505,8 +615,10 @@ describe("analytics tenant isolation and sync", () => {
         actorUserId: admin.id,
       });
       await db.query("update analytics_jobs set state = 'cancelled', lease_owner = null, lease_until = null where state in ('queued', 'leased')");
-      await enqueueJob(db, { clientId: provisioned.clientId, websiteId: provisioned.websiteId, connectionId: connection.id, templateKey: "wix.data_daily", start: "2026-10-01", end: "2026-10-02" });
+      const queued = await enqueueJob(db, { clientId: provisioned.clientId, websiteId: provisioned.websiteId, connectionId: connection.id, templateKey: "wix.data_daily", start: "2026-10-01", end: "2026-10-02" });
       const now = new Date("2026-11-02T12:00:00.000Z");
+      // The job is due at the fixed test time, not at the wall-clock time the row was written.
+      await db.query("update analytics_jobs set next_attempt_at = $2 where id = $1", [queued.id, now.toISOString()]);
       const job = await leaseNext(db, "wix-worker", now);
       const fetchWix: FetchLike = async (url) => {
         expect(url).toContain("dateRange.endDate=2026-10-03");

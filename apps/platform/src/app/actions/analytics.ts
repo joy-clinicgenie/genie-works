@@ -7,6 +7,7 @@ import {
   PermissionDeniedError,
   bindConnectionFromState,
   canManageRegistry,
+  enqueueRangeJobs,
   canWriteConnectionSecrets,
   disconnectConnection,
   encryptSecret,
@@ -24,6 +25,7 @@ import { requireAccess } from "@/lib/session";
 import { serviceTx, staffTx } from "@/lib/db";
 import { str } from "@/lib/actions";
 import { listGoogleProperties } from "@/lib/analytics-properties";
+import { customWindow } from "@/lib/period-range";
 
 function fail(code: string, clientId?: string): never {
   const params = new URLSearchParams({ analyticsError: code });
@@ -179,6 +181,25 @@ export async function refreshAnalytics(formData: FormData) {
   await serviceTx((db) => enqueueDue(db, new Date(), websiteId));
   revalidatePath("/settings");
   done("queued", clientId);
+}
+
+const ANALYTICS_TABS = new Set(["/analytics", "/analytics/traffic", "/analytics/behavior"]);
+
+/** Queues GA4 range reports for one custom window and the window before it (D52). Admin and manager only. */
+export async function prepareAnalyticsRange(formData: FormData) {
+  const clientId = str(formData, "clientId");
+  const websiteId = str(formData, "websiteId");
+  const from = str(formData, "from");
+  const to = str(formData, "to");
+  const tab = str(formData, "tab");
+  await managerWebsite(clientId, websiteId);
+  const window = customWindow(from, to);
+  if (!window) fail("denied", clientId);
+  await serviceTx((db) => enqueueRangeJobs(db, { clientId, websiteId, start: window.current.start, end: window.current.end }));
+  const path = ANALYTICS_TABS.has(tab) ? tab : "/analytics";
+  revalidatePath(path);
+  const params = new URLSearchParams({ client: clientId, website: websiteId, range: "custom", from: window.current.start, to: window.current.end });
+  redirect(`${path}?${params}`);
 }
 
 export async function retryAnalyticsFailures(formData: FormData) {

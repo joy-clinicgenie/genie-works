@@ -3,6 +3,8 @@
  * destructive statement runs. No connection string is included in the error text.
  */
 
+import { assertWorkerDatabase } from "../database-environment";
+
 const LOCAL_HOSTS = new Set(["127.0.0.1", "localhost", "::1"]);
 const SIBLING_CLINIC_PORT = "54329";
 
@@ -49,17 +51,17 @@ function assertNotProductionEnvironment(): void {
   }
 }
 
-/** Local worker and fixture commands. Remote hosts stay refused unless explicitly allowed, and production never is. */
+/**
+ * Local worker and fixture commands. A remote host needs ANALYTICS_ALLOW_REMOTE_WORKER=1 and a
+ * listing in NONPRODUCTION_DATABASE_HOSTS. The production database is never allowed here (D54).
+ */
 export function assertLocalWorkerDatabase(url: string): void {
   assertNotProductionEnvironment();
   const target = parsed(url);
   if (target.port === SIBLING_CLINIC_PORT) {
     throw new Error("Refusing: port 54329 is the sibling clinic website database.");
   }
-  const remoteAllowed = process.env.ANALYTICS_ALLOW_REMOTE_WORKER === "1";
-  if (!LOCAL_HOSTS.has(target.hostname) && !remoteAllowed) {
-    throw new Error("Refusing: the worker database host is not local. Set ANALYTICS_ALLOW_REMOTE_WORKER=1 only for an approved non-production host.");
-  }
+  assertWorkerDatabase(url);
 }
 
 export const ENQUIRY_FIXTURE_DATABASE = "clinic_genie_enquiry_test";

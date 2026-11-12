@@ -1,6 +1,8 @@
 # Build status
 
-Updated: 2 November 2026, Asia/Singapore. Decisions run through D44.
+Updated: 12 November 2026, Asia/Singapore. Decisions run through D54.
+
+Analytics Phase 1 (environment safety, D54) is implemented in the working tree and awaits review: see `docs/audits/ANALYTICS_PHASE_1_IMPLEMENTATION.md`. Nothing is committed or deployed. Synchronisation repairs (Phase 2 onward) have not started.
 
 ## Current stage
 
@@ -48,6 +50,9 @@ Do not describe live analytics, production mail, or website API consumption as v
 Tasks, approvals, Google Ads, issues, HCSA and timeline still open. They are listed in `README.md`. They are not launch-menu modules and were not deleted.
 
 ## Exact next step
+
+Analytics data fixes D51 to D53 are on branch `analytics-data-fixes`, not merged or deployed. See section 10 of `docs/audits/GENIE_WORKS_ANALYTICS_DATA_DIAGNOSTIC.md`. Before live figures can appear in production: (1) an administrator adds `ANALYTICS_TOKEN_KEY` and the Google and Wix analytics app credentials to the production environment; (2) the Vercel project Root Directory is changed from `apps/platform` to the repository root; (3) the branch is reviewed, merged and deployed, and the project's cron definitions list `/api/internal/analytics/worker`; (4) one scheduled run is recorded as LIVE_SYNC_VERIFICATION describes. The backup inventory does not yet list `seo_index_checks` and `seo_speed_checks` (`test/backup-coverage.test.ts` fails on unchanged code); that is the next ticket.
+
 
 Batch 09 local preparation is recorded in `docs/audits/batches/BATCH_09_HANDOVER.md`. Hosted staging has not started. DEP-04 still has no authorised staging project. Batch 10 can re-audit the local evidence. It cannot close DEP-01 through DEP-08 from that local evidence alone.
 

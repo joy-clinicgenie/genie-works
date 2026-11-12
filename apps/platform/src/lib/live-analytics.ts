@@ -29,6 +29,9 @@ export interface LiveBundle {
   landing: PublishedReport | null;
   devices: PublishedReport | null;
   countries: PublishedReport | null;
+  engagement: PublishedReport | null;
+  pages: PublishedReport | null;
+  visitorType: PublishedReport | null;
 }
 
 function empty(note: string, state: LiveValue["state"] = "unavailable"): LiveValue {
@@ -66,6 +69,9 @@ export async function loadLiveBundle(db: Queryable, view: SiteView): Promise<Liv
     landing: null,
     devices: null,
     countries: null,
+    engagement: null,
+    pages: null,
+    visitorType: null,
   };
   if (!view.websiteId || !start || !end || !chosen || chosen.status !== "connected") return blank;
   const dailyKey = chosen.provider === "ga4" ? "ga4.traffic_daily" : "wix.data_daily";
@@ -104,5 +110,8 @@ export async function loadLiveBundle(db: Queryable, view: SiteView): Promise<Liv
     landing: chosen.provider === "ga4" ? await exact("ga4.landing") : null,
     devices: chosen.provider === "ga4" ? await exact("ga4.device") : null,
     countries: chosen.provider === "ga4" ? await exact("ga4.country") : null,
+    engagement: chosen.provider === "ga4" ? await exact("ga4.engagement") : null,
+    pages: chosen.provider === "ga4" ? await exact("ga4.pages") : null,
+    visitorType: chosen.provider === "ga4" ? await exact("ga4.visitor_type") : null,
   };
 }

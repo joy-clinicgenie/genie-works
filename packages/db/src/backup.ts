@@ -54,6 +54,9 @@ export const BACKUP_TABLES = [
   "seo_redirects",
   "seo_site_tokens",
   "seo_business_profiles",
+  // Site Health results (migration 0039). They reference websites and hold no secret.
+  "seo_index_checks",
+  "seo_speed_checks",
   "ads_audits",
   "ads_findings",
   "ads_changes",

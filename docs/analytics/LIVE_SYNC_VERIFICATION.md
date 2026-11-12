@@ -51,6 +51,6 @@ A live pass needs all of the following, with no secrets:
 
 - A fixture or unit test, including a test that returns a canned provider body.
 - A manual `POST` or `GET` to the worker on a local machine.
-- The `crons` entry in `vercel.json`. That entry prepares a daily GET at 02:00 UTC. It has not been deployed, and the hosted scheduler has not been observed to run.
+- The `analytics-worker` schedule in the repository-root `vercel.json` (D55, which replaced the D51 `crons` entry). That entry prepares a daily GET at 02:00 UTC. It applies only when the project Root Directory is the repository root; until 12 Nov it was `apps/platform`, so it was never applied. The hosted scheduler has not been observed to run.
 
-The hosted check, after the non-production property exists, is a later deployment: confirm the cron request is `GET /api/internal/analytics/worker` with the bearer the project sends, then record one succeeded run whose timestamp matches that invocation. Until that observation exists, scheduled execution stays unverified.
+The hosted check, after the non-production property exists, is a later deployment: confirm in the project's Schedules tab that `analytics-worker` ran `GET /api/internal/analytics/worker` with the bearer the project sends, then record one succeeded run whose timestamp matches that invocation. Until that observation exists, scheduled execution stays unverified.

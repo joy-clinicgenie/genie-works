@@ -35,3 +35,25 @@ describe("analytics tab loading", () => {
     expect(config).toMatch(/source: "\/analytics\/behaviour", destination: "\/analytics\/behavior", permanent: false/);
   });
 });
+
+describe("custom range preparation (D52)", () => {
+  const actions = readFileSync(resolve(root, "apps/platform/src/app/actions/analytics.ts"), "utf8");
+  const body = actions.slice(actions.indexOf("export async function prepareAnalyticsRange"), actions.indexOf("export async function retryAnalyticsFailures"));
+
+  it("checks the admin or manager permission and the client's website before queuing provider work", () => {
+    expect(body).toContain("await managerWebsite(clientId, websiteId)");
+    expect(body.indexOf("managerWebsite(")).toBeLessThan(body.indexOf("serviceTx("));
+    expect(actions).toMatch(/async function managerWebsite[\s\S]*?canManageRegistry\(access\)/);
+  });
+
+  it("accepts only a valid custom window and returns only to an analytics tab", () => {
+    expect(body).toContain("customWindow(from, to)");
+    expect(body).toContain("ANALYTICS_TABS.has(tab)");
+  });
+
+  it("shows the notice on every analytics tab", () => {
+    for (const tab of ["page.tsx", "traffic/page.tsx", "behavior/page.tsx"]) {
+      expect(readFileSync(resolve(analytics, tab), "utf8"), tab).toContain("<AnalyticsRangeNotice range={range}");
+    }
+  });
+});

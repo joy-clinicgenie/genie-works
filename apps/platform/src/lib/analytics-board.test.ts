@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { SnapshotRow } from "@clinic-genie/db";
-import { boardFromSnapshots, organicFromChannels, trendFrom, visitorToLeadRate } from "@/lib/analytics-board";
+import { boardFromLive, boardFromSnapshots, organicFromChannels, trendFrom, visitorToLeadRate, type LiveTrafficFacts } from "@/lib/analytics-board";
 
 const current = { start: "2026-10-01", end: "2026-10-30", len: 30 };
 const previous = { start: "2026-09-01", end: "2026-09-30", len: 30 };
@@ -120,5 +120,81 @@ describe("analytics board from snapshots", () => {
     expect(trend.mode).toBe("daily");
     expect(trend.points[0]).toMatchObject({ current: 4, previous: 3 });
     expect(trend.points[1]?.current).toBeNull();
+  });
+});
+
+describe("live board update time (D51)", () => {
+  const facts = (updatedAt: Date | null, connected: boolean): LiveTrafficFacts => ({
+    connected, provider: "ga4", sourceNote: "", updatedAt, sessions: null, sessionsPrevious: null, users: null, usersPrevious: null,
+    channels: [], landing: [], devices: [], countries: [], dailyCurrent: [], dailyPrevious: [], behaviour: null,
+  });
+  const exported = new Date("2026-09-30T00:00:00.000Z");
+  const base = boardFromSnapshots({ snapshots: [], current, previous, updatedAt: exported });
+
+  it("never shows a recorded export's time as the provider update time", () => {
+    expect(boardFromLive(base, facts(null, true)).updatedAt).toBeNull();
+    expect(boardFromLive(base, facts(null, false)).updatedAt).toBeNull();
+  });
+
+  it("uses the provider fetch time when there is one", () => {
+    const fetched = new Date("2026-11-12T02:05:00.000Z");
+    expect(boardFromLive(base, facts(fetched, true)).updatedAt).toEqual(fetched);
+  });
+});
+
+describe("live Behaviour figures (D53)", () => {
+  const facts = (overrides: Partial<LiveTrafficFacts>): LiveTrafficFacts => ({
+    connected: true, provider: "ga4", sourceNote: "", updatedAt: null, sessions: null, sessionsPrevious: null, users: null, usersPrevious: null,
+    channels: [], landing: [], devices: [], countries: [], dailyCurrent: [], dailyPrevious: [], behaviour: null, ...overrides,
+  });
+  const exported = boardFromSnapshots({
+    snapshots: [
+      row({ source: "ga4_export", channel: "all", metric: "bounce_rate", value: 80 }),
+      row({ source: "manual", channel: "all", metric: "contact_whatsapp", value: 6 }),
+      row({ source: "manual", channel: "all", metric: "form_submissions", value: 4 }),
+      row({ source: "manual", channel: "all", metric: "new_visitors", value: 99 }),
+    ],
+    current, previous, updatedAt: null,
+  });
+
+  it("reads engagement, pages and new or returning visitors from Google Analytics", () => {
+    const board = boardFromLive(exported, facts({
+      behaviour: {
+        engagementRate: 0.6234, averageSessionDuration: 95.4, pagesPerSession: 2.31, bounceRate: 0.3766,
+        pages: [{ name: "/contact", views: 40, engagementSeconds: 600, activeUsers: 20 }, { name: "/", views: 100, engagementSeconds: null, activeUsers: 50 }],
+        newVisitors: 70, returningVisitors: 30,
+      },
+    }));
+    expect(board.engagementRate).toMatchObject({ current: 62.3, previous: null, unit: "percent" });
+    expect(board.bounceRate).toMatchObject({ current: 37.7, unit: "percent" });
+    expect(board.duration).toMatchObject({ current: 95.4, unit: "duration" });
+    expect(board.pagesPerSession).toMatchObject({ current: 2.31 });
+    expect(board.pages).toEqual([
+      { name: "/", visits: 100, time: null, exitRate: null },
+      { name: "/contact", visits: 40, time: 30, exitRate: null },
+    ]);
+    expect(board.newVisitors.current).toBe(70);
+    expect(board.returningVisitors.current).toBe(30);
+    // Contact clicks and stored submissions are not Google Analytics figures.
+    expect(board.events.find((event) => event.name === "WhatsApp")?.current).toBe(6);
+    expect(board.formSubmissions.current).toBe(4);
+    expect(board.behaviourNote).toMatch(/recorded export/i);
+  });
+
+  it("leaves a Google Analytics figure unavailable rather than showing the export", () => {
+    const board = boardFromLive(exported, facts({ behaviour: null }));
+    expect(board.bounceRate.current).toBeNull();
+    expect(board.newVisitors.current).toBeNull();
+    expect(board.pages).toEqual([]);
+  });
+
+  it("keeps the labelled export for a Wix website", () => {
+    const board = boardFromLive(exported, facts({ provider: "wix", behaviour: null }));
+    expect(board.bounceRate.current).toBe(80);
+    expect(board.behaviourNote).toMatch(/Wix/);
+  });
+
+  it("adds no note in export mode", () => {
+    expect(exported.behaviourNote).toBeNull();
   });
 });

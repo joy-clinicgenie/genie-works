@@ -9,6 +9,7 @@ export interface MaintenanceResult {
   failed: number;
   retryScheduled: number;
   reconnectRequired: number;
+  notConfigured: number;
   stale: number;
   inspected: number;
   measured: number;
@@ -21,6 +22,7 @@ export interface ProviderDrainResult {
   failed: number;
   retryScheduled: number;
   reconnectRequired: number;
+  notConfigured: number;
   stale: number;
   result?: WorkerJobResult;
 }
@@ -36,6 +38,7 @@ export async function drainProviderJobs(
     failed: 0,
     retryScheduled: 0,
     reconnectRequired: 0,
+    notConfigured: 0,
     stale: 0,
   };
   while (counts.jobs < options.limit && now() < options.deadlineAt) {
@@ -47,6 +50,7 @@ export async function drainProviderJobs(
     else if (outcome.result === "failed") counts.failed += 1;
     else if (outcome.result === "retry") counts.retryScheduled += 1;
     else if (outcome.result === "reconnect") counts.reconnectRequired += 1;
+    else if (outcome.result === "not_configured") counts.notConfigured += 1;
     else if (outcome.result === "stale") counts.stale += 1;
   }
   return counts;

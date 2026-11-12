@@ -152,7 +152,8 @@ export async function dailySessionSeriesWithPeriod(db: Queryable, input: {
     value: row.state === "complete" && row.value_state === "available" && row.value_numeric !== null ? Number(row.value_numeric) : null,
   }));
   const expected = daysBetween(input.start, input.end) + 1;
-  const complete = rows.filter((row) => row.state === "complete" && row.value_numeric !== null);
+  // The same days the chart shows: complete, available and measured.
+  const complete = rows.filter((row) => row.state === "complete" && row.value_state === "available" && row.value_numeric !== null);
   const period = complete.length === expected
     ? { value: complete.reduce((sum, row) => sum + Number(row.value_numeric), 0), state: "available" as const, covered: expected, expected }
     : { value: null, state: "unavailable" as const, covered: complete.length, expected };

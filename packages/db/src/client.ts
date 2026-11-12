@@ -1,5 +1,6 @@
 import pg from "pg";
 import type { PlatformRole } from "@clinic-genie/contracts";
+import { assertProcessDatabase } from "./database-environment";
 import { loadRootEnv, requireEnv } from "./env";
 
 const { Pool } = pg;
@@ -33,8 +34,11 @@ export const APP_POOL_OPTIONS = {
 export function getPool(): pg.Pool {
   if (!appPool) {
     loadRootEnv();
+    const connectionString = requireEnv("DATABASE_URL");
+    // Tests stay off remote databases, and a development process is told when it is on production (D54).
+    assertProcessDatabase(connectionString, "app");
     appPool = new Pool({
-      connectionString: requireEnv("DATABASE_URL"),
+      connectionString,
       ...APP_POOL_OPTIONS,
     });
   }
@@ -45,7 +49,9 @@ export function getPool(): pg.Pool {
 export function getAdminPool(): pg.Pool {
   if (!adminPool) {
     loadRootEnv();
-    adminPool = new Pool({ connectionString: requireEnv("DATABASE_ADMIN_URL"), max: 4 });
+    const connectionString = requireEnv("DATABASE_ADMIN_URL");
+    assertProcessDatabase(connectionString, "admin");
+    adminPool = new Pool({ connectionString, max: 4 });
   }
   return adminPool;
 }

@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { SERVICE, drainMaintenance, withContext } from "@clinic-genie/db";
+import { SERVICE, assertWorkerDatabase, drainMaintenance, withContext } from "@clinic-genie/db";
 import { providerFetch } from "@/lib/provider-fetch";
 import { workerAuthorized } from "@/lib/analytics-worker";
 
@@ -16,6 +16,12 @@ async function handle(request: Request) {
   const header = request.headers.get("authorization");
   if (!workerAuthorized(header)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+  // Only the production deployment runs the worker against the production database (D54).
+  try {
+    assertWorkerDatabase(process.env.DATABASE_URL ?? "");
+  } catch {
+    return NextResponse.json({ error: "The worker is not allowed to use this database from this environment." }, { status: 409 });
   }
   const outcome = await drainMaintenance((fn) => withContext(SERVICE, fn), {
     fetch: providerFetch(),
@@ -35,6 +41,7 @@ async function handle(request: Request) {
     failed: outcome.failed,
     retryScheduled: outcome.retryScheduled,
     reconnectRequired: outcome.reconnectRequired,
+    notConfigured: outcome.notConfigured,
     stale: outcome.stale,
     inspected: outcome.inspected,
     measured: outcome.measured,

@@ -2,8 +2,8 @@ import type { ReactNode } from "react";
 import { requireAccess } from "@/lib/session";
 import type { PoolClient } from "@clinic-genie/db";
 import { loadSiteView, loadSiteViewWithDb, type SiteView } from "@/lib/site-view";
-import { customWindow, formatCompared, periodRange } from "@/lib/period-range";
-import { periodRangeId, type PeriodRangeId } from "@/lib/period-options";
+import { analyticsPeriod, formatCompared } from "@/lib/period-range";
+import type { PeriodRangeId } from "@/lib/period-options";
 import { breakdownLinks, type BreakdownLinks } from "@/lib/report-link";
 import { SiteHeader } from "@/components/modules/SiteHeader";
 import { AnalyticsSubnav } from "@/components/modules/AnalyticsSubnav";
@@ -14,14 +14,13 @@ export async function loadAnalytics(client?: string, range?: string, from?: stri
   return loadAnalyticsForAccess(access, undefined, client, range, from, to, website);
 }
 
-export async function loadAnalyticsForAccess(access: Awaited<ReturnType<typeof requireAccess>>, db: PoolClient | undefined, client?: string, range?: string, from?: string, to?: string, website?: string) {
-  const requested = periodRangeId(range);
-  const custom = requested === "custom" ? customWindow(from, to) : null;
-  const rangeId: PeriodRangeId = custom ? "custom" : requested === "custom" ? "last30" : requested;
-  const windows = custom ?? periodRange(rangeId);
+export async function loadAnalyticsForAccess(access: Awaited<ReturnType<typeof requireAccess>>, db: PoolClient | undefined, client?: string, range?: string, from?: string, to?: string, website?: string, live = false) {
+  const period = analyticsPeriod({ range, from, to, live });
+  const { rangeId, windows } = period;
+  const custom = period.custom ? windows : null;
   const loaded = db
-    ? await loadSiteViewWithDb(db, client, windows, Boolean(custom), website)
-    : await loadSiteView(access, client, windows, Boolean(custom), website);
+    ? await loadSiteViewWithDb(db, client, windows, period.exact, website)
+    : await loadSiteView(access, client, windows, period.exact, website);
   const denied = loaded === "denied";
   const view = loaded === "denied" ? null : loaded;
   const reportLinks: BreakdownLinks | null = view ? breakdownLinks(view.clientId, rangeId, custom?.current.start, custom?.current.end, view.websiteId ?? undefined) : null;

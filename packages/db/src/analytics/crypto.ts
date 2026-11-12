@@ -2,6 +2,12 @@ import { createCipheriv, createDecipheriv, createHash, randomBytes, timingSafeEq
 
 const VERSION = 1;
 
+/** True when the server has a usable connection-token key. The value is never returned. */
+export function tokenKeyConfigured(): boolean {
+  const raw = process.env.ANALYTICS_TOKEN_KEY;
+  return Boolean(raw && raw.length >= 16);
+}
+
 function keyMaterial(): Buffer {
   const raw = process.env.ANALYTICS_TOKEN_KEY;
   if (!raw || raw.length < 16) throw new Error("ANALYTICS_TOKEN_KEY is not set.");
