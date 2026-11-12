@@ -8,8 +8,8 @@ No staging project was created. DEP-04 stays open.
 
 | Item | What the file says |
 | --- | --- |
-| `vercel.json` | Next.js framework. `npm install`. The build runs `npm run build -w @clinic-genie/platform` and, when `AUTH_SECRET` is unset, substitutes `preview-build-only` for that build command only. If `.next` is missing at the repository root, the platform build output is copied there. |
-| Cron entry | One entry: path `/api/internal/analytics/worker`, schedule `0 2 * * *` (02:00 UTC, 10:00 Asia/Singapore). The file does not name a project, and it has not been deployed from this pack. |
+| `vercel.json` (repository root) | The only Vercel configuration file. The Vercel project Root Directory must be the repository root (blank), or this file is ignored (D51). Next.js framework. `npm install`. The build runs `npm run build -w @clinic-genie/platform` and, when `AUTH_SECRET` is unset, substitutes `preview-build-only` for that build command only. If `.next` is missing at the repository root, the platform build output is copied there. |
+| Schedule | In the repository-root `vercel.json` under `schedules` (D55; this replaced the `crons` entry of D51). One entry, `analytics-worker`: path `/api/internal/analytics/worker`, `requestMethod` `GET`, schedule `0 2 * * *` in UTC (10:00 Asia/Singapore). On the Hobby plan the jitter window is 15 minutes, so a run starts between 10:00 and 10:15 Asia/Singapore. Vercel sends `Authorization: Bearer $CRON_SECRET`. After a production deployment, the project's **Schedules** tab must list `analytics-worker`. |
 | Worker route | `GET` and `POST` use the same handler. A missing or wrong bearer returns 401 before a job runs. The bearer is `ANALYTICS_WORKER_SECRET` or `CRON_SECRET`. An empty value never matches. |
 | Retries | An expired lease with fewer than five attempts is queued again. At five attempts it is marked failed with the safe code `lease_expired`. That behaviour is in `packages/db/src/analytics/sync.ts`. It is not a hosted execution. |
 | Placeholder secrets | `preview-build-only` and `replace-with-a-long-random-string` are rejected at runtime by `assertRuntimeAuthSecret`, except while `NEXT_PHASE` is `phase-production-build`. |
@@ -45,10 +45,42 @@ These may exist outside the repository. This pack did not inspect a hosting acco
 
 | Kind | State |
 | --- | --- |
-| Prepared configuration | The `vercel.json` cron path matches the worker route, and that route accepts GET. |
+| Prepared configuration | The `vercel.json` schedule `analytics-worker` targets the worker route with GET, and that route accepts GET. |
 | Manual execution | A person or a script can call GET or POST with a bearer. This batch did not make that call. Batch 04 recorded an unauthenticated 401 on a local rehearsal app. |
 | Hosted scheduled execution | Not observed. DEP-01 and DEP-04 remain open. |
 
 ## Rollback
 
 Application rollback and database restore are different actions. The steps, the roles, and the current limits are in `docs/14_MONITORING_RECOVERY_HANDOVER.md`. DEP-08 still has no named owner.
+
+## Production migration procedure (D54)
+
+Migrations are forward-only. Each file runs in its own transaction and is recorded with a checksum. A failed file rolls back and stops the run; earlier files in the same run stay applied. There are no down migrations.
+
+Before:
+
+1. Run `npm run db:migrate:status` with the production owner URL supplied for that command only. It is read-only. Confirm the target line says `production` and note the pending files.
+2. Apply the same pending files to the preview database first, and run the application against it.
+3. Take a restore point in the database provider's console: a branch or snapshot of production at the current time. Note its name. Confirm the provider's restore window covers the time you need.
+4. Confirm the deployed code works with and without the pending tables, or schedule the deployment with the migration.
+
+Run, from an operator shell, never from a deployment:
+
+```
+MIGRATE_PRODUCTION_CONFIRM=<YYYY-MM-DD today, Asia/Singapore>:<database name> \
+MIGRATE_BACKUP_REFERENCE=<restore point name> \
+DATABASE_ADMIN_URL=<production owner URL, not stored in a file> \
+npm run db:migrate
+```
+
+The command prints the pending files and the restore point, then applies them. On production it does not touch the `cg_app` role or its password. Without both values, or with yesterday's date, it refuses before connecting. `MIGRATE_ALLOW_REMOTE` does not apply to production.
+
+After: run `npm run db:migrate:status` again and expect `Pending: none`.
+
+Rollback, in order of preference:
+
+1. **Fix forward.** Add the next numbered migration that reverses the change. Never edit an applied file.
+2. **Restore.** If data was damaged, restore production to the restore point from step 3 using the provider's restore. Everything written after that point is lost, so record the time window first. Provider documentation states that connection details do not change after an instant restore and that the pre-restore state is kept as a backup branch.
+3. **Code.** Redeploy the previous production deployment in Vercel if the new code depends on the reversed schema.
+
+`db:backup` and `db:restore-test` remain local rehearsal tools. They refuse a remote host and production, so they are not a production backup.

@@ -23,3 +23,6 @@ docs/report/*.json
 apps/platform/AGENTS.md
 playwright-report/
 test-results/
+
+# Local editor debug logs
+.cursor/debug-*.log
