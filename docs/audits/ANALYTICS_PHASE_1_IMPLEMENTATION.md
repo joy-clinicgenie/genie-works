@@ -5,7 +5,7 @@ Decision: D54 in `docs/DECISIONS.md`
 Branch: `analytics-data-fixes`, working tree only. Nothing is committed, pushed or deployed.
 Scope: environment safeguards only. No synchronisation repair was started.
 
-**Phase 1 status after closure (12 Nov, afternoon): CONDITIONAL PASS. Preview isolation is BLOCKED on an approval.** See C10 and Part D (re-verified in the evening).
+**Phase 1 status after closure (12 Nov, afternoon): CONDITIONAL PASS. Preview isolation is BLOCKED on an approval.** See C10, Part D (re-verified) and Part E (preview isolation applied).
 
 This report has three parts. **Part C** is the closure pass and is current. **Part F** is the finalisation written at 11:30. **Part I** is the implementation record written earlier the same day. Where they differ, the later part is right.
 
@@ -157,6 +157,27 @@ To reach PASS:
 
 Phase 2 must not start before then.
 
+# Part E: preview isolation applied (12 Nov, evening, approved)
+
+Approved and run: C5 steps 1 to 5. Nothing was deployed, no schedule enabled, no production row touched, no key rotated. No secret value was printed or written to the repository.
+
+| Step | Result |
+| --- | --- |
+| 1. Connect `genie-works-preview` to Preview only | Done. The prefix in C5 was wrong: Vercel rejects a trailing underscore, so the command is `--prefix PREVIEW`. 18 `PREVIEW_*` entries were added, target Preview only |
+| 2. Migrate | `db:migrate:status` first printed `approved non-production`, `Applied: 0`, so the database was fresh. After `db:migrate`: 46 applied, `Pending: none`. Checked as owner: 0 staff, 0 analytics connections, 0 stored secrets, 0 jobs. One client, the internal `clinic-genie` row that migration 0027 creates. RLS on 75 of 75 tables. `cg_app` has no bypass and is not a superuser, logs in through the pooled host and sees 0 clients. `APP_DB_PASSWORD` was a new random 32 characters |
+| 3. Remove Preview from shared entries | 21 entries narrowed from Production+Preview to Production only through the Vercel API (`PATCH` of `target` alone): `DATABASE_URL`, `DATABASE_URL_UNPOOLED`, `AUTH_SECRET`, `FORMS_WIX_APP_ID`, `FORMS_WIX_APP_SECRET` and 16 Neon entries. Entry count 50 before and after. No other entry changed |
+| 4. Preview-only variables | Added, all sensitive: `DATABASE_URL` (`cg_app`, preview pooled host), `AUTH_SECRET` (new random), `DEV_PRODUCTION_DATABASE_ACCESS=refuse`, `APP_ENVIRONMENT_LABEL=preview`. No `ANALYTICS_*`, `CRON_SECRET`, `ENQUIRY_*`, `FORMS_WIX_*` or `DATABASE_ADMIN_URL` for Preview |
+| 5. Verify | Preview-targeted non-`PREVIEW_` entries are exactly the four above. Production sign-in page returns 200. Sensitive values cannot be read back, so the unchanged Production values are inferred from a target-only edit and the 200, not compared |
+
+Not done:
+
+- **No preview deployment was made** (deploying was excluded), so sign-in and the empty client list on a real preview are unverified.
+- **First administrator not inserted.** It needs the address to use. `staff_users` is empty, so nobody can sign in to Preview yet.
+- **Preview Google sign-in.** `AUTH_GOOGLE_ID` and `AUTH_GOOGLE_SECRET` are not set for Preview (no preview OAuth client exists), and the preview URL must be added to that client's redirect URIs. `AUTH_URL` is Production only.
+- Temporary files holding the preview credentials were deleted. The `cg_app` password is now stored only in the Preview `DATABASE_URL`; reset it as owner with `alter role cg_app password …` if it is needed again.
+
+Rollback: set `target` of the 21 entries back to Production+Preview with the same API call; remove the four Preview variables; `vercel integration resource disconnect genie-works-preview genie-works`.
+
 # Part D: closure re-verification (12 Nov, evening)
 
 Read-only re-check of Part C on branch `analytics-phase1-closure` at `c2d1507`. Nothing was deployed, no variable was changed, no schedule was enabled, no production row was read or written and no key was rotated.
@@ -167,7 +188,7 @@ Read-only re-check of Part C on branch `analytics-phase1-closure` at `c2d1507`. 
 | 2. Editor history and backups | PASS (investigated, not deleted) | Unchanged from C2. Deleting the three history folders is still the owner's decision |
 | 3. Production credentials out of development | PASS | The development `.env` holds no backup value apart from the non-secret settings above |
 | 4. Independent empty Neon database | CONDITIONAL | `genie-works-preview` exists (`vercel integration list --all`), Available, connected to no project. Not migrated, so "empty" rests on it being a new project |
-| 5. Preview shares no production credential | **BLOCKED** | `vercel env ls` still shows `DATABASE_URL`, `DATABASE_URL_UNPOOLED`, `AUTH_SECRET`, `FORMS_WIX_APP_ID`, `FORMS_WIX_APP_SECRET` and 14 Neon entries targeting Preview and Production. Needs approval of the C5 steps |
+| 5. Preview shares no production credential | **APPLIED, see Part E.** Was BLOCKED. | `vercel env ls` still shows `DATABASE_URL`, `DATABASE_URL_UNPOOLED`, `AUTH_SECRET`, `FORMS_WIX_APP_ID`, `FORMS_WIX_APP_SECRET` and 14 Neon entries targeting Preview and Production. Needs approval of the C5 steps |
 | 6. Production analytics preserved | PASS (not re-measured) | No write since Part F, F3 |
 | 7. Root Directory and cron unchanged | PASS | No change made; see C7 |
 | 8. Tests and guards | PASS | `packages/db` 37 files, 217 passed. `apps/platform` 22 files, 131 passed. Typecheck and lint exit 0. `test:decisions` 8 passed, 0 failed. `db:migrate` and `analytics:work` with an unlisted remote host both refused |
@@ -175,7 +196,7 @@ Read-only re-check of Part C on branch `analytics-phase1-closure` at `c2d1507`. 
 
 Also noted: `.cursor/debug-af0448.log`, `debug-c3d738.log` and `debug-f8030a.log` are tracked, from earlier commits. They hold no credential, but they are debug output and could be removed from tracking. Not changed here.
 
-**Phase 1 status: CONDITIONAL PASS.** Item 5 is BLOCKED until the C5 changes to shared variables are approved. Phase 2 must not start.
+**Phase 1 status: CONDITIONAL PASS.** Item 5 was applied in Part E. Remaining conditions: first preview administrator, preview Google sign-in, a preview deployment check, backup into the password manager, editor history decision. Phase 2 must not start.
 
 # Part F: finalisation
 
