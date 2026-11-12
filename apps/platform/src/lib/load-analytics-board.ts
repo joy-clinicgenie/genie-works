@@ -4,7 +4,7 @@ import { staffTx } from "@/lib/db";
 import { loadLiveBundle } from "@/lib/live-analytics";
 import { requireAccess } from "@/lib/session";
 import { loadAnalyticsForAccess } from "@/components/modules/AnalyticsShell";
-import type { AccessProfile } from "@clinic-genie/db";
+import { canManageRegistry, rangeJobStatus, type AccessProfile, type RangeJobStatus } from "@clinic-genie/db";
 
 /** Loads the board every analytics tab renders from. Overview, Traffic and Behaviour all use this. */
 export async function loadAnalyticsOverview(params: { client?: string; website?: string; range?: string; from?: string; to?: string }) {
