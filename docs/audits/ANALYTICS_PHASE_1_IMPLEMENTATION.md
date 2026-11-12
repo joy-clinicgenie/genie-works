@@ -188,6 +188,8 @@ Not done:
 
 **Addendum 6 (correction):** the second preview administrator in Addendum 5 was added on an address I assumed. It was removed and replaced with the address the owner gave, a personal Gmail account (not written here). The preview database still has 2 `staff_users` rows, both `admin`. A personal Gmail account may be refused by Google if the OAuth client is Internal to the Workspace; this is unconfirmed.
 
+**Addendum 7:** the owner reports Google sign-in on `https://genie-works-preview.vercel.app` now works, after the preview callback URI was registered on the Google client (the earlier "Access blocked" was a redirect URI mismatch). This is the owner's confirmation, not something this session could observe. The empty client list on Preview was not reported. Remaining conditions for PASS (C10): the secrets backup moved to the password manager and its file deleted, and the editor-history copies in C2 deleted or kept by recorded decision. The dev server should also be restarted.
+
 Rollback: set `target` of the 21 entries back to Production+Preview with the same API call; remove the four Preview variables; `vercel integration resource disconnect genie-works-preview genie-works`.
 
 # Part D: closure re-verification (12 Nov, evening)
