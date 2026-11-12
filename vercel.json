@@ -1,13 +1,16 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "framework": "nextjs",
-  "regions": ["sin1"],
+  "regions": [
+    "sin1"
+  ],
   "installCommand": "npm install",
   "buildCommand": "AUTH_SECRET=\"${AUTH_SECRET:-preview-build-only}\" npm run build -w @clinic-genie/platform && if [ ! -e .next ]; then cp -R apps/platform/.next .next; fi",
-  "crons": [
-    {
+  "schedules": {
+    "analytics-worker": {
+      "schedule": "0 2 * * *",
       "path": "/api/internal/analytics/worker",
-      "schedule": "0 2 * * *"
+      "requestMethod": "GET"
     }
-  ]
+  }
 }
