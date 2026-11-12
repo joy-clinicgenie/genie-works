@@ -3,7 +3,7 @@ import { loadLiveBundle } from "./live-analytics";
 import type { SiteView } from "./site-view";
 
 describe("live analytics query planning", () => {
-  it("derives Wix period totals from the daily series without duplicate reads", async () => {
+  it("derives Wix period totals from the same available days the chart shows, without duplicate reads", async () => {
     const query = vi.fn(async (sql: string, params?: unknown[]) => {
       if (sql.includes("from analytics_connections")) {
         return {
@@ -49,7 +49,9 @@ describe("live analytics query planning", () => {
 
     const bundle = await loadLiveBundle({ query } as never, view);
 
-    expect(bundle.sessions).toMatchObject({ value: 9, state: "available" });
+    // Day 2 is not an available value, so the chart leaves it out and the total must too (D51).
+    expect(bundle.sessions).toMatchObject({ value: null, state: "unavailable" });
+    expect(bundle.sessions.note).toContain("1 of 2 days recorded");
     expect(bundle.sessionsPrevious).toBe(5);
     expect(bundle.dailyCurrent).toEqual([
       { date: "2026-11-01", value: 4 },

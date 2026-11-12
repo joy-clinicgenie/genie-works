@@ -3,7 +3,7 @@ import { SERVICE, applyContext } from "../src/client";
 import { adminPool, appPool, asContext, clientBySlug, staffByEmail, staffCtx } from "./helpers";
 import { provisionClinic } from "./provision";
 import { bindConnectionFromState, createOAuthState, disconnectConnection, exchangeOAuthState, listConnections, saveConnection, setSourcePolicy } from "../src/analytics/connections";
-import { dueWindow, enqueueDue, enqueueJob, executeJob, leaseNext, listConnectionSyncStatus, retryFailedAnalyticsJobs, sealedToken, type FetchLike, type FetchResponse } from "../src/analytics/sync";
+import { dueWindow, enqueueDue, enqueueJob, enqueueRangeJobs, executeJob, leaseNext, rangeJobStatus, listConnectionSyncStatus, retryFailedAnalyticsJobs, sealedToken, type FetchLike, type FetchResponse } from "../src/analytics/sync";
 import { publishedReport } from "../src/analytics/read";
 import { encryptSecret } from "../src/analytics/crypto";
 import { createClient, createWebsite, grantMembership } from "../src/services/registry";

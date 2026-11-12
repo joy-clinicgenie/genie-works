@@ -416,6 +416,7 @@ export function AnalyticsBehaviour({ board, links, leadsHref, seoHref }: { board
   return (
     <div className="min-w-0 space-y-4">
       <SourceLine board={board} leadsHref={leadsHref} seoHref={seoHref} />
+      {board.behaviourNote && <p className="text-sm text-muted">{board.behaviourNote}</p>}
       <MetricStrip
         label="Leads"
         cells={[
