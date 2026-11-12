@@ -186,6 +186,8 @@ Not done:
 
 **Addendum 5:** a second preview administrator was added to the preview database (2 rows, both `admin`). The alias `genie-works-preview.vercel.app` was set to the preview deployment at the owner's request. It is behind Vercel Authentication. The Google client must list `https://genie-works-preview.vercel.app/api/auth/callback/google` before sign-in can work; re-run `vercel alias set` after each new preview deployment. Remove with `vercel alias rm genie-works-preview.vercel.app`.
 
+**Addendum 6 (correction):** the second preview administrator in Addendum 5 was added on an address I assumed. It was removed and replaced with the address the owner gave, a personal Gmail account (not written here). The preview database still has 2 `staff_users` rows, both `admin`. A personal Gmail account may be refused by Google if the OAuth client is Internal to the Workspace; this is unconfirmed.
+
 Rollback: set `target` of the 21 entries back to Production+Preview with the same API call; remove the four Preview variables; `vercel integration resource disconnect genie-works-preview genie-works`.
 
 # Part D: closure re-verification (12 Nov, evening)
