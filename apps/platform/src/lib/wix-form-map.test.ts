@@ -13,7 +13,7 @@ describe("Wix form mapping", () => {
     const parsed = parseWixSubmissionList({
       submissions: [{
         id: SUBMISSION_ID.toUpperCase(),
-        formId: "3ebcba73-4ba0-42be-8e63-5048b55e3729",
+        formId: "00000000-0000-4000-8000-0000000000a1",
         namespace: "wix.form_app.form",
         status: "CONFIRMED",
         createdDate: "2026-11-01T02:00:00.000Z",

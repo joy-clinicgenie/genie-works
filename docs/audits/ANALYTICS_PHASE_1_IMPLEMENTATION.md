@@ -5,9 +5,212 @@ Decision: D54 in `docs/DECISIONS.md`
 Branch: `analytics-data-fixes`, working tree only. Nothing is committed, pushed or deployed.
 Scope: environment safeguards only. No synchronisation repair was started.
 
-**Phase 1 final status: CONDITIONAL PASS.** See F7 for the conditions.
+**Phase 1 status after closure (12 Nov, afternoon): CONDITIONAL PASS. Preview isolation is BLOCKED on an approval.** See C10, Part D (re-verified) and Part E (preview isolation applied).
 
-This report has two parts. **Part F** is the finalisation and is current. **Part I** is the implementation record written earlier the same day; where the two differ, Part F is right.
+This report has three parts. **Part C** is the closure pass and is current. **Part F** is the finalisation written at 11:30. **Part I** is the implementation record written earlier the same day. Where they differ, the later part is right.
+
+# Part C: closure
+
+Scope: the nine Phase 1 closure items. Nothing was deployed, no schedule was enabled, no production row was changed and no key was rotated. Phase 2 was not started.
+
+## C0. State at the start of closure
+
+Everything in Part F had been committed and pushed by the time closure started: 13 commits on `analytics-data-fixes` (12:07), merged to `main` as PR #3 (`fcdc846`), and deployed to production (`dpl_94dGLXaQZxLe51DCBqGWa2zHkHS8`). Because the repository is public, closure began by checking what reached GitHub (C1).
+
+## C1. `.env.example` and Git contain no real credentials: PASS
+
+The 34 non-empty values in the secrets backup (46 fingerprints, including the password and host inside each database URL) were compared, in a script that printed names only, against every blob reachable from any ref (2,326 blobs: all branches, `origin/*`, stashes and `refs/backups/*`), the index and every tracked file.
+
+| Where | Result |
+| --- | --- |
+| `.env.example`, every revision | No real value |
+| Staged changes | None staged |
+| Any commit, any ref | No credential. Two non-credential matches: the Workspace domain (`AUTH_GOOGLE_HD`, already public in the README and decisions) and one real Wix site instance id in `apps/platform/src/lib/wix-form-map.test.ts` |
+| Fix | The instance id is replaced with the fictional `00000000-0000-4000-8000-0000000000a1`. No tracked file now holds a real Wix instance id. The old value stays in pushed history; it is an identifier, not a credential, and needs the app secret to be used. |
+
+## C2. Copies outside Git: found, not deleted
+
+| Location | Result |
+| --- | --- |
+| VS Code local history, `.env.example` | **1 snapshot, 11:01 on 12 Nov: the exposed version.** 33 live values, including both production database URLs, `ANALYTICS_TOKEN_KEY`, the provider secrets and `RESEND_API_KEY`. Folder `~/Library/Application Support/Code/User/History/46536c5b/` |
+| VS Code local history, `.env` | 2 snapshots (09:57 and 11:01), the same values. Folder `…/Code/User/History/-1f3b6621/` |
+| Cursor local history | 6 snapshots (29 Oct) of `~/vsc/clinic-genie-internal-platform/.env`, another project, holding the same analytics client id and secret, token key and worker secret. Folder `…/Cursor/User/History/-57b8f261/` |
+| Claude Code file history (`~/.claude/file-history`) | None |
+| Time Machine | No destination configured, so no backup exists |
+| iCloud Drive, Desktop, Documents, Downloads | `~/vsc` is not inside iCloud Drive, and Desktop and Documents sync is off. Every file in these folders written since 09:00 on 12 Nov (7 files; the exposure was at 11:01) was scanned: none holds a live value. Cloud-only iCloud placeholders were not downloaded |
+| Other cloud storage (`~/Library/CloudStorage`) | Empty, so no Dropbox, Google Drive or OneDrive client |
+
+All are local to this Mac, in the user's own Library, readable only by this account. None was deleted: deleting editor history is the owner's decision. Proposed: delete the three history folders above (the VS Code ones hold only these two files). The values in them are the same ones still live in production, so deleting the copies does not replace rotating them if the Mac itself is ever in doubt.
+
+## C3. Production credentials removed from development: PASS
+
+Before any change, each value to be cleared was checked to be byte-identical in `~/.genie-works-secrets/genie-works-env-backup-2026-11-12.env` (mode 600, directory 700). All 30 were. Then, in `.env` (mode 600):
+
+| Change | Names |
+| --- | --- |
+| Cleared | `CRON_SECRET`, `AUTH_GOOGLE_ID`, `AUTH_GOOGLE_SECRET`, `ENQUIRY_DATABASE_URL`, `ENQUIRY_STAGING_ADMIN_URL`, `ENQUIRY_STAGING_INTAKE_URL`, `ENQUIRY_STAGING_STAFF_URL`, `ANALYTICS_GOOGLE_CLIENT_ID`, `ANALYTICS_GOOGLE_CLIENT_SECRET`, `ANALYTICS_WIX_APP_ID`, `ANALYTICS_WIX_APP_SECRET`, `ANALYTICS_TOKEN_KEY`, `ANALYTICS_WORKER_SECRET`, `RESEND_API_KEY`, `FORMS_WIX_APP_ID`, `FORMS_WIX_APP_SECRET`, `FORMS_WIX_INSTANCE_ID`, nine `FORMS_WIX_NEW_INSTANCE_*`, three `FORMS_WIX_APP_INSTANCE_*` |
+| Replaced | `AUTH_SECRET`: a new random development-only value (64 characters), not production's |
+| Kept | Local database settings, `DEV_PRODUCTION_DATABASE_ACCESS=refuse`, `AUTH_GOOGLE_HD` (a public domain, not a credential) |
+
+A re-scan found no live value left in `.env`. Recovery information is the backup file, which is still the only copy and still needs to move to the password manager (C9).
+
+Effects: local sign-in uses the development magic link only; Enquiries and Wix forms show as not connected locally; analytics stays on fixtures. **The dev server started at 11:33 still holds the old values in memory. Restart `npm run dev` to drop them.**
+
+## C4. Independent preview database: created and empty, not yet migrated or connected
+
+Created from the Vercel CLI, Free plan, no charge:
+
+| Item | Value |
+| --- | --- |
+| Resource | `genie-works-preview`, `store_hpbaI5WJfp7RjJ7k`, Neon project `ancient-feather-14363615` |
+| Plan, region | `free_v3` (Free), `sin1` |
+| Created as | A new Neon project, not a branch of `genie-works-database`, so it holds no client record and no token |
+| Connected to a project | No (`--no-connect`, no env pull) |
+| Project variables after creation | Unchanged: the same 32 entries, same targets, same update times |
+
+Not done: migration and the first administrator. Vercel returns the new database's credentials only to a connected project; connecting it adds project variables, which this session was not permitted to do (C5). Until it is connected and migrated, "verified empty" rests on it being a new project rather than on a query.
+
+## C5. Preview still shares production credentials: BLOCKED on approval
+
+Read from Vercel, names and targets only. Preview currently receives, through entries shared with Production:
+
+- `DATABASE_URL`, `DATABASE_URL_UNPOOLED`, and 14 Neon integration entries (`PG*`, `POSTGRES_*`, `NEON_*`, `VITE_NEON_AUTH_URL`): the production database
+- `AUTH_SECRET`: the production session secret
+- `FORMS_WIX_APP_ID`, `FORMS_WIX_APP_SECRET`: the production Wix forms app credentials
+
+Preview has no `ANALYTICS_*`, `CRON_SECRET` or `AUTH_GOOGLE_*`. The Phase 1 guard already refuses the analytics worker in Preview (C8).
+
+**Exact proposed changes, for approval.** Steps 1, 3 and 4 change project variables; step 3 edits entries that also serve Production, though the Production values do not change.
+
+1. Connect `genie-works-preview` to project `genie-works`, environment Preview only, prefix `PREVIEW_`:
+   `vercel integration resource connect genie-works-preview genie-works -e preview --prefix PREVIEW_`
+   This only adds new `PREVIEW_*` Preview entries. The app reads `DATABASE_URL`, so nothing changes in behaviour yet.
+2. Migrate it from an operator shell (Part F, F2 step 3), with `NONPRODUCTION_DATABASE_HOSTS` set to its direct host and a new random `APP_DB_PASSWORD` of 24+ characters. Confirm `db:migrate:status` prints `approved non-production` and `Pending: none`, and that `staff_users`, `clients` and `analytics_connections` each count 0. Then insert the first administrator (F2 step 4).
+3. Remove Preview from the shared entries, keeping Production exactly as it is:
+   - Neon integration entries: in the `genie-works-database` store → Projects → `genie-works`, untick Preview (or `vercel integration resource disconnect` and reconnect with `-e production` only, which briefly removes them from Production too, so prefer the dashboard)
+   - `AUTH_SECRET`, `FORMS_WIX_APP_ID`, `FORMS_WIX_APP_SECRET`: edit each, untick Preview
+4. Add Preview-only, sensitive: `DATABASE_URL` (the `cg_app` URL on the preview pooled host), `AUTH_SECRET` (new random), `DEV_PRODUCTION_DATABASE_ACCESS=refuse`, `APP_ENVIRONMENT_LABEL=preview`. For sign-in, `AUTH_GOOGLE_ID` and `AUTH_GOOGLE_SECRET` for Preview, with the preview URL added to that OAuth client's redirect URIs.
+5. Do not add `ANALYTICS_*`, `CRON_SECRET`, `ENQUIRY_*`, `FORMS_WIX_*` or `DATABASE_ADMIN_URL` to Preview.
+6. Verify: list the variables again (Production entries unchanged; Preview has no production value), open a new preview deployment, sign in, and see the empty client list.
+
+Do steps 3 and 4 when no deployment is running.
+
+## C6. Production analytics connections and reports: preserved, not re-measured
+
+Nothing in closure wrote to production: no migration, no worker run, no query except as below. A fresh read-only count was refused by this session's permission settings, so the latest measurement is still Part F, F3 (22 connections, 22 stored secrets, 116 jobs, 22 sync runs, 21 reports, 62 coverage days). Production now runs `fcdc846`, which includes D51 to D54; the worker remains unscheduled (C7), so that deployment has not run a job.
+
+## C7. Root Directory and cron configuration unchanged: PASS
+
+| Item | State |
+| --- | --- |
+| Vercel Root Directory | `apps/platform`, unchanged |
+| Registered crons | `definitions: []` for the production deployment |
+| Repository `vercel.json` | Declares the `analytics-worker` schedule (D55, merged in PR #3). It is not read while the Root Directory is `apps/platform`, so no schedule is active |
+
+Not changed in closure. Changing the Root Directory activates the schedule and belongs to Phase 2.
+
+## C8. Tests and environment guards: PASS
+
+Against the local database (`Applied: 46`, `Pending: none`), with `ANALYTICS_FIXTURE_MODE=1` and the hosted enquiry URLs cleared:
+
+| Check | Result |
+| --- | --- |
+| `packages/db` | 37 files, 217 passed, 0 failed |
+| `apps/platform` | 22 files, 131 passed, 0 failed |
+| `npm run typecheck`, `npm run lint` | Exit 0 |
+| `npm run test:decisions` | 8 passed, 0 failed |
+
+Real commands against made-up hosts that do not resolve:
+
+| Command | Host marked production | Unlisted remote host |
+| --- | --- | --- |
+| `npm run analytics:work` with `ANALYTICS_ALLOW_REMOTE_WORKER=1` | Refused | Refused |
+| `npm run db:migrate` with `MIGRATE_ALLOW_REMOTE=1` (and the host also listed as non-production) | Refused | Refused |
+| `npm run db:seed`, `npm run db:reset` | Refused, refused | not run |
+| A `packages/db` test file | Refused | Refused |
+
+Guard functions given the real production URLs from the backup, with no host list set (fingerprint only, no connection opened): both URLs classify as `production`; tests refused; worker refused in development and in a Vercel preview, allowed only in the Vercel production deployment. The development `.env` classifies as `local`.
+
+## C9. Commit
+
+Closure changes one tracked file, `apps/platform/src/lib/wix-form-map.test.ts` (C1), plus this report. Neither holds a credential (re-scanned). `.env`, `.DS_Store` and `apps/platform/AGENTS.md` are git-ignored; no temporary or debug file is in the tree. Committed on a new branch from `main`; not pushed.
+
+## C10. Phase 1 status: CONDITIONAL PASS
+
+| Item | Status | Evidence |
+| --- | --- | --- |
+| 1. No credentials in `.env.example` or staged changes | PASS | C1 |
+| 2. Editor history and synced backups | PASS (investigated). Copies found in local editor history, not deleted | C2 |
+| 3. Production credentials out of development | PASS. Restart the dev server | C3 |
+| 4. Independent empty Neon database for Preview | CONDITIONAL. Created, empty, unconnected; not migrated | C4 |
+| 5. Preview shares no production credential | **BLOCKED** on approval of C5 | C5 |
+| 6. Production analytics preserved | PASS, from Part F evidence; no write since | C6 |
+| 7. Root Directory and cron unchanged | PASS | C7 |
+| 8. Tests and guards | PASS | C8 |
+| 9. Clean commit | PASS | C9 |
+
+To reach PASS:
+
+1. Approve and complete C5 steps 1 to 6.
+2. Move the secrets backup into the password manager, then delete `~/.genie-works-secrets/genie-works-env-backup-2026-11-12.env`.
+3. Delete the editor-history copies in C2, or record a decision to keep them.
+
+Phase 2 must not start before then.
+
+# Part E: preview isolation applied (12 Nov, evening, approved)
+
+Approved and run: C5 steps 1 to 5. Nothing was deployed, no schedule enabled, no production row touched, no key rotated. No secret value was printed or written to the repository.
+
+| Step | Result |
+| --- | --- |
+| 1. Connect `genie-works-preview` to Preview only | Done. The prefix in C5 was wrong: Vercel rejects a trailing underscore, so the command is `--prefix PREVIEW`. 18 `PREVIEW_*` entries were added, target Preview only |
+| 2. Migrate | `db:migrate:status` first printed `approved non-production`, `Applied: 0`, so the database was fresh. After `db:migrate`: 46 applied, `Pending: none`. Checked as owner: 0 staff, 0 analytics connections, 0 stored secrets, 0 jobs. One client, the internal `clinic-genie` row that migration 0027 creates. RLS on 75 of 75 tables. `cg_app` has no bypass and is not a superuser, logs in through the pooled host and sees 0 clients. `APP_DB_PASSWORD` was a new random 32 characters |
+| 3. Remove Preview from shared entries | 21 entries narrowed from Production+Preview to Production only through the Vercel API (`PATCH` of `target` alone): `DATABASE_URL`, `DATABASE_URL_UNPOOLED`, `AUTH_SECRET`, `FORMS_WIX_APP_ID`, `FORMS_WIX_APP_SECRET` and 16 Neon entries. Entry count 50 before and after. No other entry changed |
+| 4. Preview-only variables | Added, all sensitive: `DATABASE_URL` (`cg_app`, preview pooled host), `AUTH_SECRET` (new random), `DEV_PRODUCTION_DATABASE_ACCESS=refuse`, `APP_ENVIRONMENT_LABEL=preview`. No `ANALYTICS_*`, `CRON_SECRET`, `ENQUIRY_*`, `FORMS_WIX_*` or `DATABASE_ADMIN_URL` for Preview |
+| 5. Verify | Preview-targeted non-`PREVIEW_` entries are exactly the four above. Production sign-in page returns 200. Sensitive values cannot be read back, so the unchanged Production values are inferred from a target-only edit and the 200, not compared |
+
+Not done:
+
+- **No preview deployment was made** (deploying was excluded), so sign-in and the empty client list on a real preview are unverified.
+- **First administrator not inserted.** It needs the address to use. `staff_users` is empty, so nobody can sign in to Preview yet.
+- **Preview Google sign-in.** `AUTH_GOOGLE_ID` and `AUTH_GOOGLE_SECRET` are not set for Preview (no preview OAuth client exists), and the preview URL must be added to that client's redirect URIs. `AUTH_URL` is Production only.
+- Temporary files holding the preview credentials were deleted. The `cg_app` password is now stored only in the Preview `DATABASE_URL`; reset it as owner with `alter role cg_app password …` if it is needed again.
+
+**Addendum, at the owner's instruction:** `AUTH_GOOGLE_ID` and `AUTH_GOOGLE_SECRET` were extended from Production to Production+Preview (target-only edit, values untouched). This shares the live Google OAuth client with Preview; it shares no database, session secret or client record. The preview URL must still be added to that client's authorised redirect URIs, and `AUTH_URL` remains Production only. To undo, set both targets back to Production.
+
+**Addendum 2:** `AUTH_GOOGLE_HD` (the Workspace domain, a public value) was added for Preview only, so Preview sign-in is limited to that domain. Production has no such entry in Vercel and was not changed.
+
+**Addendum 3:** the first preview administrator was inserted into the preview database (`staff_users`: 1 row, role `admin`). It is the owner's Workspace address, which is deliberately not written in this report. Preview sign-in still needs the redirect URI on the Google client, and a preview deployment to confirm it.
+
+**Addendum 4 (preview deployment, at the owner's instruction):** `vercel deploy` from `analytics-phase1-closure` produced `dpl_5PLoLfzxQ5RTfBcnvLwpkjLiv56W`, target `preview`, status Ready. It is behind Vercel Authentication, so its pages could not be fetched without a Vercel login, and sign-in and the empty client list are **not yet verified**. The URL is unique to the deployment; it is not an alias, so it cannot be registered as a stable Google redirect URI. Production was not deployed or changed (sign-in page still 200).
+
+**Addendum 5:** a second preview administrator was added to the preview database (2 rows, both `admin`). The alias `genie-works-preview.vercel.app` was set to the preview deployment at the owner's request. It is behind Vercel Authentication. The Google client must list `https://genie-works-preview.vercel.app/api/auth/callback/google` before sign-in can work; re-run `vercel alias set` after each new preview deployment. Remove with `vercel alias rm genie-works-preview.vercel.app`.
+
+**Addendum 6 (correction):** the second preview administrator in Addendum 5 was added on an address I assumed. It was removed and replaced with the address the owner gave, a personal Gmail account (not written here). The preview database still has 2 `staff_users` rows, both `admin`. A personal Gmail account may be refused by Google if the OAuth client is Internal to the Workspace; this is unconfirmed.
+
+**Addendum 7:** the owner reports Google sign-in on `https://genie-works-preview.vercel.app` now works, after the preview callback URI was registered on the Google client (the earlier "Access blocked" was a redirect URI mismatch). This is the owner's confirmation, not something this session could observe. The empty client list on Preview was not reported. Remaining conditions for PASS (C10): the secrets backup moved to the password manager and its file deleted, and the editor-history copies in C2 deleted or kept by recorded decision. The dev server should also be restarted.
+
+Rollback: set `target` of the 21 entries back to Production+Preview with the same API call; remove the four Preview variables; `vercel integration resource disconnect genie-works-preview genie-works`.
+
+# Part D: closure re-verification (12 Nov, evening)
+
+Read-only re-check of Part C on branch `analytics-phase1-closure` at `c2d1507`. Nothing was deployed, no variable was changed, no schedule was enabled, no production row was read or written and no key was rotated.
+
+| Item | Status | Evidence |
+| --- | --- | --- |
+| 1. No credential in `.env.example` or staged changes | PASS | Values from the secrets backup (names-only script) compared with `.env.example` in the working tree and in all 14 revisions, every tracked file and the development `.env`: no credential matches. Only non-secret local settings match (`EMBEDDED_PG_DIR`, `SEED_ALLOWED_DB_PATTERN`, `AUTH_URL`, `APP_ENVIRONMENT_LABEL`, `UPLOADS_DIR`). Nothing is staged |
+| 2. Editor history and backups | PASS (investigated, not deleted) | Unchanged from C2. Deleting the three history folders is still the owner's decision |
+| 3. Production credentials out of development | PASS | The development `.env` holds no backup value apart from the non-secret settings above |
+| 4. Independent empty Neon database | CONDITIONAL | `genie-works-preview` exists (`vercel integration list --all`), Available, connected to no project. Not migrated, so "empty" rests on it being a new project |
+| 5. Preview shares no production credential | **APPLIED, see Part E.** Was BLOCKED. | `vercel env ls` still shows `DATABASE_URL`, `DATABASE_URL_UNPOOLED`, `AUTH_SECRET`, `FORMS_WIX_APP_ID`, `FORMS_WIX_APP_SECRET` and 14 Neon entries targeting Preview and Production. Needs approval of the C5 steps |
+| 6. Production analytics preserved | PASS (not re-measured) | No write since Part F, F3 |
+| 7. Root Directory and cron unchanged | PASS | No change made; see C7 |
+| 8. Tests and guards | PASS | `packages/db` 37 files, 217 passed. `apps/platform` 22 files, 131 passed. Typecheck and lint exit 0. `test:decisions` 8 passed, 0 failed. `db:migrate` and `analytics:work` with an unlisted remote host both refused |
+| 9. Clean commit | PASS | Only this report changes. No `.env`, backup or debug file is included |
+
+Also noted: `.cursor/debug-af0448.log`, `debug-c3d738.log` and `debug-f8030a.log` are tracked, from earlier commits. They hold no credential, but they are debug output and could be removed from tracking. Not changed here.
+
+**Phase 1 status: CONDITIONAL PASS.** Item 5 was applied in Part E. Remaining conditions: first preview administrator, preview Google sign-in, a preview deployment check, backup into the password manager, editor history decision. Phase 2 must not start.
 
 # Part F: finalisation
 
