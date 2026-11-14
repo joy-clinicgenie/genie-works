@@ -5,7 +5,7 @@
     "sin1"
   ],
   "installCommand": "npm install",
-  "buildCommand": "AUTH_SECRET=\"${AUTH_SECRET:-preview-build-only}\" npm run build -w @clinic-genie/platform && rm -rf .next && cp -R apps/platform/.next .next",
+  "buildCommand": "AUTH_SECRET=\"${AUTH_SECRET:-preview-build-only}\" npm run build -w @clinic-genie/platform && if [ ! -e .next ]; then cp -R apps/platform/.next .next; fi",
   "schedules": {
     "analytics-worker": {
       "schedule": "0 2 * * *",

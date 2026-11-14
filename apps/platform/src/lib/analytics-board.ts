@@ -361,6 +361,19 @@ function behaviourFromBundle(bundle: LiveBundle): LiveBehaviourFacts | null {
   };
 }
 
+/** Previous-window devices, pages and visitor split for the breakdown reports (D56). */
+export interface PreviousDetailFacts {
+  devices: Array<{ name: string; sessions: number }> | null;
+  behaviour: LiveBehaviourFacts | null;
+}
+
+export function previousDetailFacts(bundle: LiveBundle, detail: { devices: PublishedReport | null; pages: PublishedReport | null; visitorType: PublishedReport | null }): PreviousDetailFacts {
+  return {
+    devices: detail.devices ? reportNumberRows(detail.devices, ["sessions"]).map((row) => ({ name: channelName(row.name), sessions: row.current })) : null,
+    behaviour: behaviourFromBundle({ ...bundle, engagement: null, pages: detail.pages, visitorType: detail.visitorType }),
+  };
+}
+
 export function liveFactsFromBundle(bundle: LiveBundle): LiveTrafficFacts {
   const connected = Boolean(bundle.provider) && bundle.providerStatus === "connected" && !bundle.conflict;
   const previousByChannel = new Map((bundle.sourcesPrevious?.rows ?? []).map((row) => [row.dimensionKey, availableMetric(row, ["sessions"])]));

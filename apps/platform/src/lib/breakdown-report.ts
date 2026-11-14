@@ -1,5 +1,6 @@
 import { addDays, daysBetween, formatDate, formatPeriod } from "@clinic-genie/db";
 import { label } from "@/components/ui/Badge";
+import { channelName, percentChange, type LiveTrafficFacts, type PreviousDetailFacts } from "@/lib/analytics-board";
 import type { BreakdownKind } from "@/lib/report-link";
 import { dailySessions, sessionSeed } from "@/lib/session-shape";
 import { channelsFor, dimensionPairs, formatCount, formatDuration, formatPercentPoint, pairMetric } from "@/lib/site-metrics";
@@ -200,13 +201,110 @@ function build(view: SiteView, kind: BreakdownKind): BreakdownTable[] {
   ];
 }
 
-export function buildBreakdown(view: SiteView, kind: BreakdownKind, title: string): BreakdownReport {
+const NOT_COMPARED = "The previous period has not been fetched for this report yet, so there is no comparison.";
+
+/** Pairs this period's rows with the previous window's rows by name. A name missing last period has no baseline. */
+function pairByName<T>(current: T[], previous: T[] | null, name: (row: T) => string, value: (row: T) => number | null): Row[] {
+  const prior = previous ? new Map(previous.map((row) => [name(row), value(row)])) : null;
+  return current.map((row) => liveRow(name(row), value(row), prior?.get(name(row)) ?? null));
+}
+
+function engagementPerUser(row: { engagementSeconds: number | null; activeUsers: number | null }): number | null {
+  return row.engagementSeconds !== null && row.activeUsers ? Number((row.engagementSeconds / row.activeUsers).toFixed(1)) : null;
+}
+
+function liveRow(name: string, current: number | null, previous: number | null): Row {
+  return { name, current, previous, percent: percentChange(current, previous) };
+}
+
+function averageByWeekday(daily: Array<{ date: string; value: number | null }>): Row[] {
+  const sums = [0, 0, 0, 0, 0, 0, 0];
+  const counts = [0, 0, 0, 0, 0, 0, 0];
+  for (const point of daily) {
+    if (point.value === null) continue;
+    const dow = new Date(`${point.date}T00:00:00Z`).getUTCDay();
+    const slot = dow === 0 ? 6 : dow - 1;
+    sums[slot] = (sums[slot] ?? 0) + point.value;
+    counts[slot] = (counts[slot] ?? 0) + 1;
+  }
+  return WEEKDAYS.flatMap((name, index) => (counts[index] ? [{ name, current: Math.round((sums[index] ?? 0) / (counts[index] ?? 1)), previous: null, percent: null }] : []));
+}
+
+/**
+ * Traffic reports drawn from the same provider data as the analytics cards (live reports on), so the
+ * report shows the comparison the card showed. Returns null for reports that stay on the recorded export.
+ */
+function buildLive(view: SiteView, kind: BreakdownKind, facts: LiveTrafficFacts, prior: PreviousDetailFacts | null): BreakdownTable[] | null {
+  const compared = Boolean(view.previous);
+  const unconnected = facts.connected ? undefined : facts.sourceNote;
+  if (kind === "trends") {
+    const totals = listTable("Recorded totals", facts.connected ? [
+      liveRow("Site sessions", facts.sessions, facts.sessionsPrevious),
+      liveRow("Unique visitors", facts.users, facts.usersPrevious),
+    ] : [], { compared, empty: unconnected ?? "Not recorded.", value: "Reporting period" });
+    if (!facts.connected || facts.dailyCurrent.length === 0) return [totals, { title: "Sessions by day", columns: [], rows: [], empty: unconnected ?? "Not recorded." }];
+    const previous = compared && facts.dailyPrevious.length > 0;
+    return [
+      totals,
+      {
+        title: "Sessions by day",
+        note: previous ? "The previous period follows the same day order." : undefined,
+        columns: previous ? ["Date", "Sessions", "Previous period date", "Previous sessions", "Change"] : ["Date", "Sessions"],
+        rows: facts.dailyCurrent.map((point, index) => {
+          const cells = [formatDate(point.date), formatCount(point.value)];
+          if (!previous) return cells;
+          const prior = facts.dailyPrevious[index];
+          return [...cells, prior ? formatDate(prior.date) : "", formatCount(prior?.value ?? null), changeText(liveRow("", point.value, prior?.value ?? null), true)];
+        }),
+      },
+      listTable("Average sessions by weekday", averageByWeekday(facts.dailyCurrent), { compared: false, empty: "Not recorded.", name: "Weekday", value: "Average sessions" }),
+    ];
+  }
+  if (kind === "sources") {
+    const rows = (facts.channels ?? [])
+      .map((row) => liveRow(channelName(row.channel), row.current, row.previous))
+      .sort((a, b) => (b.current ?? 0) - (a.current ?? 0));
+    return [listTable("Sessions by source and category", rows, { compared, share: true, empty: unconnected ?? "Not recorded. Sessions are not split by channel.", name: "Source", value: "Sessions" })];
+  }
+  if (kind === "devices") {
+    const previous = compared ? prior?.devices ?? null : null;
+    const rows = pairByName(facts.devices ?? [], previous, (row) => row.name, (row) => row.sessions);
+    return [listTable("Sessions by device", rows, { compared: previous !== null, share: true, empty: unconnected ?? "Not recorded. Sessions are not split by device.", name: "Device", value: "Sessions", note: compared && previous === null ? NOT_COMPARED : undefined })];
+  }
+  const behaviour = facts.provider === "ga4" ? facts.behaviour : null;
+  if (!behaviour) return null;
+  const priorBehaviour = compared ? prior?.behaviour ?? null : null;
+  if (kind === "visitors") {
+    if (behaviour.newVisitors === null || behaviour.returningVisitors === null) return [{ title: "New and returning visitors", columns: [], rows: [], empty: "Not recorded. Visitors are not split into new and returning." }];
+    const split = priorBehaviour !== null && priorBehaviour.newVisitors !== null && priorBehaviour.returningVisitors !== null;
+    const rows = [
+      liveRow("New", behaviour.newVisitors, split ? priorBehaviour.newVisitors : null),
+      liveRow("Returning", behaviour.returningVisitors, split ? priorBehaviour.returningVisitors : null),
+    ];
+    return [listTable("New and returning visitors", rows, { compared: split, share: true, empty: "Not recorded.", name: "Visitors", value: "Active users", note: compared && !split ? NOT_COMPARED : undefined })];
+  }
+  if (kind === "pages") {
+    const pages = [...behaviour.pages].sort((a, b) => b.views - a.views || a.name.localeCompare(b.name));
+    const priorPages = priorBehaviour && priorBehaviour.pages.length > 0 ? priorBehaviour.pages : null;
+    const pageCompared = priorPages !== null;
+    const note = compared && !pageCompared ? NOT_COMPARED : undefined;
+    return [
+      listTable("Page views", pairByName(pages, priorPages, (row) => row.name, (row) => row.views), { compared: pageCompared, share: true, empty: "Not recorded. Page views are not split by page.", name: "Page", value: "Views", note }),
+      listTable("Button clicks by page", dimensionRows(view, "page_clicks"), { compared, share: true, empty: "Not recorded. Button clicks are not split by page.", name: "Page", value: "Clicks", note: "From the recorded export." }),
+      listTable("Engagement time per active user", pairByName(pages, priorPages, (row) => row.name, engagementPerUser), { compared: pageCompared, unit: "duration", empty: "Not recorded.", name: "Page", value: "Average time", note }),
+      listTable("Exit rate", dimensionRows(view, "page_exit_rate"), { compared, unit: "percent", empty: "Not recorded. Exit rate is not split by page.", name: "Page", value: "Exit rate", note: "From the recorded export." }),
+    ];
+  }
+  return null;
+}
+
+export function buildBreakdown(view: SiteView, kind: BreakdownKind, title: string, facts: LiveTrafficFacts | null = null, prior: PreviousDetailFacts | null = null): BreakdownReport {
   const current = view.current;
   return {
     title,
     period: current ? formatPeriod(current.start, current.end, " to ") : "Not recorded",
     comparison: view.previous ? formatPeriod(view.previous.start, view.previous.end, " to ") : null,
-    tables: current ? build(view, kind) : [{ title, columns: [], rows: [], empty: "Not recorded. Choose a period in Analytics, then open the report again." }],
+    tables: current ? (facts ? buildLive(view, kind, facts, prior) : null) ?? build(view, kind) : [{ title, columns: [], rows: [], empty: "Not recorded. Choose a period in Analytics, then open the report again." }],
   };
 }
 

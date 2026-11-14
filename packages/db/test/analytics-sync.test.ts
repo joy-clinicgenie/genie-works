@@ -357,7 +357,7 @@ describe("analytics tenant isolation and sync", () => {
       });
       await db.query("update analytics_jobs set state = 'cancelled' where connection_id = $1", [connection.id]);
       expect(await rangeJobStatus(db, range)).toBe("not_prepared");
-      expect(await enqueueRangeJobs(db, range)).toBe(10);
+      expect(await enqueueRangeJobs(db, range)).toBe(13);
       expect(await enqueueRangeJobs(db, range)).toBe(0);
       expect(await rangeJobStatus(db, range)).toBe("preparing");
       const queued = await db.query<{ template_key: string; start_date: string; end_date: string }>(
