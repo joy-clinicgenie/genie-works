@@ -43,6 +43,23 @@ function fromPeriod(period: { value: number | null; state: "available" | "unavai
   return empty(`${period.covered} of ${period.expected} days recorded. ${noun} for this period is unavailable.`);
 }
 
+/** GA4 reports for the previous window that only the breakdown reports compare (D56). */
+export interface PreviousDetail {
+  devices: PublishedReport | null;
+  pages: PublishedReport | null;
+  visitorType: PublishedReport | null;
+}
+
+export async function loadPreviousDetail(db: Queryable, view: SiteView, bundle: LiveBundle): Promise<PreviousDetail> {
+  const previous = view.previous;
+  if (!previous || !view.websiteId || bundle.provider !== "ga4" || bundle.providerStatus !== "connected" || bundle.conflict) {
+    return { devices: null, pages: null, visitorType: null };
+  }
+  const read = (templateKey: string) => publishedReport(db, { clientId: view.clientId, websiteId: view.websiteId!, templateKey, start: previous.start, end: previous.end });
+  const [devices, pages, visitorType] = await Promise.all([read("ga4.device"), read("ga4.pages"), read("ga4.visitor_type")]);
+  return { devices, pages, visitorType };
+}
+
 export async function loadLiveBundle(db: Queryable, view: SiteView): Promise<LiveBundle> {
   const start = view.current?.start;
   const end = view.current?.end;

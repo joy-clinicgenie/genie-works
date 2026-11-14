@@ -155,8 +155,8 @@ export const PRESET_LENGTHS = [7, 30, 90] as const;
 /** GA4 daily history kept fresh each run: the longest preset and its previous period, both ending yesterday. */
 const GA4_DAILY_DAYS = 2 * 90;
 const GA4_RANGE_TEMPLATES = TEMPLATES.ga4.filter((key) => key !== "ga4.traffic_daily");
-/** GA4 reports the pages also read for the previous window. The rest are read for the selected window only. */
-const GA4_COMPARED_TEMPLATES = new Set(["ga4.traffic_range", "ga4.acquisition"]);
+/** GA4 reports the pages also read for the previous window (D52, D56). The rest are read for the selected window only. */
+const GA4_COMPARED_TEMPLATES = new Set(["ga4.traffic_range", "ga4.acquisition", "ga4.device", "ga4.pages", "ga4.visitor_type"]);
 
 /** Each preset length ending on `end`, with or without the equal-length window just before it. */
 function presetWindows(end: string, withPrevious = true): Array<{ start: string; end: string }> {

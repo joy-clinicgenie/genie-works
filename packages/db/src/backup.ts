@@ -57,6 +57,8 @@ export const BACKUP_TABLES = [
   // Site Health results (migration 0039). They reference websites and hold no secret.
   "seo_index_checks",
   "seo_speed_checks",
+  // AI access checks (migration 0046, D57). robots.txt and llms.txt readings only.
+  "seo_ai_access_checks",
   "ads_audits",
   "ads_findings",
   "ads_changes",

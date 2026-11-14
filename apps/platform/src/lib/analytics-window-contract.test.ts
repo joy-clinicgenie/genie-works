@@ -12,7 +12,7 @@ const TODAY = "2026-11-12";
 /** Reports the pages read for the selected window. */
 const GA4_RANGE_TEMPLATES = ["ga4.traffic_range", "ga4.acquisition", "ga4.landing", "ga4.device", "ga4.country", "ga4.engagement", "ga4.pages", "ga4.visitor_type"];
 /** Reports the pages also read for the previous window, to show a change. */
-const GA4_COMPARED_TEMPLATES = ["ga4.traffic_range", "ga4.acquisition"];
+const GA4_COMPARED_TEMPLATES = ["ga4.traffic_range", "ga4.acquisition", "ga4.device", "ga4.pages", "ga4.visitor_type"];
 
 function windowsFor(jobs: Array<{ templateKey: string; start: string; end: string }>, templateKey: string): string[] {
   return jobs.filter((job) => job.templateKey === templateKey).map((job) => `${job.start}..${job.end}`);

@@ -359,7 +359,9 @@ The supported type is a permanent 301. Temporary redirects are not implemented. 
 #### AI Visibility
 
 **Tabs:** **Visibility**, **Questions & Tests**, **Sources & Perception**, **AI Access**.  
-No provider is connected. Mentions, citations, question libraries, saved answers, llms.txt and NLWeb are unavailable. A missing test is not a negative mention. Do not report a result from this page.
+No answer-test or analytics provider is connected. Mentions, citations, question libraries, saved answers and NLWeb are unavailable. A missing test is not a negative mention. Do not report a mention or citation from this page.
+
+**AI Access** (D57) has **Run AI access check**, for an administrator, a manager or a specialist member. It reads `robots.txt` and `llms.txt` from the website address in the client's website record. Staff cannot enter another address. For each named AI crawler it shows whether the home page is **Allowed**, **Blocked** or **Unknown**, and why: a rule naming the crawler, the default rule for all crawlers, or no `robots.txt`. `llms.txt` shows **Found** with its size, **Not found**, **Not plain text** or **Could not be read**. Every run is kept with who ran it and when; reviewers and read-only members can see the history. This is what the website permits, not a crawler log: it does not show that a crawler visited or that an AI answer cited the clinic. `llms.txt` is edited on the website, not here.
 
 #### SEO Reports
 
