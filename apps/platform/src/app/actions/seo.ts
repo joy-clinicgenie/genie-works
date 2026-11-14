@@ -3,12 +3,13 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import {
-  archiveSeoPage, canEditClient, canPublishClient, canWriteConnectionSecrets, createSeoPage, getSeoPage, inspectNext, issueSeoSiteToken, recordSeoChange,
-  refreshIndexInventory, requireWebsiteForClient, saveGoogleSiteVerification, saveSeoBusinessProfile, saveSeoPageSetting, saveSeoRedirect,
+  aiAccessTarget, archiveSeoPage, canEditClient, canPublishClient, canWriteConnectionSecrets, createSeoPage, getSeoPage, inspectNext, issueSeoSiteToken, recordSeoChange,
+  readAiAccess, recordAiAccessCheck, refreshIndexInventory, requireWebsiteForClient, saveGoogleSiteVerification, saveSeoBusinessProfile, saveSeoPageSetting, saveSeoRedirect,
   updateSeoPage, verifySeoChange, type SeoBusinessProfileRow, type SeoPageInput,
 } from "@clinic-genie/db";
 import { requireAccess } from "@/lib/session";
 import { providerFetch } from "@/lib/provider-fetch";
+import { aiAccessFetcher } from "@/lib/ai-access-fetch";
 import { serviceTx, staffTx } from "@/lib/db";
 import { bool, optional, str, toActionError, type ActionState } from "@/lib/actions";
 
@@ -235,4 +236,31 @@ export async function runSiteCheck(formData: FormData): Promise<void> {
   revalidatePath("/seo/site-health");
   revalidatePath("/seo/pages", "layout");
   redirect(back);
+}
+
+/** D57: read-only AI access check. The address comes from the website record, never from the form. */
+export async function runAiAccessCheckAction(formData: FormData): Promise<void> {
+  const access = await requireAccess();
+  const clientId = str(formData, "clientId");
+  const websiteId = str(formData, "websiteId");
+  const params = new URLSearchParams({ tab: "access" });
+  if (clientId) params.set("client", clientId);
+  if (websiteId) params.set("website", websiteId);
+  const back = (notice: string) => `/seo/ai-visibility?${params.toString()}&notice=${notice}`;
+  if (!clientId || !websiteId || !canEditClient(access, clientId)) redirect(back("denied"));
+  let target: Awaited<ReturnType<typeof aiAccessTarget>>;
+  try {
+    target = await staffTx(access, (db) => aiAccessTarget(db, { clientId, websiteId }));
+  } catch (err) {
+    redirect(back((err as { name?: string })?.name === "AiAccessRuleError" ? "no-address" : "denied"));
+  }
+  // The network read happens outside any database transaction.
+  const reading = await readAiAccess(aiAccessFetcher(), target.origin);
+  try {
+    await staffTx(access, (db) => recordAiAccessCheck(db, { clientId: target.clientId, websiteId: target.websiteId, userId: access.user.id, reading }));
+  } catch {
+    redirect(back("not-saved"));
+  }
+  revalidatePath("/seo/ai-visibility");
+  redirect(back(reading.robotsStatus === "error" && reading.llmsStatus === "error" ? "unreachable" : "checked"));
 }

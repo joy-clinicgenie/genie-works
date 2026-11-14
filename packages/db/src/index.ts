@@ -26,6 +26,7 @@ export * from "./services/seo";
 export * from "./services/blog";
 export * from "./services/seo-soft-launch";
 export * from "./services/site-health";
+export * from "./services/ai-access";
 export * from "./services/ads";
 export * from "./services/issues";
 export * from "./services/medical";
