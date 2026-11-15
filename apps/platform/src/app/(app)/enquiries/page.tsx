@@ -3,6 +3,7 @@ import { canExport, formatDateTime, listClients, listFormWebsites, openedEnquiry
 import { requireAccess } from "@/lib/session";
 import { staffTx } from "@/lib/db";
 import { PageHeader, Card } from "@/components/ui/Card";
+import { buttonClass } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
 import { Table, Td, Th } from "@/components/ui/Table";
 import { Notice, EmptyState } from "@/components/ui/Notice";
@@ -17,7 +18,6 @@ import {
   STATUS_LABEL,
   canSearchEnquiryPerson,
   enquiryConnection,
-  enquiryConnectorLabel,
   enquiryHandling,
   enquiryIdentity,
   enquiryUnavailableCopy,
@@ -101,12 +101,32 @@ export default async function EnquiriesPage({ searchParams }: { searchParams: Pr
   const preserved = { clinic, website, form, status, handling, q: reference, person, from: window.from, to: window.to };
   const source = board.connected ? null : await enquiryConnection();
   const lastPage = Math.max(1, Math.ceil(shown.total / ENQUIRY_PAGE_SIZE));
+  // Secondary filters sit behind "More filters", which opens itself when one of them is in use.
+  const moreFiltersActive = Boolean(website || form || status || person);
+  const exportPanel = board.connected && canExport(access) ? (
+    <details className="relative">
+      <summary className={`${buttonClass("secondary", "sm")} cursor-pointer list-none`}>Download CSV</summary>
+      <form method="get" action="/enquiries/export" className="card absolute right-0 z-10 mt-2 w-80 max-w-[calc(100vw-2rem)] space-y-3 p-4 shadow-lg">
+        {Object.entries(preserved).map(([key, value]) => value ? <input key={key} type="hidden" name={key} value={value} /> : null)}
+        <p className="text-sm">This export includes {productionTotal === 1 ? "1 production record" : `${productionTotal} production records`} for the current filters. Demonstration submissions are not included.</p>
+        <label className="flex min-h-11 items-start gap-2 text-sm">
+          <input type="checkbox" name="details" value="1" className="mt-1 size-4 accent-action" />
+          <span>Include contact details. This adds name, telephone and email. The message and other free-text details stay out of the file.</span>
+        </label>
+        <Button type="submit" variant="secondary" size="sm">Download</Button>
+      </form>
+    </details>
+  ) : undefined;
   return (
     <EnquiryTabs>
-      <PageHeader
-        title="Enquiries"
-        description="Wix enquiries use the Forms API; vibe-coded sites use their own databases. Genie Works tracks enquiries without copying messages or sending emails. Handling and notification statuses remain separate, with each site managing its own email delivery."
-      />
+      <PageHeader title="Enquiries" description="Website enquiries for your clinics. Open one to see the details and follow up." action={exportPanel} />
+      <details className="-mt-4 mb-4 text-sm text-ink-soft">
+        <summary className="cursor-pointer text-xs font-medium text-muted">About this page</summary>
+        <div className="mt-2 max-w-3xl space-y-2">
+          <p>Wix enquiries are read through the Forms API, and vibe-coded sites use their own databases. Genie Works tracks enquiries without copying messages or sending emails. Handling and notification statuses remain separate, and each site manages its own email delivery.</p>
+          <p>Only production submissions are counted. Form starts, contact clicks and confirmed bookings are tracked separately. Duplicate submissions and notification retries are excluded. New requests count individually.</p>
+        </div>
+      </details>
       {denied && <div className="mb-4"><Notice tone="bad" title="Not available">You do not have access to that clinic.</Notice></div>}
       {board.sourceNotice && <div className="mb-4"><Notice tone="warn">{board.sourceNotice}</Notice></div>}
       {personRequested && !personAllowed && <div className="mb-4"><Notice tone="neutral">Search by name, email or telephone is limited to staff who can edit the client. Reference search is available.</Notice></div>}
@@ -118,39 +138,31 @@ export default async function EnquiriesPage({ searchParams }: { searchParams: Pr
             <FilterInput name="from" label="From" type="date" value={window.from} />
             <FilterInput name="to" label="To" type="date" value={window.to} />
             <FilterSelect name="clinic" label="Client" value={clinic} allLabel="All clients" options={[...clientOptions].map(([value, label]) => ({ value, label }))} />
-            <FilterSelect name="website" label="Website" value={website} allLabel="All websites" options={[...websiteOptions].map(([value, label]) => ({ value, label }))} />
-            <FilterSelect name="form" label="Form" value={form} allLabel="All forms" options={[...formOptions].map(([value, label]) => ({ value, label }))} />
-            <FilterSelect name="status" label="Follow-up status" value={status} allLabel="Any status" options={[{ value: "new", label: "New" }, { value: "acknowledged", label: "Acknowledged" }, { value: "closed", label: "Closed" }]} />
             <FilterSelect name="handling" label="Handling" value={handling} allLabel="Any handling" options={[{ value: "unopened", label: HANDLING_LABEL.unopened }, { value: "read", label: HANDLING_LABEL.read }, { value: "resolved", label: HANDLING_LABEL.resolved }]} />
             <FilterInput name="q" label="Reference" value={reference} placeholder="Reference" />
-            {personAllowed && <FilterInput name="person" label="Name, email or telephone" value={person} placeholder="Restricted search" />}
+            <details open={moreFiltersActive} className="open:basis-full">
+              <summary className={`${buttonClass("ghost", "sm")} cursor-pointer list-none`}>More filters</summary>
+              <div className="mt-3 flex flex-wrap items-end gap-3">
+                <FilterSelect name="website" label="Website" value={website} allLabel="All websites" options={[...websiteOptions].map(([value, label]) => ({ value, label }))} />
+                <FilterSelect name="form" label="Form" value={form} allLabel="All forms" options={[...formOptions].map(([value, label]) => ({ value, label }))} />
+                <FilterSelect name="status" label="Follow-up status" value={status} allLabel="Any status" options={[{ value: "new", label: "New" }, { value: "acknowledged", label: "Acknowledged" }, { value: "closed", label: "Closed" }]} />
+                {personAllowed && <FilterInput name="person" label="Name, email or telephone" value={person} placeholder="Restricted search" />}
+              </div>
+            </details>
           </FilterBar>
           <p className="mb-3 text-sm text-ink-soft">
             {shown.total === 1 ? "1 matching enquiry" : `${shown.total} matching enquiries`}
-            {shown.total !== productionTotal && " The comparison above leaves demonstration submissions out."}
+            {shown.total !== productionTotal && " The count above leaves demonstration submissions out."}
           </p>
-          {canExport(access) && (
-            <form method="get" action="/enquiries/export" className="card mb-5 space-y-3 p-4">
-              {Object.entries(preserved).map(([key, value]) => value ? <input key={key} type="hidden" name={key} value={value} /> : null)}
-              <p className="text-sm">This export includes {productionTotal === 1 ? "1 production record" : `${productionTotal} production records`} for the current filters. Demonstration submissions are not included.</p>
-              <label className="flex min-h-11 items-start gap-2 text-sm">
-                <input type="checkbox" name="details" value="1" className="mt-1 size-4 accent-action" />
-                <span>Include contact details. This adds name, telephone and email. The message and other free-text details stay out of the file.</span>
-              </label>
-              <Button type="submit" variant="secondary" size="sm">Download CSV</Button>
-            </form>
-          )}
           <Card>
             <Table caption="Enquiries">
               <thead>
                 <tr>
                   <Th>Received</Th>
-                  <Th>Reference</Th>
-                  <Th>Client / website</Th>
-                  <Th>Form</Th>
                   <Th>Name</Th>
-                  <Th>Follow-up status</Th>
-                  <Th>Handling</Th>
+                  <Th>Client · website</Th>
+                  <Th>Form</Th>
+                  <Th>Status</Th>
                 </tr>
               </thead>
               <tbody>
@@ -159,24 +171,29 @@ export default async function EnquiriesPage({ searchParams }: { searchParams: Pr
                     <Td className="whitespace-nowrap">
                       <Link href={`/enquiries/${item.id}`} className="font-medium text-action hover:underline">{formatDateTime(item.submittedAt)}</Link>
                     </Td>
-                    <Td>{item.reference}</Td>
+                    <Td>
+                      {item.submitterName}
+                      <div className="text-xs text-muted">
+                        {item.reference}
+                        {item.isSynthetic && " · Demonstration data"}
+                      </div>
+                    </Td>
                     <Td>
                       {item.clinicName}
                       <div className="text-xs text-muted">{item.websiteKey ? websiteNames.get(item.websiteKey) ?? item.websiteKey : "Website not recorded"}</div>
-                      <div className="text-xs text-muted">{enquiryConnectorLabel(item.source)}</div>
                     </Td>
                     <Td>{formName(item.formKey)}</Td>
                     <Td>
-                      {item.submitterName}
-                      {item.isSynthetic && <div className="text-xs text-muted">Demonstration data</div>}
+                      <div className="flex flex-wrap gap-1">
+                        <Badge tone={HANDLING_TONE[rowHandling(item)]}>{HANDLING_LABEL[rowHandling(item)]}</Badge>
+                        {item.status !== "new" && <Badge tone={STATUS_TONE[item.status]}>{STATUS_LABEL[item.status]}</Badge>}
+                      </div>
                     </Td>
-                    <Td><Badge tone={STATUS_TONE[item.status]}>{STATUS_LABEL[item.status]}</Badge></Td>
-                    <Td><Badge tone={HANDLING_TONE[rowHandling(item)]}>{HANDLING_LABEL[rowHandling(item)]}</Badge></Td>
                   </tr>
                 ))}
                 {shown.items.length === 0 && (
                   <tr>
-                    <td colSpan={7} className="px-3 py-6 text-center text-sm text-muted">
+                    <td colSpan={5} className="px-3 py-6 text-center text-sm text-muted">
                       {scope !== null && scope.length === 0 ? "No clinic access is assigned to you." : "No enquiries match this search."}
                     </td>
                   </tr>
