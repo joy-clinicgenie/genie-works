@@ -4,7 +4,7 @@ import { adminPool, appPool, asContext, clientBySlug, staffByEmail, staffCtx } f
 import { provisionClinic } from "./provision";
 import { bindConnectionFromState, createOAuthState, disconnectConnection, exchangeOAuthState, listConnections, saveConnection, setSourcePolicy } from "../src/analytics/connections";
 import { dueWindow, enqueueDue, enqueueJob, enqueueRangeJobs, executeJob, leaseNext, rangeJobStatus, listConnectionSyncStatus, retryFailedAnalyticsJobs, sealedToken, type FetchLike, type FetchResponse } from "../src/analytics/sync";
-import { publishedReport } from "../src/analytics/read";
+import { latestPublishedReport, publishedReport } from "../src/analytics/read";
 import { encryptSecret } from "../src/analytics/crypto";
 import { createClient, createWebsite, grantMembership } from "../src/services/registry";
 
@@ -126,6 +126,38 @@ describe("analytics tenant isolation and sync", () => {
       expect(failed.result).toBe("failed");
       expect(report?.rows).toHaveLength(2);
       expect(report?.completeness).toBe("complete");
+    });
+  });
+
+  it("falls back to the latest stored range of the same length (D58)", async () => {
+    const admin = await staffByEmail("admin@example.invalid");
+    await asContext(SERVICE, async (db) => {
+      const provisioned = await provisionClinic(db, admin.id);
+      const clientId = provisioned.clientId;
+      const site = provisioned.websiteId;
+      await db.query("update analytics_jobs set state = 'cancelled', lease_owner = null, lease_until = null where state in ('queued', 'leased')");
+      const sealed = sealedToken({ accessToken: "gsc-token", expiresAt: "2100-01-01T00:00:00.000Z" });
+      const connection = await saveConnection(db, {
+        clientId, websiteId: site, provider: "gsc", externalPropertyId: "sc-domain:fallback.example", streamOrSiteRef: null,
+        providerTimezone: "America/Los_Angeles", tokenCiphertext: sealed.ciphertext, tokenNonce: sealed.nonce, actorUserId: admin.id,
+      });
+      const fetchTotals: FetchLike = async () => jsonResponse(200, { rows: [{ clicks: 12, impressions: 300, ctr: 0.04, position: 7 }] });
+      const now = new Date("2099-01-01T00:00:00.000Z");
+      const windows: Array<[string, string]> = [["2026-10-01", "2026-10-07"], ["2026-10-02", "2026-10-08"], ["2026-10-05", "2026-10-08"]];
+      for (const [start, end] of windows) {
+        await enqueueJob(db, { clientId, websiteId: site, connectionId: connection.id, templateKey: "gsc.totals", start, end });
+        const leased = await leaseNext(db, "test", now);
+        expect((await executeJob(db, leased!, { fetch: fetchTotals, now })).result).toBe("succeeded");
+      }
+      const query = { clientId, websiteId: site, templateKey: "gsc.totals" };
+      const latest = await latestPublishedReport(db, { ...query, days: 7, end: "2026-10-09" });
+      expect([latest?.start, latest?.end]).toEqual(["2026-10-02", "2026-10-08"]);
+      expect(latest?.rows[0]?.metrics.find((metric) => metric.key === "clicks")?.value).toBe(12);
+      const earlier = await latestPublishedReport(db, { ...query, days: 7, end: "2026-10-07" });
+      expect([earlier?.start, earlier?.end]).toEqual(["2026-10-01", "2026-10-07"]);
+      expect(await latestPublishedReport(db, { ...query, days: 7, end: "2026-10-06" })).toBeNull();
+      expect(await latestPublishedReport(db, { ...query, days: 30, end: "2026-10-09" })).toBeNull();
+      expect(await publishedReport(db, { ...query, start: "2026-10-03", end: "2026-10-09" })).toBeNull();
     });
   });
 

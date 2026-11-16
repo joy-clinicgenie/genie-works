@@ -2,6 +2,7 @@ import {
   addDays,
   canEditClient,
   canPublishClient,
+  daysBetween,
   getGoogleSiteVerification,
   hasActiveSeoSiteToken,
   getClient,
@@ -13,6 +14,7 @@ import {
   listSeoPages,
   listSeoRedirects,
   gscDueWindow,
+  latestPublishedReport,
   listTasks,
   listWebsites,
   publishedReport,
@@ -176,12 +178,17 @@ export function searchConsoleWindow(controls: GoogleControls, now = new Date()):
   return { start: addDays(end, 1 - days), end };
 }
 
-/** Reads the stored Search Console total for the selected range. A missing day is not filled in. */
+/**
+ * Reads the stored Search Console total for the selected range. A missing day is not filled in.
+ * Until the next run stores a rolling range, the latest stored range of the same length is shown with its own dates.
+ */
 export async function loadSearchPerformance(access: AccessProfile, clientId: string, websiteId: string, controls: GoogleControls, now = new Date()): Promise<SearchPerformance | null> {
   const window = searchConsoleWindow(controls, now);
   if (!window) return null;
   return staffTx(access, async (db) => {
-    const report = await publishedReport(db, { clientId, websiteId, templateKey: "gsc.totals", start: window.start, end: window.end });
+    const query = { clientId, websiteId, templateKey: "gsc.totals" };
+    const report = await publishedReport(db, { ...query, start: window.start, end: window.end })
+      ?? (controls.range === "custom" ? null : await latestPublishedReport(db, { ...query, days: daysBetween(window.start, window.end) + 1, end: window.end }));
     if (!report) return null;
     const row = report.rows.find((item) => item.dimensionKey === "property") ?? report.rows[0];
     const value = (key: string) => {
