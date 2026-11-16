@@ -27,6 +27,21 @@ export interface PublishedReport {
   rows: ReportRow[];
 }
 
+interface PartitionRow {
+  id: string;
+  template_key: string;
+  start_date: string;
+  end_date: string;
+  source_timezone: string;
+  provenance: string;
+  completeness: string;
+  generation: number;
+  fetched_at: Date;
+  measured_through: string | null;
+}
+
+const PARTITION_COLUMNS = "id, template_key, start_date::text, end_date::text, source_timezone, provenance, completeness, generation, fetched_at, measured_through::text";
+
 export async function publishedReport(db: Queryable, input: {
   clientId: string;
   websiteId: string;
@@ -34,26 +49,36 @@ export async function publishedReport(db: Queryable, input: {
   start: string;
   end: string;
 }): Promise<PublishedReport | null> {
-  const { rows } = await db.query<{
-    id: string;
-    template_key: string;
-    start_date: string;
-    end_date: string;
-    source_timezone: string;
-    provenance: string;
-    completeness: string;
-    generation: number;
-    fetched_at: Date;
-    measured_through: string | null;
-  }>(
-    `select id, template_key, start_date::text, end_date::text, source_timezone, provenance, completeness, generation, fetched_at, measured_through::text
+  const { rows } = await db.query<PartitionRow>(
+    `select ${PARTITION_COLUMNS}
      from analytics_report_partitions
      where client_id = $1 and website_id = $2 and template_key = $3 and start_date = $4 and end_date = $5 and published
      order by generation desc limit 1`,
     [input.clientId, input.websiteId, input.templateKey, input.start, input.end],
   );
-  const partition = rows[0];
-  if (!partition) return null;
+  return rows[0] ? reportFromPartition(db, rows[0]) : null;
+}
+
+/** The newest published report of `days` length ending on or before `end`, for when the exact window has not been stored yet. */
+export async function latestPublishedReport(db: Queryable, input: {
+  clientId: string;
+  websiteId: string;
+  templateKey: string;
+  days: number;
+  end: string;
+}): Promise<PublishedReport | null> {
+  const { rows } = await db.query<PartitionRow>(
+    `select ${PARTITION_COLUMNS}
+     from analytics_report_partitions
+     where client_id = $1 and website_id = $2 and template_key = $3 and published
+       and end_date <= $5::date and end_date - start_date + 1 = $4
+     order by end_date desc, generation desc limit 1`,
+    [input.clientId, input.websiteId, input.templateKey, input.days, input.end],
+  );
+  return rows[0] ? reportFromPartition(db, rows[0]) : null;
+}
+
+async function reportFromPartition(db: Queryable, partition: PartitionRow): Promise<PublishedReport> {
   const body = await db.query<{ dimension_key: string; dimensions: Record<string, string>; metric_key: string; value_numeric: number | null; value_state: string }>(
     `select r.dimension_key, r.dimensions, m.metric_key, m.value_numeric, m.value_state
      from analytics_report_rows r
