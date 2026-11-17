@@ -29,7 +29,7 @@ Reuse existing supported scheduler and persistent job infrastructure where compa
 
 Use job uniqueness on connection + template/query hash + period + active state, enforced by DB partial unique index. Independent tenants share quotas fairly; cap per-property concurrency. Partition daily additive reports separately from range snapshots. Failed pagination or exhausted quota must never partially replace a previously complete report. A valid provider response containing zero rows may clear a partition only after successful coverage/empty validation.
 
-The repository cron calls `GET /api/internal/analytics/worker` daily at 02:00 UTC (10:00 Asia/Singapore). Vercel Cron uses GET and a bearer secret. The same handler accepts POST for a manual call. That file is preparation for the next deployment. It is not a running hosted schedule, and a local call is not proof that the hosted cron ran.
+The repository schedule calls `GET /api/internal/analytics/worker` every hour at minute 0 UTC (D59). Vercel Cron uses GET and a bearer secret. The same handler accepts POST for a manual call. That file is preparation for the next deployment. It is not a running hosted schedule, and a local call is not proof that the hosted cron ran.
 
 An expired lease returns to the queue until the job has been leased five times, then it fails with `lease_expired`. A provider retry stops after the same five attempts.
 

@@ -35,7 +35,7 @@ describe("analytics window contract (D52)", () => {
   }
 
   it("stays within one worker run for a GA4 connection", () => {
-    // The worker takes up to 40 jobs a run and the hosted cron runs once a day.
+    // The worker takes up to 40 jobs a run and the hosted schedule runs every hour (D59).
     expect(dueJobs("ga4", NOW, "Asia/Singapore").length).toBeLessThanOrEqual(40);
   });
 
