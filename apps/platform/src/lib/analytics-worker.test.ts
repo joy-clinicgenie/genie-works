@@ -29,7 +29,7 @@ describe("analytics worker scheduler preparation", () => {
     expect(config.crons).toBeUndefined();
     // A path schedule defaults to POST; the name must stay stable to keep its history.
     expect(config.schedules).toEqual({
-      "analytics-worker": { schedule: "0 2 * * *", path: "/api/internal/analytics/worker", requestMethod: "GET" },
+      "analytics-worker": { schedule: "0 * * * *", path: "/api/internal/analytics/worker", requestMethod: "GET" },
     });
     expect(existsSync(resolve(root, "apps/platform/vercel.json"))).toBe(false);
     expect(readdirSync(root).filter((name) => /^vercel.*\.json$/i.test(name))).toEqual(["vercel.json"]);
