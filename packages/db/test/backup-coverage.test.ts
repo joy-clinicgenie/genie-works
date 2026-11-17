@@ -8,10 +8,14 @@ const migrationsDir = join(dirname(fileURLToPath(import.meta.url)), "..", "migra
 
 function tablesCreatedByMigrations(): string[] {
   const names = new Set<string>();
-  for (const file of readdirSync(migrationsDir).filter((name) => name.endsWith(".sql"))) {
+  // Files run in name order, so a table a later migration drops (0047 removed the Wix tables) is not counted.
+  for (const file of readdirSync(migrationsDir).filter((name) => name.endsWith(".sql")).sort()) {
     const sql = readFileSync(join(migrationsDir, file), "utf8");
     for (const match of sql.matchAll(/create table(?: if not exists)?\s+([a-z_][a-z0-9_]*)/g)) {
       names.add(match[1]!);
+    }
+    for (const match of sql.matchAll(/drop table(?: if exists)?\s+([a-z_][a-z0-9_]*)/g)) {
+      names.delete(match[1]!);
     }
   }
   return [...names].sort();
@@ -20,7 +24,8 @@ function tablesCreatedByMigrations(): string[] {
 describe("backup coverage", () => {
   it("copies blog activity and leaves sign-in secrets unrestored", () => {
     expect(BACKUP_TABLES).toContain("blog_activity");
-    expect(BACKUP_TABLES).toContain("enquiry_follow_ups");
+    expect(BACKUP_TABLES).toContain("enquiry_reads");
+    expect(BACKUP_TABLES).not.toContain("enquiry_follow_ups");
     expect(BACKUP_TABLES).toContain("users");
     expect(BACKUP_TABLES).toContain("accounts");
     for (const table of BACKUP_EXCLUDED_TABLES) {

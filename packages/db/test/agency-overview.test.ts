@@ -3,6 +3,7 @@ import { randomBytes } from "node:crypto";
 import type pg from "pg";
 import { SERVICE, applyContext } from "../src/client";
 import { adminPool, appPool, asContext, staffByEmail, staffCtx } from "./helpers";
+import { provisionEmptyAnalyticsClient } from "./provision";
 import { disconnectConnection, saveConnection } from "../src/analytics/connections";
 import { queryHash } from "../src/analytics/measure";
 import { sealedToken } from "../src/analytics/sync";
@@ -27,25 +28,23 @@ describe("agency command centre aggregates", () => {
     const specA = await staffByEmail("specialist-a@example.invalid");
     const specB = await staffByEmail("specialist-b@example.invalid");
     await asContext(SERVICE, async (db) => {
-      const slug = `d${randomBytes(4).toString("hex")}`;
-      const client = await createClient(db, {
-        slug, name: "Dashboard Test Clinic (fictional)", ownerUserId: admin.id, channels: ["website"], isSynthetic: true, notes: null,
-      }, admin.id);
+      // Website analytics covers Clinic Genie only (D61). A fresh clinic-genie client; all of this rolls back.
+      const client = await provisionEmptyAnalyticsClient(db, admin.id);
       const bare = await createClient(db, {
         slug: `e${randomBytes(4).toString("hex")}`, name: "Dashboard Bare Clinic (fictional)", ownerUserId: admin.id, channels: ["website"], isSynthetic: true, notes: null,
       }, admin.id);
-      const complete = await createWebsite(db, { clientId: client.id, name: "Complete site", url: "https://complete.example.invalid", platform: "Wix", environment: "production", notes: null }, admin.id);
-      const incomplete = await createWebsite(db, { clientId: client.id, name: "Incomplete site", url: "https://incomplete.example.invalid", platform: "Wix", environment: "production", notes: null }, admin.id);
-      const unconnected = await createWebsite(db, { clientId: client.id, name: "Unconnected site", url: "https://unconnected.example.invalid", platform: "Wix", environment: "production", notes: null }, admin.id);
-      const conflict = await createWebsite(db, { clientId: client.id, name: "Conflict site", url: "https://conflict.example.invalid", platform: "Wix", environment: "production", notes: null }, admin.id);
-      const disconnected = await createWebsite(db, { clientId: client.id, name: "Disconnected site", url: "https://disconnected.example.invalid", platform: "Wix", environment: "production", notes: null }, admin.id);
-      await createWebsite(db, { clientId: bare.id, name: "Bare site", url: "https://bare.example.invalid", platform: "Wix", environment: "production", notes: null }, admin.id);
+      const complete = await createWebsite(db, { clientId: client.id, name: "Complete site", url: "https://complete.example.invalid", platform: "Next.js on Vercel", environment: "production", notes: null }, admin.id);
+      const incomplete = await createWebsite(db, { clientId: client.id, name: "Incomplete site", url: "https://incomplete.example.invalid", platform: "Next.js on Vercel", environment: "production", notes: null }, admin.id);
+      const unconnected = await createWebsite(db, { clientId: client.id, name: "Unconnected site", url: "https://unconnected.example.invalid", platform: "Next.js on Vercel", environment: "production", notes: null }, admin.id);
+      const conflict = await createWebsite(db, { clientId: client.id, name: "Conflict site", url: "https://conflict.example.invalid", platform: "Next.js on Vercel", environment: "production", notes: null }, admin.id);
+      const disconnected = await createWebsite(db, { clientId: client.id, name: "Disconnected site", url: "https://disconnected.example.invalid", platform: "Next.js on Vercel", environment: "production", notes: null }, admin.id);
+      await createWebsite(db, { clientId: bare.id, name: "Bare site", url: "https://bare.example.invalid", platform: "Next.js on Vercel", environment: "production", notes: null }, admin.id);
       void unconnected;
 
       const completeConnection = await connect(db, client.id, complete.id, "ga4", "prop-complete", admin.id);
       const incompleteConnection = await connect(db, client.id, incomplete.id, "ga4", "prop-incomplete", admin.id);
       await connect(db, client.id, conflict.id, "ga4", "prop-conflict-ga4", admin.id);
-      await connect(db, client.id, conflict.id, "wix", "prop-conflict-wix", admin.id);
+      await connect(db, client.id, conflict.id, "ga4", "prop-conflict-ga4-second", admin.id);
       const dropped = await connect(db, client.id, disconnected.id, "ga4", "prop-disconnected", admin.id);
       await disconnectConnection(db, { connectionId: dropped.id, actorUserId: admin.id });
       await seedDays(db, {
@@ -103,24 +102,23 @@ describe("agency command centre aggregates", () => {
       expect(zero.total).toBe(0);
       expect(zero.state).toBe("partial");
       const bareSummary = await agencySessionSummary(db, { clientId: bare.id, ...window, now });
-      expect(bareSummary.state).toBe("not_connected");
+      // Another client is outside website analytics, so none of its websites are counted.
       expect(bareSummary.total).toBeNull();
-      expect(bareSummary.notices.map((notice) => notice.message)).toEqual(["Website analytics is not connected."]);
+      expect(bareSummary.websiteCount).toBe(0);
+      expect(bareSummary.top).toEqual([]);
     });
   });
 
-  it("leaves GA4 and Wix sessions uncombined when both are connected", async () => {
+  it("leaves two traffic connections on one website uncombined", async () => {
     const admin = await staffByEmail("admin@example.invalid");
     await asContext(SERVICE, async (db) => {
-      const client = await createClient(db, {
-        slug: `f${randomBytes(4).toString("hex")}`, name: "Separate Sources Clinic (fictional)", ownerUserId: admin.id, channels: ["website"], isSynthetic: true, notes: null,
-      }, admin.id);
-      const site = await createWebsite(db, { clientId: client.id, name: "Two sources", url: "https://two-sources.example.invalid", platform: "Wix", environment: "production", notes: null }, admin.id);
+      const client = await provisionEmptyAnalyticsClient(db, admin.id);
+      const site = await createWebsite(db, { clientId: client.id, name: "Two sources", url: "https://two-sources.example.invalid", platform: "Next.js on Vercel", environment: "production", notes: null }, admin.id);
       const ga4 = await connect(db, client.id, site.id, "ga4", "prop-separate-ga4", admin.id);
-      const wix = await connect(db, client.id, site.id, "wix", "prop-separate-wix", admin.id);
+      const second = await connect(db, client.id, site.id, "ga4", "prop-separate-ga4-second", admin.id);
       const days = [{ date: "2026-10-01", sessions: 10 }, { date: "2026-10-02", sessions: 10 }];
       await seedDays(db, { connectionId: ga4.id, clientId: client.id, websiteId: site.id, provider: "ga4", fetchedAt: now, days });
-      await seedDays(db, { connectionId: wix.id, clientId: client.id, websiteId: site.id, provider: "wix", fetchedAt: now, days: days.map((day) => ({ date: day.date, sessions: 40 })) });
+      await seedDays(db, { connectionId: second.id, clientId: client.id, websiteId: site.id, provider: "ga4", fetchedAt: now, days: days.map((day) => ({ date: day.date, sessions: 40 })) });
       await applyContext(db, staffCtx(admin));
       const summary = await agencySessionSummary(db, { clientId: client.id, ...window, now });
       expect(summary.total).toBeNull();
@@ -130,7 +128,7 @@ describe("agency command centre aggregates", () => {
   });
 });
 
-async function connect(db: pg.PoolClient, clientId: string, websiteId: string, provider: "ga4" | "wix", property: string, actorUserId: string) {
+async function connect(db: pg.PoolClient, clientId: string, websiteId: string, provider: "ga4", property: string, actorUserId: string) {
   const token = sealedToken({ accessToken: property, expiresAt: "2100-01-01T00:00:00.000Z" });
   return saveConnection(db, {
     clientId, websiteId, provider, externalPropertyId: property, streamOrSiteRef: null,
@@ -142,12 +140,12 @@ async function seedDays(db: pg.PoolClient, input: {
   connectionId: string;
   clientId: string;
   websiteId: string;
-  provider: "ga4" | "wix";
+  provider: "ga4";
   fetchedAt: Date;
   days: Array<{ date: string; sessions: number }>;
 }) {
-  const template = input.provider === "ga4" ? "ga4.traffic_daily" : "wix.data_daily";
-  const metric = input.provider === "ga4" ? "sessions" : "total_sessions";
+  const template = "ga4.traffic_daily";
+  const metric = "sessions";
   const start = input.days[0]!.date;
   const end = input.days[input.days.length - 1]!.date;
   const hash = queryHash(template, 1, { websiteId: input.websiteId, start, end });

@@ -1,4 +1,4 @@
-import { getClient, listClients, listSnapshotClientIds, listSnapshots, listWebsites, type AccessProfile, type PoolClient, type SnapshotRow, type WebsiteRow } from "@clinic-genie/db";
+import { getClient, isAnalyticsClient, listClients, listSnapshotClientIds, listSnapshots, listWebsites, type AccessProfile, type PoolClient, type SnapshotRow, type WebsiteRow } from "@clinic-genie/db";
 import { staffTx } from "@/lib/db";
 import { alignRecordedPeriod, latestUpdate, matchedPeriods, day, type PeriodWindow } from "@/lib/site-metrics";
 
@@ -25,10 +25,11 @@ export async function loadSiteView(access: AccessProfile, requestedId?: string, 
 }
 
 export async function loadSiteViewWithDb(db: PoolClient, requestedId?: string, windows?: { current: PeriodWindow; previous: PeriodWindow }, exact = false, requestedWebsiteId?: string): Promise<SiteView | "denied" | null> {
-    const clients = await listClients(db);
+    // Website analytics covers Clinic Genie only (D61). Another client's id is refused, not shown.
+    const clients = (await listClients(db)).filter(isAnalyticsClient);
     if (requestedId && !clients.some((client) => client.id === requestedId)) {
       const requested = await getClient(db, requestedId);
-      if (!requested) return "denied";
+      if (!requested || !isAnalyticsClient(requested)) return "denied";
       clients.unshift(requested);
     }
     if (clients.length === 0) return null;

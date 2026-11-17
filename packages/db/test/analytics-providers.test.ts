@@ -1,8 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { GA4_TEMPLATES, checkCompatibility, ga4ReportBody, parseGa4AccountSummaries } from "../src/analytics/providers/ga4";
 import { parseGscSites } from "../src/analytics/providers/gsc";
-import { parseSemanticModel, WIX_DATA_HISTORY_DAYS, wixDataWindow, wixDueWindow } from "../src/analytics/providers/wix";
-import { daysBetween } from "../src/services/dates";
 import { safeSearchQuery } from "../src/analytics/measure";
 
 describe("GA4 empty rows (D52)", () => {
@@ -32,11 +30,6 @@ describe("analytics provider fixtures", () => {
     expect(parseGscSites({ siteEntry: [{ siteUrl: "sc-domain:fixture.example", permissionLevel: "siteOwner" }] })).toEqual([
       { id: "sc-domain:fixture.example", label: "sc-domain:fixture.example" },
     ]);
-    expect(wixDataWindow("2026-10-27", "2026-01-01", "2026-01-02")).toEqual({ error: "outside_history" });
-    const due = wixDueWindow("2026-10-29");
-    expect(due.end).toBe("2026-10-29");
-    expect(daysBetween(due.start, due.end) + 1).toBe(WIX_DATA_HISTORY_DAYS);
-    expect(parseSemanticModel({ semanticModel: { id: "fixture", slug: "fixture", measures: [{ name: "sessions" }] } })?.fields[0]?.name).toBe("sessions");
     expect(safeSearchQuery("person@example.invalid")).toBeNull();
   });
 });

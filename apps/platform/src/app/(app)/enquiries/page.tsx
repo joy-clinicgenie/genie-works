@@ -69,7 +69,7 @@ export default async function EnquiriesPage({ searchParams }: { searchParams: Pr
   const filters = { clinicId: clinic, websiteKey: website, formKey: form, status, reference, person, from: window.from, to: window.to, page };
   // Handling is resolved from this platform's read rows, not from the website source, so that filter pages here.
   const [board, forms, connected, directory] = await Promise.all([
-    listEnquiryBoard(scope, handling ? { ...filters, page: "all" as const } : filters, window, access),
+    listEnquiryBoard(scope, handling ? { ...filters, page: "all" as const } : filters, window),
     listSubmissionForms(scope),
     listConnectedForms(access, scope),
     staffTx(access, async (db) => ({ clients: await listClients(db), websites: await listFormWebsites(db, null) })),
@@ -94,8 +94,7 @@ export default async function EnquiriesPage({ searchParams }: { searchParams: Pr
     if (clinic && site.clinicId !== clinic) continue;
     if (!websiteOptions.has(site.key)) websiteOptions.set(site.key, websiteNames.get(site.key) ?? site.key);
   }
-  // Form options come from the connected sources, not a fixed list, so a connected
-  // Wix form is selectable before its first submission arrives.
+  // Form options come from the connected forms, not a fixed list.
   const formOptions = new Map(connectedFormOptions(connected, clinic).map((item) => [item.value, item.label]));
   for (const item of forms) formOptions.set(item.key, item.name);
   const preserved = { clinic, website, form, status, handling, q: reference, person, from: window.from, to: window.to };
@@ -105,12 +104,12 @@ export default async function EnquiriesPage({ searchParams }: { searchParams: Pr
     <EnquiryTabs>
       <PageHeader
         title="Enquiries"
-        description="Wix enquiries use the Forms API; vibe-coded sites use their own databases. Genie Works tracks enquiries without copying messages or sending emails. Handling and notification statuses remain separate, with each site managing its own email delivery."
+        description="Enquiries are read from each website's enquiry database. Genie Works tracks enquiries without copying messages or sending emails. Handling and notification statuses remain separate, with each site managing its own email delivery."
       />
       {denied && <div className="mb-4"><Notice tone="bad" title="Not available">You do not have access to that clinic.</Notice></div>}
       {board.sourceNotice && <div className="mb-4"><Notice tone="warn">{board.sourceNotice}</Notice></div>}
       {personRequested && !personAllowed && <div className="mb-4"><Notice tone="neutral">Search by name, email or telephone is limited to staff who can edit the client. Reference search is available.</Notice></div>}
-      {!board.connected && <EmptyState title="No enquiries are available">{enquiryUnavailableCopy(source ?? { configured: false, refused: false }, "No website enquiry database is connected, and no Wix form is available to read. One connection does not cover every website. Submitted requests stay at their source.")}</EmptyState>}
+      {!board.connected && <EmptyState title="No enquiries are available">{enquiryUnavailableCopy(source ?? { configured: false, refused: false }, "No website enquiry database is connected. Submitted requests stay at their source.")}</EmptyState>}
       {board.connected && (
         <>
           <EnquiryOverview board={board} window={window} websiteNames={websiteNames} />

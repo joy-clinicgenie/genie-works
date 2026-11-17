@@ -1,3 +1,5 @@
+import { aiSourceDimensionFilter } from "../ai-referrers";
+
 export interface Ga4ReportRow {
   dimensions: Record<string, string>;
   metrics: Record<string, number>;
@@ -13,6 +15,7 @@ export function ga4ReportBody(input: {
   end: string;
   metrics: string[];
   dimensions?: string[];
+  dimensionFilter?: unknown;
   limit?: number;
   offset?: number;
 }): unknown {
@@ -20,6 +23,7 @@ export function ga4ReportBody(input: {
     dateRanges: [{ startDate: input.start, endDate: input.end }],
     metrics: input.metrics.map((name) => ({ name })),
     dimensions: (input.dimensions ?? []).map((name) => ({ name })),
+    ...(input.dimensionFilter ? { dimensionFilter: input.dimensionFilter } : {}),
     limit: input.limit ?? 10000,
     offset: input.offset ?? 0,
     // GA4 returns a recorded zero-visit day only when asked. A day it never recorded is still
@@ -51,7 +55,14 @@ export function parseGa4Report(body: unknown): Ga4Report {
   return { rows, quota: tokens.consumed === undefined ? undefined : { tokens: Number(tokens.consumed) } };
 }
 
-export const GA4_TEMPLATES: Record<string, { metrics: string[]; dimensions: string[] }> = {
+export interface Ga4TemplateSpec {
+  metrics: string[];
+  dimensions: string[];
+  /** Narrows the rows GA4 returns. Not part of the capability check. */
+  dimensionFilter?: unknown;
+}
+
+export const GA4_TEMPLATES: Record<string, Ga4TemplateSpec> = {
   "ga4.traffic_daily": { metrics: ["sessions"], dimensions: ["date"] },
   "ga4.traffic_range": { metrics: ["sessions", "totalUsers"], dimensions: [] },
   "ga4.acquisition": { metrics: ["sessions"], dimensions: ["sessionDefaultChannelGroup"] },
@@ -62,9 +73,11 @@ export const GA4_TEMPLATES: Record<string, { metrics: string[]; dimensions: stri
   "ga4.engagement": { metrics: ["engagementRate", "averageSessionDuration", "screenPageViewsPerSession", "bounceRate"], dimensions: [] },
   "ga4.pages": { metrics: ["screenPageViews", "userEngagementDuration", "activeUsers"], dimensions: ["pagePath"] },
   "ga4.visitor_type": { metrics: ["activeUsers"], dimensions: ["newVsReturning"] },
+  // AI assistant referrals (D60): sessions by source, narrowed to the known AI hosts.
+  "ga4.ai_referrals": { metrics: ["sessions"], dimensions: ["sessionSource"], dimensionFilter: aiSourceDimensionFilter() },
 };
 
-export function ga4Template(template: string): { metrics: string[]; dimensions: string[] } {
+export function ga4Template(template: string): Ga4TemplateSpec {
   const spec = GA4_TEMPLATES[template];
   if (!spec) throw new Error("unsupported");
   return spec;

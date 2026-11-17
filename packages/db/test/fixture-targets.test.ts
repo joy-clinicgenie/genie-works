@@ -107,9 +107,9 @@ describe("fixture target guards", () => {
     expect(() => assertLocalWorkerDatabase("postgresql://postgres:postgres@db.example.com:5432/clinic_genie")).toThrow(/not local/);
     process.env.ANALYTICS_FIXTURE_MODE = "1";
     expect(() => assertFixtureFetch("https://analyticsdata.googleapis.com/v1beta/properties/1:runReport")).toThrow(/refused/);
-    expect(() => assertFixtureFetch("https://www.wixapis.com/oauth2/token")).toThrow(/refused/);
+    expect(() => assertFixtureFetch("https://oauth2.googleapis.com/token")).toThrow(/refused/);
     delete process.env.ANALYTICS_FIXTURE_MODE;
-    expect(() => assertFixtureFetch("https://www.wixapis.com/oauth2/token")).not.toThrow();
+    expect(() => assertFixtureFetch("https://oauth2.googleapis.com/token")).not.toThrow();
   });
 
   it("rejects an unauthenticated worker secret and names every provider scenario", () => {
@@ -130,7 +130,6 @@ describe("fixture target guards", () => {
     for (const item of WEBSITE_CAPABILITIES) {
       if (item.state !== "testable") expect(capabilityCountsAsPassed(item.state, true)).toBe(false);
     }
-    expect(WEBSITE_CAPABILITIES.find((item) => item.id === "wix-blog-publishing")?.state).toBe("excluded");
     expect(WEBSITE_CAPABILITIES.find((item) => item.id === "blog-performance")?.state).toBe("excluded");
   });
 });

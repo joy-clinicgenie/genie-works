@@ -359,7 +359,9 @@ The supported type is a permanent 301. Temporary redirects are not implemented. 
 #### AI Visibility
 
 **Tabs:** **Visibility**, **Questions & Tests**, **Sources & Perception**, **AI Access**.  
-No answer-test or analytics provider is connected. Mentions, citations, question libraries, saved answers and NLWeb are unavailable. A missing test is not a negative mention. Do not report a mention or citation from this page.
+No answer-test provider is connected. Mentions, citations, question libraries, saved answers and NLWeb are unavailable. A missing test is not a negative mention. Do not report a mention or citation from this page.
+
+**Visibility** (D60) shows **AI referral sessions** for Last 7, Last 30 or Last 90 days, ending yesterday: website sessions that GA4 recorded as coming from ChatGPT, Perplexity, Gemini, Copilot or Claude, with each assistant's sessions, share and the GA4 source it came under. It needs a connected GA4 property for the website. Until the worker has read GA4 for that period the panel says so. **None recorded** means GA4 saw no session from that assistant in the period; assistants that send no referrer are not seen at all. These are visits, not mentions or citations.
 
 **AI Access** (D57) has **Run AI access check**, for an administrator, a manager or a specialist member. It reads `robots.txt` and `llms.txt` from the website address in the client's website record. Staff cannot enter another address. For each named AI crawler it shows whether the home page is **Allowed**, **Blocked** or **Unknown**, and why: a rule naming the crawler, the default rule for all crawlers, or no `robots.txt`. `llms.txt` shows **Found** with its size, **Not found**, **Not plain text** or **Could not be read**. Every run is kept with who ran it and when; reviewers and read-only members can see the history. This is what the website permits, not a crawler log: it does not show that a crawler visited or that an AI answer cited the clinic. `llms.txt` is edited on the website, not here.
 

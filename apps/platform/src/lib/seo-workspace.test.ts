@@ -8,7 +8,7 @@ describe("Search Console connection status", () => {
   it("uses the active connected property and ignores a disconnected row", () => {
     const picked = pickSearchConsole([
       { website_id: "w", provider: "gsc", status: "disconnected", external_property_id: property, disconnected_at: new Date() },
-      { website_id: "w", provider: "wix", status: "connected", external_property_id: "site", disconnected_at: null },
+      { website_id: "w", provider: "ga4", status: "connected", external_property_id: "site", disconnected_at: null },
       { website_id: "w", provider: "gsc", status: "connected", external_property_id: property, disconnected_at: null },
     ], "w");
     expect(picked).toEqual({ status: "connected", propertyId: property });

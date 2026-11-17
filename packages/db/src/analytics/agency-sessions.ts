@@ -1,7 +1,8 @@
 import type { Queryable } from "../client";
 import { addDays, daysBetween, formatDateTime } from "../services/dates";
+import { ANALYTICS_CLIENT_SLUGS } from "./scope";
 
-const STALE_MS = { ga4: 12 * 60 * 60 * 1000, wix: 36 * 60 * 60 * 1000 } as const;
+const STALE_MS = { ga4: 12 * 60 * 60 * 1000 } as const;
 
 export type AgencyTrafficState = "available" | "partial" | "not_connected" | "not_synchronised" | "unavailable";
 
@@ -41,7 +42,7 @@ interface SiteRow {
 interface ConnectionRow {
   id: string;
   website_id: string;
-  provider: "ga4" | "wix";
+  provider: "ga4";
   status: string;
   disconnected_at: Date | null;
 }
@@ -68,16 +69,18 @@ export async function agencySessionSummary(db: Queryable, input: {
      from websites w
      join clients c on c.id = w.client_id
      where c.status = 'active'
+       and c.slug = any($2::text[])
        and ($1::uuid is null or w.client_id = $1)
      order by c.name, w.name`,
-    [clientId],
+    [clientId, ANALYTICS_CLIENT_SLUGS],
   );
   const connections = await db.query<ConnectionRow>(
     `select id, website_id, provider, status, disconnected_at
      from analytics_connections
-     where provider in ('ga4', 'wix')
+     where provider = 'ga4'
+       and client_id in (select id from clients where slug = any($2::text[]))
        and ($1::uuid is null or client_id = $1)`,
-    [clientId],
+    [clientId, ANALYTICS_CLIENT_SLUGS],
   );
   const chosen = chooseConnections(sites.rows, connections.rows);
   const coverage = chosen.ids.length === 0
@@ -96,10 +99,10 @@ export async function agencySessionSummary(db: Queryable, input: {
          on r.partition_id = p.id and r.dimension_key = c.source_date::text
        left join analytics_metric_values m
          on m.report_row_id = r.id
-        and m.metric_key = case conn.provider when 'ga4' then 'sessions' else 'total_sessions' end
+        and m.metric_key = 'sessions'
         and m.value_state = 'available'
        where c.connection_id = any($1::uuid[])
-         and c.template_key = case conn.provider when 'ga4' then 'ga4.traffic_daily' else 'wix.data_daily' end
+         and c.template_key = 'ga4.traffic_daily'
          and c.source_date between $2::date and $3::date
        order by c.connection_id, c.source_date, p.generation desc`,
       [chosen.ids, input.previousStart < input.start ? input.previousStart : input.start, input.end > input.previousEnd ? input.end : input.previousEnd],
@@ -154,7 +157,7 @@ function summarise(input: {
   const currentDates = datesBetween(input.start, input.end);
   const previousDates = datesBetween(input.previousStart, input.previousEnd);
   const notices: AgencyTrafficNotice[] = [];
-  const measured: Array<AgencyTrafficWebsite & { previous: number | null; series: Array<{ date: string; value: number }> | null; provider: "ga4" | "wix"; fetchedAt: Date | null }> = [];
+  const measured: Array<AgencyTrafficWebsite & { previous: number | null; series: Array<{ date: string; value: number }> | null; provider: "ga4"; fetchedAt: Date | null }> = [];
   let incomplete = 0;
   let conflict = 0;
   let reconnect = 0;

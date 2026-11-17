@@ -36,7 +36,7 @@ export function EnquiryNotification({
     return (
       <div>
         <h2 className="text-base font-semibold">Clinic notification</h2>
-        <p className="mt-2 text-sm text-muted">This website sends the clinic email from Wix. Another website may use a different sender. Genie Works does not send the email, store a delivery record, or retry it.</p>
+        <p className="mt-2 text-sm text-muted">This website sends the clinic email with its own sender. Genie Works does not send the email, store a delivery record, or retry it.</p>
         <dl className="mt-4 space-y-3 text-sm">
           <div>
             <dt className="text-xs font-semibold uppercase tracking-wide text-muted">Clinic notification</dt>

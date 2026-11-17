@@ -84,7 +84,7 @@ export function BlogWorkflow({
       {archived?.ok && <Notice tone="good">{archived.message}</Notice>}
       {restored?.ok && <Notice tone="good">{restored.message}</Notice>}
       {started?.ok && <Notice tone="good">{started.message}</Notice>}
-      {!native && <Notice tone="warn" title="Publishing is unavailable">This website is not a native site. The article can be drafted and approved here. It will not be published to Wix.</Notice>}
+      {!native && <Notice tone="warn" title="Publishing is unavailable">This website is not a native site. The article can be drafted and approved here. It will not be published to that website.</Notice>}
       {!canPublish && native && <p className="text-sm text-muted">Publishing and unpublishing are limited to an admin or manager.</p>}
       <div className="flex flex-wrap gap-2">
         {canEdit && draft && (

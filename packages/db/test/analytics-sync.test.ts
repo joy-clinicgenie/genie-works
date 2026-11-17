@@ -1,7 +1,7 @@
 import { afterAll, describe, expect, it } from "vitest";
 import { SERVICE, applyContext } from "../src/client";
 import { adminPool, appPool, asContext, clientBySlug, staffByEmail, staffCtx } from "./helpers";
-import { provisionClinic } from "./provision";
+import { provisionAnalyticsWebsite, provisionClinic } from "./provision";
 import { bindConnectionFromState, createOAuthState, disconnectConnection, exchangeOAuthState, listConnections, saveConnection, setSourcePolicy } from "../src/analytics/connections";
 import { dueWindow, enqueueDue, enqueueJob, enqueueRangeJobs, executeJob, leaseNext, rangeJobStatus, listConnectionSyncStatus, retryFailedAnalyticsJobs, sealedToken, type FetchLike, type FetchResponse } from "../src/analytics/sync";
 import { latestPublishedReport, publishedReport } from "../src/analytics/read";
@@ -296,13 +296,13 @@ describe("analytics tenant isolation and sync", () => {
       const first = encryptSecret(JSON.stringify({ accessToken: "a", expiresAt: "2100-01-01T00:00:00.000Z" }));
       const second = encryptSecret(JSON.stringify({ accessToken: "b", expiresAt: "2100-01-01T00:00:00.000Z" }));
       const left = await saveConnection(db, {
-        clientId, websiteId: site, provider: "wix", externalPropertyId: "instance-a", streamOrSiteRef: "instance-a",
+        clientId, websiteId: site, provider: "ga4", externalPropertyId: "4141", streamOrSiteRef: null,
         providerTimezone: "Asia/Singapore", tokenCiphertext: first.ciphertext, tokenNonce: first.nonce, actorUserId: admin.id,
       });
       await setSourcePolicy(db, { clientId, websiteId: site, reportFamily: "traffic", connectionId: left.id, effectiveFrom: "2026-10-01", actorUserId: admin.id });
       await disconnectConnection(db, { connectionId: left.id, actorUserId: admin.id });
       const right = await saveConnection(db, {
-        clientId, websiteId: site, provider: "wix", externalPropertyId: "instance-a", streamOrSiteRef: "instance-a",
+        clientId, websiteId: site, provider: "ga4", externalPropertyId: "4141", streamOrSiteRef: null,
         providerTimezone: "Asia/Singapore", tokenCiphertext: second.ciphertext, tokenNonce: second.nonce, actorUserId: admin.id,
       });
       await setSourcePolicy(db, { clientId, websiteId: site, reportFamily: "traffic", connectionId: right.id, effectiveFrom: "2026-10-01", actorUserId: admin.id });
@@ -323,15 +323,13 @@ describe("analytics tenant isolation and sync", () => {
     const instant = new Date("2026-10-30T16:30:00.000Z");
     expect(dueWindow("ga4", instant, "Asia/Singapore")).toEqual({ start: "2026-10-02", end: "2026-10-31" });
     expect(dueWindow("ga4", instant, "UTC")).toEqual({ start: "2026-10-01", end: "2026-10-30" });
-    expect(dueWindow("wix", instant, "Asia/Singapore").end).toBe("2026-10-31");
-    expect(dueWindow("wix", instant, "UTC").end).toBe("2026-10-30");
     expect(dueWindow("gsc", instant, "Asia/Singapore")).toEqual({ start: "2026-09-28", end: "2026-10-27" });
   });
 
   it("queues the provider-timezone window and reuses a queued job", async () => {
     const admin = await staffByEmail("admin@example.invalid");
     await asContext(SERVICE, async (db) => {
-      const provisioned = await provisionClinic(db, admin.id);
+      const provisioned = await provisionAnalyticsWebsite(db, admin.id);
       const clientId = provisioned.clientId;
       const site = provisioned.websiteId;
       const sealed = sealedToken({ accessToken: "window", expiresAt: "2100-01-01T00:00:00.000Z" });
@@ -627,47 +625,6 @@ describe("analytics tenant isolation and sync", () => {
       const now = new Date("2099-11-01T00:00:00.000Z");
       expect(await leaseNext(db, "parallel-a", now)).not.toBeNull();
       expect(await leaseNext(db, "parallel-b", now)).toBeNull();
-    });
-  });
-
-  it("stores Wix daily sessions and preserves missing measures as missing", async () => {
-    const admin = await staffByEmail("admin@example.invalid");
-    await asContext(SERVICE, async (db) => {
-      const provisioned = await provisionClinic(db, admin.id);
-      const token = sealedToken({ accessToken: "wix", expiresAt: "2100-01-01T00:00:00.000Z" });
-      const connection = await saveConnection(db, {
-        clientId: provisioned.clientId,
-        websiteId: provisioned.websiteId,
-        provider: "wix",
-        externalPropertyId: "wix-fixture",
-        streamOrSiteRef: "wix-fixture",
-        providerTimezone: "Asia/Singapore",
-        tokenCiphertext: token.ciphertext,
-        tokenNonce: token.nonce,
-        actorUserId: admin.id,
-      });
-      await db.query("update analytics_jobs set state = 'cancelled', lease_owner = null, lease_until = null where state in ('queued', 'leased')");
-      const queued = await enqueueJob(db, { clientId: provisioned.clientId, websiteId: provisioned.websiteId, connectionId: connection.id, templateKey: "wix.data_daily", start: "2026-10-01", end: "2026-10-02" });
-      const now = new Date("2026-11-02T12:00:00.000Z");
-      // The job is due at the fixed test time, not at the wall-clock time the row was written.
-      await db.query("update analytics_jobs set next_attempt_at = $2 where id = $1", [queued.id, now.toISOString()]);
-      const job = await leaseNext(db, "wix-worker", now);
-      const fetchWix: FetchLike = async (url) => {
-        expect(url).toContain("dateRange.endDate=2026-10-03");
-        return jsonResponse(200, {
-          data: [{ type: "TOTAL_SESSIONS", values: [{ date: "2026-10-01", value: 4 }, { date: "2026-10-02", value: 0 }] }],
-        });
-      };
-      expect((await executeJob(db, job!, { fetch: fetchWix, now })).result).toBe("succeeded");
-      const report = await publishedReport(db, {
-        clientId: provisioned.clientId,
-        websiteId: provisioned.websiteId,
-        templateKey: "wix.data_daily",
-        start: "2026-10-01",
-        end: "2026-10-02",
-      });
-      expect(report?.rows.map((row) => row.metrics.find((metric) => metric.key === "total_sessions")?.value)).toEqual([4, 0]);
-      expect(report?.rows.some((row) => row.metrics.some((metric) => metric.key === "total_unique_visitors"))).toBe(false);
     });
   });
 

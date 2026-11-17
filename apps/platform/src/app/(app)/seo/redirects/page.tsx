@@ -27,7 +27,7 @@ export default async function SeoRedirectsPage({ searchParams }: { searchParams:
   return (
     <SeoFrame ctx={ctx} pathname="/seo/redirects" title="URL Redirects" description="Keep individual permanent redirects understandable. Imports and live tests do not run from this screen." tabs={TABS} currentTab={tab}>
       {ctx.demo ? <DemoNote>No sample redirects are listed.</DemoNote> : !codeManaged && ctx.selected ? (
-        <Unavailable title="This website platform is not editable here">Individual redirects are published only to active Next.js websites. Wix and other platforms are not changed.</Unavailable>
+        <Unavailable title="This website platform is not editable here">Individual redirects are published only to active Next.js websites. Other platforms are not changed.</Unavailable>
       ) : bundle && tab === "redirects" ? (
         <>
           <Notice tone="neutral">Only local paths are accepted. Self-redirects and loops are rejected when you save. A saved rule reaches a connected Next.js site through the settings API; this screen does not call the live URL.</Notice>

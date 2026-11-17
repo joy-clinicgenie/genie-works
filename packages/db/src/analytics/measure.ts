@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { addDays, daysBetween } from "../services/dates";
 
-export const PROVIDERS = ["ga4", "wix", "gsc"] as const;
+export const PROVIDERS = ["ga4", "gsc"] as const;
 export type AnalyticsProvider = (typeof PROVIDERS)[number];
 
 export const CONTACT_EVENTS = ["whatsapp_click", "phone_click", "email_click", "booking_link_click"] as const;
@@ -25,12 +25,6 @@ export function usersFromReport(report: { templateKey: string; rows: Array<{ dim
 /** Distinct people cannot be recovered by adding daily, device or page user counts. */
 export function exactRangeUsers(): { state: "unavailable"; reason: string } {
   return { state: "unavailable", reason: "Distinct users cannot be recovered by summing daily totals." };
-}
-
-export function refuseCombinedTraffic(left: AnalyticsProvider, right: AnalyticsProvider): void {
-  if (left !== right) {
-    throw new Error(`Traffic from ${left} and ${right} is not added together.`);
-  }
 }
 
 export type Change =

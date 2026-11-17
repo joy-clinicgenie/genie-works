@@ -34,3 +34,38 @@ export async function provisionClinic(db: Queryable, actorId: string, memberIds:
   }, actorId);
   return { clientId: client.id, websiteId: website.id, stagingId: staging.id };
 }
+
+/** A rolled-back website on the seeded Clinic Genie client, the only website analytics client (D61). */
+export async function provisionAnalyticsWebsite(db: Queryable, actorId: string): Promise<{ clientId: string; websiteId: string }> {
+  const { rows } = await db.query<{ id: string }>("select id from clients where slug = 'clinic-genie'");
+  const clientId = rows[0]?.id;
+  if (!clientId) throw new Error("Seed client clinic-genie missing. Run npm run db:seed.");
+  const website = await createWebsite(db, {
+    clientId,
+    name: `Analytics check ${randomBytes(3).toString("hex")}`,
+    url: "https://analytics-check.example.invalid",
+    platform: "Next.js on Vercel",
+    environment: "production",
+    notes: null,
+  }, actorId);
+  return { clientId, websiteId: website.id };
+}
+
+/**
+ * A fresh, empty analytics client for tests that count every website of the client. Inside the
+ * caller's rolled-back transaction the seeded Clinic Genie record is renamed out of the way and a
+ * new client takes the clinic-genie slug, so leftover rows from other runs cannot change the counts.
+ */
+export async function provisionEmptyAnalyticsClient(db: Queryable, actorId: string): Promise<{ id: string }> {
+  const suffix = randomBytes(4).toString("hex");
+  await db.query("update clients set slug = $1 where slug = 'clinic-genie'", [`held-${suffix}`]);
+  const client = await createClient(db, {
+    slug: "clinic-genie",
+    name: "Analytics Test Client (fictional)",
+    ownerUserId: actorId,
+    channels: ["website"],
+    isSynthetic: true,
+    notes: null,
+  }, actorId);
+  return { id: client.id };
+}

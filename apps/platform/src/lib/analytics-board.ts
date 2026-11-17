@@ -289,7 +289,7 @@ export interface LiveBehaviourFacts {
 
 export interface LiveTrafficFacts {
   connected: boolean;
-  provider: "ga4" | "wix" | null;
+  provider: "ga4" | null;
   sourceNote: string;
   updatedAt: Date | null;
   sessions: number | null;
@@ -325,7 +325,6 @@ function sourceNote(bundle: LiveBundle): string {
   if (bundle.conflict) return "Two traffic sources are connected. Choose one before traffic totals are shown. Leads are stored clinic enquiries.";
   if (bundle.providerStatus === "reconnect_required") return "The traffic connection needs to be reconnected. Leads are stored clinic enquiries.";
   if (bundle.provider === "ga4" && bundle.providerStatus === "connected") return "Traffic is from Google Analytics. Leads are stored clinic enquiries.";
-  if (bundle.provider === "wix" && bundle.providerStatus === "connected") return "Traffic is from Wix. Leads are stored clinic enquiries.";
   return "Traffic source is not connected. Leads are stored clinic enquiries.";
 }
 
@@ -406,7 +405,7 @@ function fractionToPercent(value: number | null): number | null {
 
 const GA4_BEHAVIOUR_NOTE = "Engagement, page views and new or returning visitors are from Google Analytics; time on page is its engagement time per active user. Form starts, submissions, contact clicks, exit rate and recorded paths are from the recorded export.";
 const UNCONNECTED_BEHAVIOUR_NOTE = "Behaviour figures are from the recorded export.";
-const EXPORT_BEHAVIOUR_NOTE = "Behaviour figures are from the recorded export. Wix behaviour is not synced.";
+const EXPORT_BEHAVIOUR_NOTE = "Behaviour figures are from the recorded export.";
 
 /** Behaviour figures in live mode (D53). GA4 values replace the export; a missing GA4 value stays unavailable. */
 function liveBehaviour(base: AnalyticsBoard, facts: LiveTrafficFacts): Partial<AnalyticsBoard> {

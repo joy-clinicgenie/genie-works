@@ -37,7 +37,7 @@ describe("enquiry reads", () => {
          returning id
        )
        insert into websites (client_id, name, url, platform, environment, enquiry_key)
-       select id, 'Read website', 'https://read.example.invalid', 'Wix', 'production', $2
+       select id, 'Read website', 'https://read.example.invalid', 'Next.js on Vercel', 'production', $2
        from clinic
        returning client_id, id`,
       [slug, `${slug}-site`],
@@ -52,26 +52,26 @@ describe("enquiry reads", () => {
         const opened = await markEnquiryRead(db, {
           clientId: created.client_id,
           externalId: EXTERNAL_ID,
-          source: "wix",
+          source: "database",
           userId: specA.id,
         });
         const again = await markEnquiryRead(db, {
           clientId: created.client_id,
           externalId: EXTERNAL_ID,
-          source: "wix",
+          source: "database",
           userId: specA.id,
         });
         const visible = await openedEnquiryIdentities(db, [
-          { id: EXTERNAL_ID, source: "wix" },
           { id: EXTERNAL_ID, source: "database" },
+          { id: OTHER_ID, source: "database" },
         ]);
         return { opened, again, visible };
       }, { commit: true });
       expect(saved.opened).toBe(true);
       expect(saved.again).toBe(false);
-      expect(saved.visible).toEqual([`wix:${EXTERNAL_ID}`]);
+      expect(saved.visible).toEqual([`database:${EXTERNAL_ID}`]);
 
-      const hidden = await asContext(staffCtx(specB), (db) => openedEnquiryIdentities(db, [{ id: EXTERNAL_ID, source: "wix" }]));
+      const hidden = await asContext(staffCtx(specB), (db) => openedEnquiryIdentities(db, [{ id: EXTERNAL_ID, source: "database" }]));
       expect(hidden).toEqual([]);
       await expect(asContext(staffCtx(specB), (db) => markEnquiryRead(db, {
         clientId: created.client_id,

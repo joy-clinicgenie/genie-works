@@ -3,7 +3,7 @@ import { requireAccess } from "@/lib/session";
 import { staffTx } from "@/lib/db";
 import { shellClients } from "@/lib/client-registry";
 import { AgencyOverview } from "@/components/modules/AgencyOverview";
-import { dashboardEnquiryCounts, enquiryConnection, notificationAttention, submissionClinicScope } from "@/lib/form-submissions";
+import { enquiryConnection, submissionStatusCounts, notificationAttention, submissionClinicScope } from "@/lib/form-submissions";
 import { periodRange } from "@/lib/period-range";
 import {
   analyticsDashboardHref,
@@ -48,7 +48,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
   const to = windows.current.end;
 
   const [enquiries, notifications, reports, sessions] = await Promise.all([
-    settle(dashboardEnquiryCounts(access, scope, { from, to, clinicId: clinic }), { connected: false as const, wixNotice: null }),
+    settle(submissionStatusCounts(scope, { from, to, clinicId: clinic }), { connected: false as const }),
     settle(notificationAttention(scope, clinic), { connected: false as const }),
     settle(staffTx(access, (db) => dashboardReportAttention(db, clientId)), null),
     settle(staffTx(access, (db) => agencySessionSummary(db, {
@@ -72,7 +72,6 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
   } else if (!notifications.connected) {
     notices.push("Notification status is unavailable. Enquiry counts are still shown.");
   }
-  if (enquiries.wixNotice) notices.push(enquiries.wixNotice);
   if (!reports) notices.push("Reports are unavailable. Other sections remain available.");
   for (const notice of sessions.notices) notices.push(notice.message);
 

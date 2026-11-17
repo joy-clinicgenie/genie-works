@@ -63,7 +63,7 @@ export async function drainMaintenance(
   options: { owner?: string; jobLimit?: number; inspectLimit?: number; speedLimit?: number; budgetMs?: number } = {},
 ): Promise<MaintenanceResult> {
   const owner = options.owner ?? "http";
-  const jobLimit = options.jobLimit ?? 40;
+  const jobLimit = options.jobLimit ?? 50;
   const inspectLimit = options.inspectLimit ?? 20;
   const speedLimit = options.speedLimit ?? 3;
   const budgetMs = options.budgetMs ?? 90_000;

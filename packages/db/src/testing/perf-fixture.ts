@@ -30,15 +30,6 @@ export const FIXTURE_WEBSITES = {
   bProduction: { id: "b0000000-0000-4000-8000-00000000b001", clientId: FIXTURE_CLIENTS.b.id, name: "Demo Clinic B website", url: "https://demo-clinic-b.example.invalid", platform: "Wix", environment: "production", enquiryKey: "demo-clinic-b-production" },
 } as const;
 
-/** The Wix binding the mock provider answers for. The instance and form ids are fictional. */
-export const FIXTURE_WIX_BINDING = {
-  websiteId: FIXTURE_WEBSITES.bProduction.id,
-  instanceId: "dddddddd-0000-4000-8000-00000000d001",
-  formId: "eeeeeeee-0000-4000-8000-00000000e001",
-  namespace: "wix.form_app.form",
-  formKey: "appointment-enquiry",
-} as const;
-
 /** Clinic scoping. The admin and manager roles are global and need no membership. */
 export const FIXTURE_MEMBERSHIPS = [
   { email: "specialist-a@example.invalid", clientId: FIXTURE_CLIENTS.a.id },
@@ -242,15 +233,6 @@ async function insertWebsitesAndForms(db: pg.PoolClient, actor: string): Promise
       [site.id, site.clientId, site.name, site.url, site.platform, site.environment, site.enquiryKey],
     );
   }
-  // enquiry_source must move to 'wix' in the same statement: websites_wix_binding_shape requires the
-  // whole binding to be present together.
-  await db.query(
-    `update websites
-     set enquiry_source = 'wix', wix_instance_id = $2, wix_form_id = $3, wix_form_namespace = $4,
-         wix_form_key = $5, wix_counts_in_totals = true
-     where id = $1`,
-    [FIXTURE_WIX_BINDING.websiteId, FIXTURE_WIX_BINDING.instanceId, FIXTURE_WIX_BINDING.formId, FIXTURE_WIX_BINDING.namespace, FIXTURE_WIX_BINDING.formKey],
-  );
   // Two active forms and one proposed-inactive form on Clinic A, one on Clinic B.
   const forms: Array<[string, string, string, string, boolean, string]> = [
     [FIXTURE_WEBSITES.aProduction.id, FIXTURE_CLIENTS.a.id, "appointment-enquiry", "Appointment enquiry", true, "applied"],
@@ -340,7 +322,7 @@ const GSC_TEMPLATES = ["gsc.totals", "gsc.queries", "gsc.pages"] as const;
 
 /**
  * Clinic A: GA4 and Search Console connected, with published partitions for the preset windows the
- * analytics pages ask for. Clinic B: Wix connected. Clinic C: nothing, so unavailable states show.
+ * analytics pages ask for. Clinic B and Clinic C: nothing, so unavailable states show.
  */
 async function insertAnalytics(db: pg.PoolClient, actor: string, windows: Record<string, { start: string; end: string }>): Promise<void> {
   const connection = async (clientId: string, websiteId: string, provider: string, property: string, status: string) => {
@@ -355,7 +337,6 @@ async function insertAnalytics(db: pg.PoolClient, actor: string, windows: Record
   const gsc = await connection(FIXTURE_CLIENTS.a.id, FIXTURE_WEBSITES.aProduction.id, "gsc", "sc-domain:demo-clinic-a.example.invalid", "connected");
   // A website whose provider needs reconnecting, so the reconnect state is exercised too.
   await connection(FIXTURE_CLIENTS.a.id, FIXTURE_WEBSITES.aStaging.id, "ga4", "properties/900000002", "reconnect_required");
-  const wix = await connection(FIXTURE_CLIENTS.b.id, FIXTURE_WEBSITES.bProduction.id, "wix", "wix-site-demo-b", "connected");
 
   const periods = ["last7", "last7Previous", "last30", "last30Previous", "last90", "last90Previous"] as const;
 
@@ -459,19 +440,6 @@ async function insertAnalytics(db: pg.PoolClient, actor: string, windows: Record
           ["position", 12 + index * 3],
         ]);
       }
-    }
-
-    // Clinic B keeps a Wix daily series only, so its analytics screens differ from Clinic A's.
-    const wixDaily = await partition(wix, FIXTURE_CLIENTS.b.id, FIXTURE_WEBSITES.bProduction.id, "wix.data_daily", window, hashFor(`wix.data_daily:${name}`));
-    for (let i = 0; i < days; i += 1) {
-      const date = addDays(window.start, i);
-      await row(wixDaily, FIXTURE_CLIENTS.b.id, FIXTURE_WEBSITES.bProduction.id, date, { date }, [["total_sessions", Math.round((18 + ((i * 5) % 20)) * scale)]]);
-      await db.query(
-        `insert into analytics_coverage (client_id, website_id, connection_id, template_key, source_date, state, tracking_active, measured_through)
-         values ($1, $2, $3, 'wix.data_daily', $4, 'complete', true, $4)
-         on conflict (connection_id, template_key, source_date) do nothing`,
-        [FIXTURE_CLIENTS.b.id, FIXTURE_WEBSITES.bProduction.id, wix, date],
-      );
     }
   }
 }

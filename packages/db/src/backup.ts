@@ -28,11 +28,7 @@ export const BACKUP_TABLES = [
   "memberships",
   "websites",
   "website_forms",
-  "website_enquiry_forms",
-  "wix_inbox_messages",
-  "wix_inbox_coverage",
   "enquiry_status_events",
-  "enquiry_follow_ups",
   "enquiry_reads",
   "blog_articles",
   "blog_article_versions",
@@ -310,7 +306,6 @@ async function verifyRestore(pool: pg.Pool, body: BackupFile, sourceArtifacts: s
     evidence_issue_mismatch: "select count(*) from evidence_items e join issues i on i.id = e.issue_id where i.client_id <> e.client_id",
     wordings_without_claim: "select count(*) from claim_wordings w where not exists (select 1 from medical_claims c where c.id = w.claim_id)",
     memberships_without_user: "select count(*) from memberships m where not exists (select 1 from staff_users u where u.id = m.user_id)",
-    follow_ups_without_wix_website: "select count(*) from enquiry_follow_ups f where not exists (select 1 from websites w where w.id = f.website_id and w.client_id = f.client_id and w.enquiry_source = 'wix')",
   };
   for (const [name, sql] of Object.entries(checks)) {
     orphans[name] = Number((await pool.query<{ count: string }>(sql)).rows[0]!.count);

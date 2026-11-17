@@ -85,17 +85,9 @@ describe("isolated enquiry follow-up and report recovery", () => {
         )).rows[0];
         expect(admin && clinic && site).toBeTruthy();
         await client.query(
-          `update websites
-           set enquiry_source = 'wix', wix_instance_id = '00000000-0000-4000-8000-0000000000a1',
-               wix_form_id = '00000000-0000-4000-8000-0000000000a2', wix_form_namespace = 'wix.form_app.form',
-               wix_form_key = 'contact', wix_counts_in_totals = false
-           where id = $1`,
-          [site!.id],
-        );
-        await client.query(
-          `insert into enquiry_follow_ups (website_id, client_id, external_id, status)
-           values ($1, $2, '11111111-1111-4111-8111-111111111199', 'acknowledged')`,
-          [site!.id, site!.client_id],
+          `insert into enquiry_reads (client_id, external_id, source, read_by)
+           values ($1, '11111111-1111-4111-8111-111111111199', 'database', $2)`,
+          [site!.client_id, admin!.id],
         );
         const reportId = await createSavedReport(client, {
           clientId: clinic!.id,
@@ -119,15 +111,14 @@ describe("isolated enquiry follow-up and report recovery", () => {
         client.release();
       }
       const backup = await writeBackup(pool, backupDirectory, { artifactDirectory });
-      expect(backup.counts.enquiry_follow_ups).toBe(1);
+      expect(backup.counts.enquiry_reads).toBe(1);
       expect(backup.reportArtifacts).toBe(1);
       const verified = await restoreTest(pool, sourceUrl, backup.file, {
         appPassword: await existingLocalAppPassword(),
         artifactDirectory,
       });
       expect(verified.mismatches).toEqual([]);
-      expect(verified.counts.enquiry_follow_ups).toBe(1);
-      expect(verified.orphans.follow_ups_without_wix_website).toBe(0);
+      expect(verified.counts.enquiry_reads).toBe(1);
       expect(verified.reportArtifacts.restored).toBe(1);
       expect(verified.reportArtifacts.mismatches).toEqual([]);
     } finally {

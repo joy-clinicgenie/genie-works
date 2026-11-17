@@ -5,7 +5,6 @@ import {
   FIXTURE_SECOND_ADMIN,
   FIXTURE_VERSION,
   FIXTURE_WEBSITES,
-  FIXTURE_WIX_BINDING,
   anchorDateSgt,
   fixtureWindows,
   loadPerfFixture,
@@ -52,13 +51,6 @@ describe("performance fixture shape", () => {
     }
   });
 
-  it("binds the Wix form to Clinic B's website with the namespace the schema requires", () => {
-    expect(FIXTURE_WIX_BINDING.websiteId).toBe(FIXTURE_WEBSITES.bProduction.id);
-    expect(FIXTURE_WIX_BINDING.namespace).toBe("wix.form_app.form");
-    expect(FIXTURE_WIX_BINDING.instanceId).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/);
-    expect(FIXTURE_WIX_BINDING.formId).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/);
-  });
-
   it("keeps every website URL on example.invalid", () => {
     for (const site of Object.values(FIXTURE_WEBSITES)) {
       expect(site.url).toMatch(/\.example\.invalid$/);
@@ -80,8 +72,7 @@ describe("performance enquiry fixture shape", () => {
   });
 
   it("keeps database enquiries to the database-sourced clinic only", () => {
-    // D31 gives a website one enquiry source. Clinic B's website is Wix-bound, so its enquiries come
-    // from the mock, not from this database.
+    // Clinics B and C have no database enquiries (D61), so their empty states show.
     expect(new Set(rows.map((row) => row.clinicId))).toEqual(new Set([FIXTURE_CLIENTS.a.slug]));
   });
 

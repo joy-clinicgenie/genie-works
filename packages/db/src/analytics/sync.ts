@@ -1,11 +1,11 @@
 import type { Queryable } from "../client";
+import { ANALYTICS_CLIENT_SLUGS, SEO_SHARED_PROVIDERS } from "./scope";
 import { addDays, daysBetween } from "../services/dates";
 import { recordAudit } from "../services/audit";
 import { decryptSecret, encryptSecret, tokenKeyConfigured } from "./crypto";
 import { queryHash, safeAnalyticsPath, safeSearchQuery, type AnalyticsProvider } from "./measure";
 import { checkCompatibility, ga4PropertyPath, ga4ReportBody, ga4Template, isInvalidGrant, parseGa4Report } from "./providers/ga4";
 import { GSC_ROW_LIMIT, GSC_TIME_ZONE, encodeSiteUrl, gscHasAnotherPage, gscQueryBody, parseGscQuery } from "./providers/gsc";
-import { parseSemanticModel, parseWixData, wixDataUrl, wixDataWindow, wixDueWindow } from "./providers/wix";
 
 export interface FetchResponse {
   status: number;
@@ -24,8 +24,6 @@ export interface SyncDeps {
   failOnPage?: number;
   googleClientId?: string;
   googleClientSecret?: string;
-  wixAppId?: string;
-  wixAppSecret?: string;
 }
 
 export interface JobRow {
@@ -96,8 +94,7 @@ class ReconnectError extends Error {
 }
 
 const TEMPLATES: Record<AnalyticsProvider, string[]> = {
-  ga4: ["ga4.traffic_daily", "ga4.traffic_range", "ga4.acquisition", "ga4.landing", "ga4.device", "ga4.country", "ga4.engagement", "ga4.pages", "ga4.visitor_type"],
-  wix: ["wix.data_daily"],
+  ga4: ["ga4.traffic_daily", "ga4.traffic_range", "ga4.acquisition", "ga4.landing", "ga4.device", "ga4.country", "ga4.engagement", "ga4.pages", "ga4.visitor_type", "ga4.ai_referrals"],
   gsc: ["gsc.totals", "gsc.pages", "gsc.queries"],
 };
 
@@ -146,7 +143,6 @@ export function gscDueWindow(now: Date): { start: string; end: string } {
 export function dueWindow(provider: AnalyticsProvider, now: Date, timezone: string | null): { start: string; end: string } {
   if (provider === "gsc") return gscDueWindow(now);
   const today = civilDate(timezone || "Asia/Singapore", now);
-  if (provider === "wix") return wixDueWindow(today);
   return { start: addDays(today, -29), end: today };
 }
 
@@ -177,7 +173,6 @@ export function dueJobs(provider: AnalyticsProvider, now: Date, timezone: string
     const end = gscDueWindow(now).end;
     return TEMPLATES.gsc.flatMap((templateKey) => presetWindows(end).map((window) => ({ templateKey, ...window })));
   }
-  if (provider === "wix") return TEMPLATES.wix.map((templateKey) => ({ templateKey, ...dueWindow("wix", now, timezone) }));
   const today = civilDate(timezone || "Asia/Singapore", now);
   const daily = { templateKey: "ga4.traffic_daily", start: addDays(today, -GA4_DAILY_DAYS), end: today };
   const reportingYesterday = addDays(civilDate("Asia/Singapore", now), -1);
@@ -251,8 +246,9 @@ export async function enqueueDue(db: Queryable, now: Date, websiteId?: string): 
   const { rows } = await db.query<ConnectionRow>(
     `select id, client_id, website_id, provider, external_property_id, stream_or_site_ref, secret_ref, provider_timezone, status
      from analytics_connections where status = 'connected' and disconnected_at is null
-       and ($1::uuid is null or website_id = $1)`,
-    [websiteId ?? null],
+       and ($1::uuid is null or website_id = $1)
+       and (provider = any($3::text[]) or client_id in (select id from clients where slug = any($2::text[])))`,
+    [websiteId ?? null, ANALYTICS_CLIENT_SLUGS, SEO_SHARED_PROVIDERS],
   );
   let created = 0;
   for (const connection of rows) {
@@ -547,7 +543,7 @@ export async function executeClaimedJob(
   let pulled: PulledJob;
   try {
     original = decodeClaimedToken(claimed);
-    current = await ensureAccessToken(claimed.connection, original, deps);
+    current = await ensureAccessToken(original, deps);
     pulled = await pullTemplate(claimed.connection, claimed.job, current, claimed.capability, deps);
   } catch (error) {
     return run((db) => failClaimedJob(db, claimed, error, original, current, deps.now));
@@ -809,8 +805,6 @@ async function pullTemplate(
       capabilities: [{ templateKey: job.template_key, metrics: spec.metrics, dimensions: spec.dimensions, dependencies: [], status: "supported" }],
     };
   }
-  if (connection.provider === "wix" && job.template_key === "wix.semantic_discover") return { capabilities: await discoverWix(token, deps) };
-  if (connection.provider === "wix") return { facts: await pullWix(connection, job, token, deps) };
   return { facts: await pullGsc(connection, job, token, deps) };
 }
 
@@ -831,6 +825,7 @@ async function pullGa4(connection: ConnectionRow, job: JobRow, token: TokenBundl
       end: job.end_date,
       metrics: spec.metrics,
       dimensions: spec.dimensions,
+      dimensionFilter: spec.dimensionFilter,
       limit,
       offset,
     }));
@@ -851,47 +846,6 @@ async function pullGa4(connection: ConnectionRow, job: JobRow, token: TokenBundl
     offset += report.rows.length;
   }
   return { rows, timezone: connection.provider_timezone || "UTC", pages, quota };
-}
-
-async function pullWix(connection: ConnectionRow, job: JobRow, token: TokenBundle, deps: SyncDeps): Promise<{ rows: FactRow[]; timezone: string; pages: number }> {
-  assertWorkerTime(deps);
-  const today = civilDate(connection.provider_timezone || "Asia/Singapore", deps.now);
-  const window = wixDataWindow(today, job.start_date, job.end_date);
-  if ("error" in window) throw new Error("provider_rejected");
-  const response = await deps.fetch(wixDataUrl(window.start, window.end), { headers: { Authorization: token.accessToken } });
-  assertStatus(response.status, response.headers.get("retry-after"));
-  const points = parseWixData(await response.json());
-  const byDate = new Map<string, FactRow>();
-  for (const point of points) {
-    const current = byDate.get(point.date) ?? { dimensionKey: point.date, dimensions: { date: point.date }, sourceDate: point.date, metrics: [] };
-    current.metrics.push({ key: point.measure.toLowerCase(), value: point.value, state: "available" });
-    byDate.set(point.date, current);
-  }
-  return { rows: [...byDate.values()], timezone: connection.provider_timezone || "Asia/Singapore", pages: 1 };
-}
-
-async function discoverWix(token: TokenBundle, deps: SyncDeps): Promise<Array<{ templateKey: string; metrics: string[]; dimensions: string[]; dependencies: string[]; status: "supported" | "unsupported" }>> {
-  const response = await deps.fetch("https://www.wixapis.com/analytics/semantic-model/v3/semantic-models", { headers: { Authorization: token.accessToken } });
-  if (response.status === 404 || response.status === 403) return [{ templateKey: "wix.semantic", metrics: [], dimensions: [], dependencies: [], status: "unsupported" }];
-  assertStatus(response.status, response.headers.get("retry-after"));
-  const body = await response.json() as { semanticModels?: Array<{ id?: string }> };
-  const models = body.semanticModels ?? [];
-  const found = [];
-  for (const model of models.slice(0, 20)) {
-    if (!model.id) continue;
-    const detail = await deps.fetch(`https://www.wixapis.com/analytics/semantic-model/v3/semantic-models/${model.id}`, { headers: { Authorization: token.accessToken } });
-    assertStatus(detail.status, detail.headers.get("retry-after"));
-    const parsed = parseSemanticModel(await detail.json());
-    if (!parsed) continue;
-    found.push({
-      templateKey: `wix.semantic.${parsed.slug || parsed.id}`,
-      metrics: parsed.fields.filter((field) => field.kind === "measure").map((field) => field.name),
-      dimensions: parsed.fields.filter((field) => field.kind === "dimension").map((field) => field.name),
-      dependencies: parsed.fields.flatMap((field) => field.dependencies),
-      status: "supported" as const,
-    });
-  }
-  return found;
 }
 
 async function pullGsc(connection: ConnectionRow, job: JobRow, token: TokenBundle, deps: SyncDeps): Promise<{ rows: FactRow[]; timezone: string; pages: number }> {
@@ -951,26 +905,10 @@ async function storeCapabilities(db: Queryable, connection: ConnectionRow, capab
   }
 }
 
-async function ensureAccessToken(connection: ConnectionRow, token: TokenBundle, deps: SyncDeps): Promise<TokenBundle> {
+async function ensureAccessToken(token: TokenBundle, deps: SyncDeps): Promise<TokenBundle> {
   if (!token.expiresAt || new Date(token.expiresAt).getTime() > deps.now.getTime() + 60_000) return token;
   assertWorkerTime(deps);
-  return connection.provider === "wix" ? refreshWix(connection, token, deps) : refreshGoogle(token, deps);
-}
-
-async function refreshWix(connection: ConnectionRow, token: TokenBundle, deps: SyncDeps): Promise<TokenBundle> {
-  if (!deps.wixAppId || !deps.wixAppSecret) throw new ConfigurationError();
-  if (!connection.stream_or_site_ref) throw new ReconnectError();
-  const response = await deps.fetch("https://www.wixapis.com/oauth2/token", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ grant_type: "client_credentials", client_id: deps.wixAppId, client_secret: deps.wixAppSecret, instance_id: connection.stream_or_site_ref }),
-  });
-  const body = await response.json();
-  if (response.status === 401 || isInvalidGrant(body)) throw new ReconnectError();
-  assertStatus(response.status, response.headers.get("retry-after"));
-  const record = body as { access_token?: string; expires_in?: number };
-  if (!record.access_token) throw new ReconnectError();
-  return { ...token, accessToken: record.access_token, expiresAt: new Date(deps.now.getTime() + (record.expires_in ?? 3600) * 1000).toISOString() };
+  return refreshGoogle(token, deps);
 }
 
 async function refreshGoogle(token: TokenBundle, deps: SyncDeps): Promise<TokenBundle> {

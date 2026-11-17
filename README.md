@@ -24,7 +24,7 @@ Reports can be saved as **draft** or **saved**. **Save draft** updates the worki
 
 These have not been verified in this workspace:
 
-- A live GA4, Search Console or Wix sync (DEP-01). Analytics screens can show stored fixture or seed figures. An empty provider result is not a live zero.
+- A live GA4 or Search Console sync (DEP-01). Analytics screens can show stored fixture or seed figures. An empty provider result is not a live zero.
 - Production enquiry email. This app does not send mail. Labelled test DEP03-8E4DC5 was accepted by Resend and confirmed in the test inbox. The outbox row for DEP03-8E4DC5 stays `sent`. DEP03D-A72CDF was accepted from `hello@clinic-genie.com`, and its inbox receipt is not confirmed. The saved dispatcher from-address remains `onboarding@resend.dev`. Production mail is unchanged, and the connected-pilot mail gate stays open.
 - A clinic website calling the blog or SEO settings API (DEP-07).
 - A named clinic owner, content approver, security reviewer or release approver. Those roles are still unnamed.
@@ -129,11 +129,9 @@ Names and purposes only. Copy `.env.example` and fill values locally. Never comm
 | `AUTH_GOOGLE_HD` | Workspace domain for the first local Google sign-in. A shared database never creates that administrator |
 | `APP_ENVIRONMENT_LABEL` | Text shown in the header so staff can see which environment they are in |
 | `UPLOADS_DIR` | Private evidence files. Served only after a permission check |
-| `ENQUIRY_DATABASE_URL` | Staff connection to the Clinic Genie website enquiry database `clinic_genie_enquiry_staging`. It does not cover a Wix form. Messages stay in that database |
+| `ENQUIRY_DATABASE_URL` | Staff connection to the Clinic Genie website enquiry database `clinic_genie_enquiry_staging`. Messages stay in that database |
 | `ANALYTICS_GOOGLE_CLIENT_ID` | Google OAuth client for GA4 and Search Console. Leave empty until the account owner grants access |
 | `ANALYTICS_GOOGLE_CLIENT_SECRET` | Secret for that Google client |
-| `ANALYTICS_WIX_APP_ID` | Wix app id. Leave empty until access is granted |
-| `ANALYTICS_WIX_APP_SECRET` | Wix app secret |
 | `ANALYTICS_TOKEN_KEY` | Key used to encrypt provider tokens on the server. Tokens are not sent to the browser |
 | `ANALYTICS_WORKER_SECRET` | Bearer for the analytics worker |
 | `CRON_SECRET` | Bearer accepted from a hosted cron invocation. Leave empty locally |

@@ -15,7 +15,7 @@ vi.mock("next/navigation", () => ({
 vi.mock("next/cache", () => ({ revalidatePath: () => undefined }));
 vi.mock("./auth", () => ({ auth: authMock }));
 
-import { bindAnalyticsProperty, connectWix, disconnectAnalytics } from "@/app/actions/analytics";
+import { bindAnalyticsProperty, disconnectAnalytics } from "@/app/actions/analytics";
 import { rotateSeoSiteTokenAction } from "@/app/actions/seo";
 import { GET as startConnection } from "@/app/api/analytics/google/start/route";
 import { GET as finishConnection } from "@/app/api/analytics/google/callback/route";
@@ -61,12 +61,10 @@ describe("direct connection-secret requests", () => {
         fetchSpy.mockClear();
         await expect(bindAnalyticsProperty(new FormData())).rejects.toThrow("REDIRECT /settings?analyticsError=secret_denied");
         await expect(disconnectAnalytics(new FormData())).rejects.toThrow("REDIRECT /settings?analyticsError=secret_denied");
-        const wix = new FormData();
-        wix.set("clientId", "00000000-0000-4000-8000-000000000001");
-        wix.set("websiteId", "00000000-0000-4000-8000-000000000002");
-        wix.set("instanceId", "not-a-provider-call");
-        await expect(connectWix(wix)).rejects.toThrow(/analyticsError=secret_denied/);
-        const token = await rotateSeoSiteTokenAction(null, wix);
+        const site = new FormData();
+        site.set("clientId", "00000000-0000-4000-8000-000000000001");
+        site.set("websiteId", "00000000-0000-4000-8000-000000000002");
+        const token = await rotateSeoSiteTokenAction(null, site);
         expect(token).toEqual({ ok: false, error: "Only an administrator can create or rotate website API credentials." });
         expect(token).not.toHaveProperty("token");
         const start = await startConnection(new Request("http://127.0.0.1:3405/api/analytics/google/start?client=00000000-0000-4000-8000-000000000001&website=00000000-0000-4000-8000-000000000002&provider=ga4"));

@@ -14,7 +14,7 @@ export interface LiveValue {
 }
 
 export interface LiveBundle {
-  provider: "ga4" | "wix" | null;
+  provider: "ga4" | null;
   providerStatus: string | null;
   conflict: boolean;
   searchStatus: string | null;
@@ -65,11 +65,11 @@ export async function loadLiveBundle(db: Queryable, view: SiteView): Promise<Liv
   const end = view.current?.end;
   const connections = view.websiteId ? await listConnections(db, view.clientId) : [];
   const active = connections.filter((row) => row.website_id === view.websiteId && row.disconnected_at === null);
-  const traffic = active.filter((row) => row.provider === "ga4" || row.provider === "wix");
+  const traffic = active.filter((row) => row.provider === "ga4");
   const search = active.find((row) => row.provider === "gsc") ?? null;
   const conflict = traffic.length > 1;
   const chosen = conflict ? null : traffic[0] ?? null;
-  const provider = chosen?.provider === "ga4" || chosen?.provider === "wix" ? chosen.provider : null;
+  const provider = chosen?.provider === "ga4" ? chosen.provider : null;
   const blank: LiveBundle = {
     provider,
     providerStatus: chosen?.status ?? null,
@@ -91,18 +91,16 @@ export async function loadLiveBundle(db: Queryable, view: SiteView): Promise<Liv
     visitorType: null,
   };
   if (!view.websiteId || !start || !end || !chosen || chosen.status !== "connected") return blank;
-  const dailyKey = chosen.provider === "ga4" ? "ga4.traffic_daily" : "wix.data_daily";
-  const sessionMetric = chosen.provider === "ga4" ? "sessions" : "total_sessions";
+  const dailyKey = "ga4.traffic_daily";
+  const sessionMetric = "sessions";
   const seriesInput = { clientId: view.clientId, websiteId: view.websiteId, templateKey: dailyKey, metric: sessionMetric };
   const currentDaily = await dailySessionSeriesWithPeriod(db, { ...seriesInput, start, end });
   const sessions = fromPeriod(currentDaily.period, "Sessions");
-  const range = chosen.provider === "ga4"
-    ? await publishedReport(db, { clientId: view.clientId, websiteId: view.websiteId, templateKey: "ga4.traffic_range", start, end })
-    : null;
+  const range = await publishedReport(db, { clientId: view.clientId, websiteId: view.websiteId, templateKey: "ga4.traffic_range", start, end });
   const usersMetric = range?.rows[0]?.metrics.find((metric) => metric.key === "totalUsers");
   const users: LiveValue = usersMetric?.state === "available"
     ? { value: usersMetric.value, state: "available", note: "Exact period. Daily users are not added together." }
-    : empty(chosen.provider === "wix" ? "Daily unique visitors are not added together." : "An exact-period user total has not been stored.");
+    : empty("An exact-period user total has not been stored.");
   const previous = view.previous;
   const previousDaily = previous ? await dailySessionSeriesWithPeriod(db, { ...seriesInput, start: previous.start, end: previous.end }) : null;
   let sessionsPrevious: number | null = null;

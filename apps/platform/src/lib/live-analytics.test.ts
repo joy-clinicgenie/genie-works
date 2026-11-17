@@ -3,7 +3,7 @@ import { loadLiveBundle } from "./live-analytics";
 import type { SiteView } from "./site-view";
 
 describe("live analytics query planning", () => {
-  it("derives Wix period totals from the same available days the chart shows, without duplicate reads", async () => {
+  it("derives GA4 period totals from the same available days the chart shows, without duplicate reads", async () => {
     const query = vi.fn(async (sql: string, params?: unknown[]) => {
       if (sql.includes("from analytics_connections")) {
         return {
@@ -11,7 +11,7 @@ describe("live analytics query planning", () => {
             id: "connection-1",
             client_id: "client-1",
             website_id: "website-1",
-            provider: "wix",
+            provider: "ga4",
             external_property_id: "site-1",
             stream_or_site_ref: null,
             status: "connected",
@@ -38,6 +38,8 @@ describe("live analytics query planning", () => {
           rowCount: dates.length,
         };
       }
+      // GA4 report partitions (range and breakdown reports) are not stored in this case.
+      if (sql.includes("analytics_report_partitions")) return { rows: [], rowCount: 0 };
       throw new Error(`Unexpected query: ${sql}`);
     });
     const view = {
@@ -57,6 +59,9 @@ describe("live analytics query planning", () => {
       { date: "2026-11-01", value: 4 },
       { date: "2026-11-02", value: null },
     ]);
-    expect(query).toHaveBeenCalledTimes(3);
+    // One connection read and one coverage read per period: the totals reuse the chart's days.
+    const calls = query.mock.calls.map(([sql]) => String(sql));
+    expect(calls.filter((sql) => sql.includes("from analytics_connections"))).toHaveLength(1);
+    expect(calls.filter((sql) => sql.includes("from analytics_coverage"))).toHaveLength(2);
   });
 });

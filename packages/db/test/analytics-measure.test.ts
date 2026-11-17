@@ -10,7 +10,6 @@ import {
   percentChange,
   positionChange,
   previousWindow,
-  refuseCombinedTraffic,
   safeAnalyticsPath,
   submissionEventRatio,
   usersFromReport,
@@ -28,11 +27,6 @@ describe("analytics measurement rules", () => {
       templateKey: "ga4.traffic_range",
       rows: [{ dimensionKey: "range", metrics: [{ key: "totalUsers", value: 40, state: "available" }] }],
     })).toEqual({ state: "available", value: 40 });
-  });
-
-  it("refuses to add Wix and GA4 traffic", () => {
-    expect(() => refuseCombinedTraffic("wix", "ga4")).toThrow(/not added/);
-    expect(() => refuseCombinedTraffic("ga4", "ga4")).not.toThrow();
   });
 
   it("keeps contact clicks separate from other clicks", () => {

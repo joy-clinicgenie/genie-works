@@ -9,7 +9,7 @@ export type CapabilityState = "testable" | "blocked" | "pending" | "excluded";
 
 export interface WebsiteCapability {
   id: string;
-  platform: "native" | "wix" | "both";
+  platform: "native" | "both";
   state: CapabilityState;
   requirementIds: string;
   summary: string;
@@ -50,20 +50,6 @@ export const WEBSITE_CAPABILITIES: WebsiteCapability[] = [
     state: "blocked",
     requirementIds: "SEO-18, BL-12–BL-14",
     summary: "A protected staging website was not deployed. This task does not buy hosting or change a live site. The sibling template does not yet call these Genie Works read APIs.",
-  },
-  {
-    id: "wix-analytics-seo",
-    platform: "wix",
-    state: "blocked",
-    requirementIds: "SEO-18",
-    summary: "No non-production Wix site, app credentials or property access is configured. Local mocks do not prove Wix behaviour.",
-  },
-  {
-    id: "wix-blog-publishing",
-    platform: "wix",
-    state: "excluded",
-    requirementIds: "BL-12–BL-14",
-    summary: "Wix Blog publishing is excluded. Native Blog does not depend on Wix credentials.",
   },
   {
     id: "blog-performance",

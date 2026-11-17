@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { canAccessClient, canExport, reportCsv, publishedReport } from "@clinic-genie/db";
+import { analyticsProviderAllowed, canAccessClient, canExport, reportCsv, publishedReport } from "@clinic-genie/db";
 import { requireAccess } from "@/lib/session";
 import { staffTx } from "@/lib/db";
 
@@ -17,7 +17,11 @@ export async function GET(request: Request) {
   if (!canAccessClient(access, clientId) || !/^[a-z0-9._-]{3,80}$/i.test(template) || !/^\d{4}-\d{2}-\d{2}$/.test(start) || !/^\d{4}-\d{2}-\d{2}$/.test(end)) {
     return new NextResponse("Unavailable", { status: 404 });
   }
-  const report = await staffTx(access, (db) => publishedReport(db, { clientId, websiteId, templateKey: template, start, end }));
+  // GA4 reports are only exported for the analytics clients (D61); Search Console stays open for SEO.
+  const report = await staffTx(access, async (db) =>
+    (await analyticsProviderAllowed(db, clientId, template.split(".")[0] ?? ""))
+      ? publishedReport(db, { clientId, websiteId, templateKey: template, start, end })
+      : null);
   if (!report) return new NextResponse("Unavailable", { status: 404 });
   const body = reportCsv(report, template);
   return new NextResponse(body, {

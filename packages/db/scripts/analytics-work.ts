@@ -20,8 +20,6 @@ const outcome = await drainMaintenance((fn) => withContext(SERVICE, fn), {
   now: new Date(),
   googleClientId: process.env.ANALYTICS_GOOGLE_CLIENT_ID,
   googleClientSecret: process.env.ANALYTICS_GOOGLE_CLIENT_SECRET,
-  wixAppId: process.env.ANALYTICS_WIX_APP_ID,
-  wixAppSecret: process.env.ANALYTICS_WIX_APP_SECRET,
   pageSpeedKey: process.env.PAGESPEED_API_KEY,
 }, { owner: "cli" });
 

@@ -8,8 +8,8 @@ export const maxDuration = 120;
 const WORKER_BUDGET_MS = 90_000;
 
 function jobLimit(): number {
-  const parsed = Number(process.env.ANALYTICS_WORKER_JOB_LIMIT ?? "40");
-  return Number.isInteger(parsed) && parsed >= 1 && parsed <= 100 ? parsed : 40;
+  const parsed = Number(process.env.ANALYTICS_WORKER_JOB_LIMIT ?? "50");
+  return Number.isInteger(parsed) && parsed >= 1 && parsed <= 100 ? parsed : 50;
 }
 
 async function handle(request: Request) {
@@ -28,8 +28,6 @@ async function handle(request: Request) {
     now: new Date(),
     googleClientId: process.env.ANALYTICS_GOOGLE_CLIENT_ID,
     googleClientSecret: process.env.ANALYTICS_GOOGLE_CLIENT_SECRET,
-    wixAppId: process.env.ANALYTICS_WIX_APP_ID,
-    wixAppSecret: process.env.ANALYTICS_WIX_APP_SECRET,
     pageSpeedKey: process.env.PAGESPEED_API_KEY,
   }, { owner: "http", jobLimit: jobLimit(), budgetMs: WORKER_BUDGET_MS });
   const worked = outcome.jobs > 0 || outcome.inspected > 0 || outcome.measured > 0;

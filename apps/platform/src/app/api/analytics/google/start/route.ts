@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { NextResponse } from "next/server";
-import { canWriteConnectionSecrets, createOAuthState } from "@clinic-genie/db";
+import { AnalyticsRuleError, canWriteConnectionSecrets, createOAuthState } from "@clinic-genie/db";
 import { requireAccess } from "@/lib/session";
 import { serviceTx } from "@/lib/db";
 
@@ -23,13 +23,22 @@ export async function GET(request: Request) {
   const websiteId = url.searchParams.get("website") ?? "";
   const provider = url.searchParams.get("provider") === "gsc" ? "gsc" : "ga4";
   const redirectUri = new URL("/api/analytics/google/callback", process.env.AUTH_URL || url.origin).toString();
-  const created = await serviceTx((db) => createOAuthState(db, {
-    actorUserId: access.user.id,
-    clientId: client,
-    websiteId,
-    provider,
-    redirectUri,
-  }));
+  let created: Awaited<ReturnType<typeof createOAuthState>>;
+  try {
+    created = await serviceTx((db) => createOAuthState(db, {
+      actorUserId: access.user.id,
+      clientId: client,
+      websiteId,
+      provider,
+      redirectUri,
+    }));
+  } catch (error) {
+    if (error instanceof AnalyticsRuleError && error.message === "analytics_scope") {
+      denied.searchParams.set("analyticsError", "analytics_scope");
+      return NextResponse.redirect(denied);
+    }
+    throw error;
+  }
   const challenge = createHash("sha256").update(created.verifier).digest("base64url");
   const auth = new URL("https://accounts.google.com/o/oauth2/v2/auth");
   auth.searchParams.set("client_id", clientId);

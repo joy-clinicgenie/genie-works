@@ -18,7 +18,7 @@ const STATUS_TONE: Record<SubmissionStatus, "info" | "warn" | "neutral"> = { new
 export default async function EnquiryPage({ params }: { params: Promise<{ id: string }> }) {
   const access = await requireAccess();
   const { id } = await params;
-  const submission = await getFormSubmission(submissionClinicScope(access), id, access);
+  const submission = await getFormSubmission(submissionClinicScope(access), id);
   if (submission === "unavailable") {
     const source = await enquiryConnection();
     return <EmptyState title="This enquiry could not be loaded">{enquiryUnavailableCopy(source, "This website’s enquiry source could not be read. Another website’s connection is separate. Nothing was changed.")}</EmptyState>;
@@ -36,7 +36,7 @@ export default async function EnquiryPage({ params }: { params: Promise<{ id: st
     await staffTx(access, (db) => markEnquiryRead(db, {
       clientId: client.id,
       externalId: submission.id,
-      source: submission.source === "wix" ? "wix" : "database",
+      source: "database",
       userId: access.user.id,
     }));
   }
@@ -82,15 +82,14 @@ export default async function EnquiryPage({ params }: { params: Promise<{ id: st
             status={submission.notificationStatus}
             notification={submission.notification}
             manualRetries={[...retries].reverse().map((retry) => ({ id: retry.id, at: retry.occurred_at, actor: retry.actor_name ?? "Staff" }))}
-            canRetry={submission.source !== "wix" && canRetryNotifications(access)}
+            canRetry={canRetryNotifications(access)}
             delivery={submission.notificationDelivery}
           />
         </Card>
         <Card className="p-5">
           <h2 className="text-base font-semibold">Follow-up</h2>
           <p className="mt-2 text-sm text-muted">
-            {submission.source === "wix" && "Follow-up is stored in Genie Works. The Wix submission stays as it was received. "}
-            {latest ? <>Last updated {formatDateTime(latest.occurred_at)} by {latest.actor_name}.</> : submission.source === "wix" ? "No staff change is recorded. Follow-up starts at New." : "This status was recorded on the website. This platform has no staff change yet."}
+            {latest ? <>Last updated {formatDateTime(latest.occurred_at)} by {latest.actor_name}.</> : "This status was recorded on the website. This platform has no staff change yet."}
           </p>
           <div className="mt-4">
             {canEdit ? <EnquiryFollowUp enquiryId={submission.id} status={submission.status} /> : <p className="text-sm">You can view this enquiry. Changing follow-up status needs edit access for the client.</p>}

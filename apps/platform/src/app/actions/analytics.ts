@@ -10,14 +10,12 @@ import {
   enqueueRangeJobs,
   canWriteConnectionSecrets,
   disconnectConnection,
-  encryptSecret,
   enqueueDue,
   listConnections,
   listWebsites,
   readExchangedToken,
   recordImport,
   retryFailedAnalyticsJobs,
-  saveConnection,
   setSourcePolicy,
   todaySgt,
 } from "@clinic-genie/db";
@@ -64,7 +62,7 @@ export async function bindAnalyticsProperty(formData: FormData) {
     await serviceTx(async (db) => {
       if (family === "traffic") {
         const current = await listConnections(db, pending.clientId);
-        const other = current.find((row) => row.website_id === pending.websiteId && row.disconnected_at === null && (row.provider === "ga4" || row.provider === "wix"));
+        const other = current.find((row) => row.website_id === pending.websiteId && row.disconnected_at === null && row.provider === "ga4");
         if (other) throw new AnalyticsRuleError("traffic_exists");
       }
       const connection = await bindConnectionFromState(db, {
@@ -86,75 +84,13 @@ export async function bindAnalyticsProperty(formData: FormData) {
   } catch (error) {
     if (error instanceof PermissionDeniedError) fail("secret_denied", pending.clientId);
     if (error instanceof AnalyticsRuleError && error.message === "traffic_exists") fail("traffic_exists", pending.clientId);
+    if (error instanceof AnalyticsRuleError && error.message === "analytics_scope") fail("analytics_scope", pending.clientId);
     console.error("Analytics bind failed", { name: error instanceof Error ? error.name : "Error" });
     fail("oauth_failed", pending.clientId);
   }
   revalidatePath("/settings");
   revalidatePath("/analytics");
   done("connected", pending.clientId);
-}
-
-export async function connectWix(formData: FormData) {
-  const clientId = str(formData, "clientId");
-  const websiteId = str(formData, "websiteId");
-  const instanceId = str(formData, "instanceId");
-  const access = await requireAccess();
-  if (!canWriteConnectionSecrets(access)) fail("secret_denied", clientId);
-  const website = await staffTx(access, async (db) => (await listWebsites(db, clientId)).find((row) => row.id === websiteId) ?? null);
-  if (!website) fail("secret_denied", clientId);
-  if (!website.platform.toLowerCase().includes("wix")) fail("wix_rejected", clientId);
-  const appId = process.env.ANALYTICS_WIX_APP_ID;
-  const appSecret = process.env.ANALYTICS_WIX_APP_SECRET;
-  if (!appId || !appSecret || !process.env.ANALYTICS_TOKEN_KEY) fail("not_configured", clientId);
-  if (!instanceId || instanceId.length > 200) fail("wix_rejected", clientId);
-  const response = await fetch("https://www.wixapis.com/oauth2/token", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ grant_type: "client_credentials", client_id: appId, client_secret: appSecret, instance_id: instanceId }),
-    cache: "no-store",
-  });
-  const token = await response.json() as { access_token?: string; expires_in?: number };
-  if (!response.ok || !token.access_token) fail("wix_rejected");
-  const sealed = encryptSecret(JSON.stringify({
-    accessToken: token.access_token,
-    expiresAt: new Date(Date.now() + (token.expires_in ?? 3600) * 1000).toISOString(),
-    instanceId,
-  }));
-  try {
-    await serviceTx(async (db) => {
-      const current = await listConnections(db, clientId);
-      const other = current.find((row) => row.website_id === websiteId && row.disconnected_at === null && (row.provider === "ga4" || row.provider === "wix"));
-      if (other) throw new AnalyticsRuleError("traffic_exists");
-      const connection = await saveConnection(db, {
-        clientId,
-        websiteId,
-        provider: "wix",
-        externalPropertyId: instanceId,
-        streamOrSiteRef: instanceId,
-        providerTimezone: "Asia/Singapore",
-        tokenCiphertext: sealed.ciphertext,
-        tokenNonce: sealed.nonce,
-        actorUserId: access.user.id,
-      });
-      await setSourcePolicy(db, {
-        clientId,
-        websiteId,
-        reportFamily: "traffic",
-        connectionId: connection.id,
-        effectiveFrom: todaySgt(),
-        actorUserId: access.user.id,
-      });
-      await enqueueDue(db, new Date(), websiteId);
-    });
-  } catch (error) {
-    if (error instanceof PermissionDeniedError) fail("secret_denied", clientId);
-    if (error instanceof AnalyticsRuleError && error.message === "traffic_exists") fail("traffic_exists", clientId);
-    console.error("Wix connection failed", { name: error instanceof Error ? error.name : "Error" });
-    fail("wix_rejected", clientId);
-  }
-  revalidatePath("/settings");
-  revalidatePath("/analytics");
-  done("connected", clientId);
 }
 
 export async function disconnectAnalytics(formData: FormData) {

@@ -4,6 +4,7 @@ import { recordAudit } from "../services/audit";
 import { sha256 } from "../services/references";
 import { encryptSecret, randomUrlToken, decryptSecret } from "./crypto";
 import type { AnalyticsProvider } from "./measure";
+import { analyticsProviderAllowed } from "./scope";
 
 export class AnalyticsRuleError extends Error {
   field?: string;
@@ -12,6 +13,14 @@ export class AnalyticsRuleError extends Error {
     this.name = "AnalyticsRuleError";
     this.field = field;
   }
+}
+
+/**
+ * GA4 is limited to the analytics clients; Search Console stays open to every client for SEO (D61).
+ * Checked where staff start a connection. The worker applies the same rule in enqueueDue.
+ */
+async function assertProviderInScope(db: Queryable, clientId: string, provider: AnalyticsProvider): Promise<void> {
+  if (!(await analyticsProviderAllowed(db, clientId, provider))) throw new AnalyticsRuleError("analytics_scope", "clientId");
 }
 
 export interface PublicConnection {
@@ -48,6 +57,7 @@ export async function createOAuthState(db: Queryable, input: {
 }): Promise<{ id: string; state: string; verifier: string }> {
   await assertConnectionSecretAdmin(db, input.actorUserId);
   await assertWebsite(db, input.clientId, input.websiteId);
+  await assertProviderInScope(db, input.clientId, input.provider);
   const state = randomUrlToken();
   const verifier = randomUrlToken(48);
   const secret = encryptSecret(verifier);

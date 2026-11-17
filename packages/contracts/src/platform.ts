@@ -6,7 +6,7 @@ export type PlatformRole = (typeof PLATFORM_ROLES)[number];
 export const CLIENT_CHANNELS = ["website", "seo", "google_ads", "social", "email", "other"] as const;
 export type ClientChannel = (typeof CLIENT_CHANNELS)[number];
 
-export const ACCOUNT_REFERENCE_KINDS = ["ga4", "search_console", "google_ads", "tag_manager", "google_business", "wix", "hosting", "domain", "booking", "other"] as const;
+export const ACCOUNT_REFERENCE_KINDS = ["ga4", "search_console", "google_ads", "tag_manager", "google_business", "hosting", "domain", "booking", "other"] as const;
 
 export const TASK_PRIORITIES = ["low", "medium", "high", "critical"] as const;
 export type TaskPriority = (typeof TASK_PRIORITIES)[number];

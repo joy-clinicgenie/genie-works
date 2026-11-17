@@ -1,10 +1,10 @@
 import Link from "next/link";
-import { canWriteConnectionSecrets, formatDateTime, listClients, listConnectionSyncStatus, listConnections, listWebsites, readExchangedToken, type AccessProfile, type ConnectionSyncStatus } from "@clinic-genie/db";
+import { canWriteConnectionSecrets, formatDateTime, isAnalyticsClient, listClients, listConnectionSyncStatus, listConnections, listWebsites, readExchangedToken, type AccessProfile, type ConnectionSyncStatus } from "@clinic-genie/db";
 import { serviceTx, staffTx } from "@/lib/db";
 import { Badge } from "@/components/ui/Badge";
 import { buttonClass } from "@/components/ui/Button";
 import { ClinicConnectionPicker } from "@/components/modules/ClinicConnectionPicker";
-import { bindAnalyticsProperty, connectWix, disconnectAnalytics, importAnalyticsCsv, refreshAnalytics, retryAnalyticsFailures } from "@/app/actions/analytics";
+import { bindAnalyticsProperty, disconnectAnalytics, importAnalyticsCsv, refreshAnalytics, retryAnalyticsFailures } from "@/app/actions/analytics";
 import { listGoogleProperties } from "@/lib/analytics-properties";
 
 const MESSAGES: Record<string, string> = {
@@ -14,8 +14,8 @@ const MESSAGES: Record<string, string> = {
   oauth_failed: "The provider did not complete the connection.",
   property_required: "Choose a property before connecting.",
   property_unknown: "Choose a property from the list returned by the provider.",
-  traffic_exists: "This website already has a traffic source. Wix and GA4 stay separate.",
-  wix_rejected: "Wix did not accept that site.",
+  traffic_exists: "This website already has a GA4 connection.",
+  analytics_scope: "GA4 is only connected for Clinic Genie. Other clients keep Search Console for SEO.",
   import_rejected: "That file was not imported. An overlap with a provider partition is kept out unless replace is chosen, and personal fields are rejected.",
   connected: "The property is connected. History already stored is unchanged.",
   disconnected: "The connection is stopped. Stored reports remain.",
@@ -67,7 +67,6 @@ export async function AnalyticsConnections({
   notice?: string;
 }) {
   const googleReady = Boolean(process.env.ANALYTICS_GOOGLE_CLIENT_ID && process.env.ANALYTICS_GOOGLE_CLIENT_SECRET && process.env.ANALYTICS_TOKEN_KEY);
-  const wixReady = Boolean(process.env.ANALYTICS_WIX_APP_ID && process.env.ANALYTICS_WIX_APP_SECRET && process.env.ANALYTICS_TOKEN_KEY);
   const canStoreSecrets = canWriteConnectionSecrets(access);
   const pending = canStoreSecrets && stateToken
     ? await serviceTx(async (db) => {
@@ -96,15 +95,14 @@ export async function AnalyticsConnections({
   return (
     <div className="border-t border-line px-5 py-5">
       <h3 className="text-sm font-semibold text-ink">Analytics providers</h3>
-      <p className="mt-1 text-sm text-ink-soft">One traffic source per website. Search Console can sit beside it. Tokens stay on the server. A connection check is not a successful data sync.</p>
+      <p className="mt-1 text-sm text-ink-soft">GA4 is connected for Clinic Genie only. Search Console can be connected for any client, for SEO. Tokens stay on the server. A connection check is not a successful data sync.</p>
       {message && <p className="mt-3 text-sm text-ink">{message}</p>}
       {!canStoreSecrets && <p className="mt-3 text-sm text-ink-soft">Connecting or disconnecting a provider stays with an administrator. Refresh and file import stay available.</p>}
-      {!googleReady && !wixReady && <p className="mt-3 text-sm text-ink-soft">Not configured. Add the provider credentials on the server before connecting a clinic.</p>}
+      {!googleReady && <p className="mt-3 text-sm text-ink-soft">Not configured. Add the provider credentials on the server before connecting a clinic.</p>}
       <ClinicConnectionPicker key={data.selected?.id ?? "none"} clients={data.clients.map((client) => ({ id: client.id, name: client.name }))} selected={data.selected?.id ?? ""} />
       {data.selected && data.websites.length === 0 && <p className="mt-4 text-sm text-ink-soft">This clinic has no website yet.</p>}
       {data.websites.map((website) => {
         const rows = data.connections.filter((connection) => connection.website_id === website.id && connection.disconnected_at === null);
-        const wixSite = website.platform.toLowerCase().includes("wix");
         return (
           <section key={website.id} className="mt-4 rounded-xl border border-line p-4">
             <div className="flex flex-wrap items-start justify-between gap-3">
@@ -150,22 +148,10 @@ export async function AnalyticsConnections({
             </ul>
             {canStoreSecrets && (
               <div className="mt-4 flex flex-wrap gap-2">
-                {googleReady && <Link className={buttonClass("secondary", "sm")} href={`/api/analytics/google/start?client=${data.selected?.id}&website=${website.id}&provider=ga4`}>Connect GA4</Link>}
+                {googleReady && data.selected && isAnalyticsClient(data.selected) && <Link className={buttonClass("secondary", "sm")} href={`/api/analytics/google/start?client=${data.selected.id}&website=${website.id}&provider=ga4`}>Connect GA4</Link>}
                 {googleReady && <Link className={buttonClass("secondary", "sm")} href={`/api/analytics/google/start?client=${data.selected?.id}&website=${website.id}&provider=gsc`}>Connect Search Console</Link>}
               </div>
             )}
-            {canStoreSecrets && wixSite && wixReady && (
-              <form action={connectWix} className="mt-3 flex flex-wrap items-end gap-2">
-                <input type="hidden" name="clientId" value={data.selected?.id} />
-                <input type="hidden" name="websiteId" value={website.id} />
-                <label className="text-sm text-ink">
-                  Wix site instance
-                  <input name="instanceId" required maxLength={200} className="mt-1 block min-h-10 rounded-xl border border-line px-3 text-sm" />
-                </label>
-                <button className={buttonClass("secondary", "sm")} type="submit">Connect Wix</button>
-              </form>
-            )}
-            {wixSite && <p className="mt-2 text-xs text-muted">The Wix app needs scope SCOPE.DC-ANALYTICS-AND-REPORTS.READ-SITE-ANALYTICS. There is no Wix user sign-in step.</p>}
           </section>
         );
       })}

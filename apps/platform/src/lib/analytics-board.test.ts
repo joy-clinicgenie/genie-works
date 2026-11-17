@@ -188,10 +188,10 @@ describe("live Behaviour figures (D53)", () => {
     expect(board.pages).toEqual([]);
   });
 
-  it("keeps the labelled export for a Wix website", () => {
-    const board = boardFromLive(exported, facts({ provider: "wix", behaviour: null }));
+  it("keeps the labelled export for a website without GA4", () => {
+    const board = boardFromLive(exported, facts({ provider: null, behaviour: null }));
     expect(board.bounceRate.current).toBe(80);
-    expect(board.behaviourNote).toMatch(/Wix/);
+    expect(board.behaviourNote).toBe("Behaviour figures are from the recorded export.");
   });
 
   it("adds no note in export mode", () => {

@@ -79,7 +79,7 @@ An administrator can retry permanently failed jobs for a currently connected sou
 
 The route explicitly sets `maxDuration = 120`. Current Vercel Fluid Compute documentation gives every plan a 300-second default, but the explicit route value is the effective repository configuration. The worker retains a 90-second overall maintenance budget, stops starting analytics jobs after 65 seconds, and leaves at least 30 seconds before the route limit. The linked Vercel project setting could not be inspected because the Vercel integration remained unavailable; deployment verification is still required.
 
-`ANALYTICS_WORKER_JOB_LIMIT` optionally sets 1–100 jobs per invocation and defaults to 40. Time budget still wins over the count. Provider calls remain sequential, and jobs sharing a connection cannot overlap.
+`ANALYTICS_WORKER_JOB_LIMIT` optionally sets 1–100 jobs per invocation and defaults to 50 (40 before D60). Time budget still wins over the count. Provider calls remain sequential, and jobs sharing a connection cannot overlap.
 
 Required hosted values remain:
 

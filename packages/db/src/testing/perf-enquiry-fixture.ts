@@ -17,9 +17,7 @@ import { FIXTURE_CLIENTS, FIXTURE_WEBSITES, anchorDateSgt } from "./perf-fixture
 export const PERF_ENQUIRY_FIXTURE_VERSION = "perf-enquiry-2";
 
 /**
- * Only Clinic A has database enquiries. Clinic B's production website is Wix-sourced, and D31 gives a
- * website one source, so its enquiries come from the Wix mock instead. That also covers D36: two
- * connectors on one page, Clinic A from the database and Clinic B from Wix. Clinic C has none at all.
+ * Only Clinic A has database enquiries. Clinics B and C have none, so the empty states show (D61).
  *
  * 60 rows is three pages at 25 per page, across two website keys so the website filter has options.
  */

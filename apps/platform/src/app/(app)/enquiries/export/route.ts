@@ -42,10 +42,10 @@ export async function GET(request: Request) {
     productionOnly: true,
     contact,
   };
-  const board = await listEnquiryBoard(scope, filters, window, access);
+  const board = await listEnquiryBoard(scope, filters, window);
   if (!board.connected) {
     const connection = await enquiryConnection();
-    const message = connection.refused ? "The enquiry database target was refused. A Wix form is a separate connection." : "No website enquiry database is connected, and no Wix form is available to read.";
+    const message = connection.refused ? "The enquiry database target was refused." : "No website enquiry database is connected.";
     return new NextResponse(message, { status: 503 });
   }
   const websites = await staffTx(access, (db) => listFormWebsites(db, null));

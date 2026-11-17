@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import {
-  RegistryRuleError, archiveClient, archiveClientFileLink, bindWixEnquiryForm, canManageAssignments, canManageRegistry, canManageUsers, clearWixEnquiryForm, createAccountReference, createClient, createClientContact, createClientFileLink, createWebsite, grantMembership, listAccountReferences, listWebsites, restoreClient,
+  RegistryRuleError, archiveClient, archiveClientFileLink, canManageAssignments, canManageRegistry, createAccountReference, createClient, createClientContact, createClientFileLink, createWebsite, grantMembership, listAccountReferences, listWebsites, restoreClient,
   revokeMembership, setWebsiteEnquiryKey, updateAccountReference, updateClient, updateClientContact, updateWebsite, type ClientChannel, type WebsiteRow,
 } from "@clinic-genie/db";
 import { CLIENT_CHANNELS } from "@clinic-genie/contracts";
@@ -139,36 +139,6 @@ export async function saveWebsiteAction(_prev: ActionState, form: FormData): Pro
   }
   revalidatePath(`/clients/${clientId}`, "layout");
   return { ok: true, message: "Website saved." };
-}
-
-export async function saveWixEnquiryBindingAction(_prev: ActionState, form: FormData): Promise<ActionState> {
-  const access = await requireAccess();
-  if (!canManageUsers(access)) return { ok: false, error: "Only an administrator can connect a Wix form." };
-  const clientId = str(form, "clientId");
-  const websiteId = str(form, "websiteId");
-  if (!clientId || !websiteId) return { ok: false, error: "Choose a website on this client.", field: "websiteId" };
-  const clear = str(form, "binding") === "database";
-  try {
-    await staffTx(access, async (db) => {
-      const owned = (await listWebsites(db, clientId)).some((site) => site.id === websiteId);
-      if (!owned) throw new RegistryRuleError("That website is not available for this client.", "websiteId");
-      if (clear) {
-        await clearWixEnquiryForm(db, { clientId, websiteId }, access.user.id);
-        return;
-      }
-      await bindWixEnquiryForm(db, {
-        clientId,
-        websiteId,
-        instanceId: str(form, "instanceId"),
-        formId: str(form, "formId"),
-        formKey: str(form, "formKey"),
-      }, access.user.id);
-    });
-  } catch (err) {
-    return toActionError(err);
-  }
-  revalidatePath(`/clients/${clientId}`, "layout");
-  return { ok: true, message: clear ? "This website reads its enquiry database." : "Wix form connected. Answers stay at Wix." };
 }
 
 export async function saveReferenceAction(_prev: ActionState, form: FormData): Promise<ActionState> {

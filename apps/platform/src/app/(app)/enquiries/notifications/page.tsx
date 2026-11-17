@@ -91,10 +91,10 @@ export default async function NotificationStatusPage({ searchParams }: { searchP
     <EnquiryTabs>
       <PageHeader
         title="Notification status"
-        description="Only website-database notifications are listed; Wix forms use their own sender. Statuses track retries, processing, provider acceptance, failures and configuration. Genie Works does not send emails; retries create no new enquiries, and inbox delivery is unconfirmed."
+        description="Website-database notifications are listed. Statuses track retries, processing, provider acceptance, failures and configuration. Genie Works does not send emails; retries create no new enquiries, and inbox delivery is unconfirmed."
       />
       {denied && <div className="mb-4"><Notice tone="bad" title="Not available">You do not have access to that clinic.</Notice></div>}
-      {!data.connected && <EmptyState title="Notification status is not available">{enquiryUnavailableCopy(source ?? { configured: false, refused: false }, "The website enquiry database is not connected, so its notification rows are not available. Wix forms keep their own sender and are not listed here. Nothing was changed.")}</EmptyState>}
+      {!data.connected && <EmptyState title="Notification status is not available">{enquiryUnavailableCopy(source ?? { configured: false, refused: false }, "The website enquiry database is not connected, so its notification rows are not available. Nothing was changed.")}</EmptyState>}
       {data.connected && (
         <>
           <FilterBar clearHref="/enquiries/notifications">

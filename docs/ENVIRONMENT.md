@@ -22,18 +22,12 @@ Used by the embedded database on this machine. `npm run db:rehearse` creates `cl
 | `AUTH_GOOGLE_HD` | Workspace domain. On a local database, an unknown matching user can be created as admin. A shared database does not create that user. |
 | `APP_ENVIRONMENT_LABEL` | Text shown in the header. It does not by itself enable sign-in shortcuts. |
 | `UPLOADS_DIR` | Private local directory for evidence files. |
-| `ENQUIRY_DATABASE_URL` | Live Clinic Genie website enquiry source. Genie Works uses the staff role on `clinic_genie_enquiry_staging`. Empty means that source stays disconnected. A Wix form binding is separate and does not use this URL. A local database whose name contains `enquiry` and `test` is the fixture and is refused in production. `npm test` and `npm run db:rehearse` use separate disposable databases and do not reset the fixture or the live database. |
+| `ENQUIRY_DATABASE_URL` | Live Clinic Genie website enquiry source. Genie Works uses the staff role on `clinic_genie_enquiry_staging`. Empty means that source stays disconnected. A local database whose name contains `enquiry` and `test` is the fixture and is refused in production. `npm test` and `npm run db:rehearse` use separate disposable databases and do not reset the fixture or the live database. |
 | `ENQUIRY_STAGING_ADMIN_URL` | Owner connection for `clinic_genie_enquiry_staging` only. It creates that schema and its restricted roles. It is not the website or Genie Works credential, and it is not `ENQUIRY_DATABASE_URL`. |
 | `ENQUIRY_STAGING_INTAKE_URL` | Intake role for the Clinic Genie website. The website’s own `ENQUIRY_DATABASE_URL` uses this credential. Genie Works does not. |
 | `ENQUIRY_STAGING_STAFF_URL` | Staff role for Genie Works. `ENQUIRY_DATABASE_URL` in this application uses this credential. |
-| `FORMS_WIX_APP_ID` | Wix app id for reading a form that is bound to a website. Empty leaves those reads unavailable. This is not the analytics app. |
-| `FORMS_WIX_APP_SECRET` | Matching forms app secret. The site instance and form id are stored on the website row, not in these variables. |
-| `FORMS_WIX_WEBHOOK_PUBLIC_KEY` | Public key for the forms app, from the app dashboard. The Wix Inbox webhook at `/api/wix/inbox` verifies every delivery against it and refuses an unverified request. Empty leaves the route answering 503 and nothing is recorded. This is a public key, not a secret, and it is never sent to a browser. |
-| `FORMS_WIX_NEW_INSTANCE_*` | Wix Forms (new) instance for one website marked Wix: Aqua, Cedar, Joyful, MSDC, SBSN, SDIC, Sunrise, TAC, and Forms test. Empty until that website is identified. This is not the old Forms and Payments instance, and it does not choose the form. |
 | `ANALYTICS_GOOGLE_CLIENT_ID` | Google OAuth client for analytics connections. |
 | `ANALYTICS_GOOGLE_CLIENT_SECRET` | Matching client secret. |
-| `ANALYTICS_WIX_APP_ID` | Wix app id. |
-| `ANALYTICS_WIX_APP_SECRET` | Wix app secret. |
 | `ANALYTICS_TOKEN_KEY` | Key used to encrypt stored provider tokens. |
 | `ANALYTICS_WORKER_SECRET` | Bearer secret for the analytics worker. A manual call may use POST or GET. |
 | `CRON_SECRET` | Bearer Vercel sends when the `analytics-worker` schedule calls the worker path (D55). At least 16 random characters. The worker accepts this or `ANALYTICS_WORKER_SECRET`. |

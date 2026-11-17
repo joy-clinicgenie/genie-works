@@ -47,12 +47,6 @@ export interface WebsiteRow {
   status: "active" | "archived";
   notes: string | null;
   enquiry_key: string | null;
-  enquiry_source: "database" | "wix";
-  wix_instance_id: string | null;
-  wix_form_id: string | null;
-  wix_form_namespace: string | null;
-  wix_form_key: string | null;
-  wix_counts_in_totals: boolean;
   blog_requirements: { author: boolean; category: boolean; featuredImage: boolean; seo: boolean; social: boolean };
   created_at: Date;
   archived_at: Date | null;

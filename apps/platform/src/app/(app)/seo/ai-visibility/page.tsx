@@ -2,9 +2,11 @@ import { canEditClient, listAiAccessChecks } from "@clinic-genie/db";
 import { requireAccess } from "@/lib/session";
 import { staffTx } from "@/lib/db";
 import { AiAccessPanel } from "@/components/modules/seo/AiAccessPanel";
+import { AiReferralsPanel } from "@/components/modules/seo/AiReferralsPanel";
+import { aiReferralRange, loadAiReferrals } from "@/lib/ai-referrals";
 import { SeoFrame, Unavailable } from "@/components/modules/seo/SeoFrame";
 import { DemoNote } from "@/components/modules/seo/OverviewPanels";
-import { loadSeoContext, queryText, selectedTab, type SeoSearch } from "@/lib/seo-workspace";
+import { loadSeoContext, queryText, selectedTab, seoHref, type SeoSearch } from "@/lib/seo-workspace";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "AI visibility" };
@@ -23,10 +25,17 @@ export default async function AiVisibilityPage({ searchParams }: { searchParams:
   const tab = selectedTab(queryText(query, "tab"), TABS, "visibility");
   const site = ctx.selected;
   const checks = site && !ctx.demo && tab === "access" ? await staffTx(access, (db) => listAiAccessChecks(db, site.id, 10)) : [];
+  const range = aiReferralRange(queryText(query, "range"));
+  const referrals = site && !ctx.demo && tab === "visibility" ? await staffTx(access, (db) => loadAiReferrals(db, site, range)) : null;
   return (
-    <SeoFrame ctx={ctx} pathname="/seo/ai-visibility" title="AI Visibility" description="Sampled answers, AI traffic and public AI access are separate. AI Access reads the website’s robots.txt and llms.txt. No answer-test or analytics provider is connected." tabs={TABS} currentTab={tab}>
+    <SeoFrame ctx={ctx} pathname="/seo/ai-visibility" title="AI Visibility" description="Sampled answers, AI traffic and public AI access are separate. Visibility shows AI referral sessions from GA4. AI Access reads the website’s robots.txt and llms.txt. No answer-test provider is connected." tabs={TABS} currentTab={tab}>
       {ctx.demo ? <DemoNote>No sample mentions, citations or crawler totals are shown.</DemoNote> : tab === "visibility" ? (
-        <Unavailable title="No visibility test has been run">Direct mentions, citations and referral sessions are unavailable. A missing test is not a negative mention, and no platform is listed without a connected result.</Unavailable>
+        <div className="space-y-4">
+          {site && referrals ? (
+            <AiReferralsPanel view={referrals} range={range} hrefFor={(id) => seoHref("/seo/ai-visibility", ctx, { tab: "visibility", range: id })} />
+          ) : <Unavailable title="Choose a website">Select a client website to see its AI referral sessions.</Unavailable>}
+          <Unavailable title="No visibility test has been run">Direct mentions and citations in AI answers are unavailable. A missing test is not a negative mention, and no platform is listed without a connected result.</Unavailable>
+        </div>
       ) : tab === "questions" ? (
         <Unavailable title="No question library">Questions, branded or unbranded classification, model, cost and run history are not stored. Run test is unavailable, so it cannot spend a provider budget or report success.</Unavailable>
       ) : tab === "sources" ? (
