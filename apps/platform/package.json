@@ -16,7 +16,7 @@
     "@clinic-genie/contracts": "*",
     "@clinic-genie/db": "*",
     "lucide-react": "^1.0.0",
-    "next": "^16.0.0",
+    "next": "^16.4.6",
     "next-auth": "5.0.0-beta.32",
     "pg": "^8.13.0",
     "react": "^19.0.0",
@@ -29,7 +29,7 @@
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
     "eslint": "^9.0.0",
-    "eslint-config-next": "^16.0.0",
+    "eslint-config-next": "^16.4.6",
     "tailwindcss": "^4.0.0",
     "vitest": "^4.0.0"
   }
