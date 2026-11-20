@@ -27,7 +27,7 @@ const MESSAGES: Record<string, string> = {
   replay: "This file was already imported.",
 };
 
-function safeErrorText(code: string): string {
+export function safeErrorText(code: string): string {
   const words: Record<string, string> = {
     rate_limited: "The provider asked us to wait. Retry stops after five attempts.",
     provider_unavailable: "The provider is temporarily unavailable. A bounded retry is scheduled.",

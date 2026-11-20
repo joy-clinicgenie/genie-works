@@ -1,7 +1,7 @@
 import type { Queryable } from "../client";
 import { decryptSecret, encryptSecret } from "../analytics/crypto";
 import { isInvalidGrant } from "../analytics/providers/ga4";
-import { normalizeIndexPath, parseInspection, publicPageUrl, type InspectionReading } from "../analytics/providers/gsc";
+import { normalizeIndexPath, parseInspection, parseInspectionDetail, propertyCovers, publicPageUrl, type InspectionDetail, type InspectionReading } from "../analytics/providers/gsc";
 import { pageSpeedUrl, parsePageSpeed } from "../analytics/providers/pagespeed";
 import type { FetchLike } from "../analytics/sync";
 
@@ -220,15 +220,21 @@ export async function inspectNext(db: Queryable, deps: CheckDeps, websiteId?: st
   const row = rows[0];
   if (!row) return "empty";
   const blank: InspectionReading = { live: "not_checked", google: "unknown", coverage: null };
+  const pageUrl = row.url ? publicPageUrl(row.url, row.page_path) : null;
+  const attempt = { inspectionUrl: pageUrl, property: row.external_property_id };
   try {
-    const pageUrl = row.url ? publicPageUrl(row.url, row.page_path) : null;
     if (!pageUrl) {
-      await recordInspection(db, row.id, blank, "missing_url");
+      await recordInspection(db, row.id, blank, "missing_url", attempt);
+      return "done";
+    }
+    // A URL outside the mapped property never reaches Google (D61).
+    if (!propertyCovers(row.external_property_id, pageUrl)) {
+      await recordInspection(db, row.id, blank, "outside_property", attempt);
       return "done";
     }
     const token = await googleAccessToken(db, row.connection_id, row.secret_ref, deps);
     if (typeof token !== "string") {
-      await recordInspection(db, row.id, blank, token);
+      await recordInspection(db, row.id, blank, token, attempt);
       return "stop";
     }
     const response = await deps.fetch("https://searchconsole.googleapis.com/v1/urlInspection/index:inspect", {
@@ -241,22 +247,23 @@ export async function inspectNext(db: Queryable, deps: CheckDeps, websiteId?: st
       if (response.status === 401 && isInvalidGrant(body)) {
         await db.query("update analytics_connections set status = 'reconnect_required', updated_at = now() where id = $1 and status = 'connected'", [row.connection_id]);
       }
-      await recordInspection(db, row.id, blank, response.status === 403 ? "inspection_forbidden" : "token_rejected");
+      await recordInspection(db, row.id, blank, response.status === 403 ? "inspection_forbidden" : "token_rejected", attempt);
       return response.status === 401 ? "stop" : "done";
     }
     if (response.status === 429 || response.status >= 500) {
-      await recordInspection(db, row.id, blank, "rate_limited");
+      await recordInspection(db, row.id, blank, "rate_limited", attempt);
       return "done";
     }
     if (response.status >= 400) {
-      await recordInspection(db, row.id, blank, "provider_rejected");
+      await recordInspection(db, row.id, blank, "provider_rejected", attempt);
       return "done";
     }
-    await recordInspection(db, row.id, parseInspection(await response.json()), null);
+    const body = await response.json();
+    await recordInspection(db, row.id, parseInspection(body), null, { ...attempt, detail: parseInspectionDetail(body) });
     return "done";
   } catch (error) {
     const timedOut = error instanceof Error && (error.name === "TimeoutError" || error.name === "AbortError");
-    await recordInspection(db, row.id, blank, timedOut ? "timed_out" : "provider_rejected");
+    await recordInspection(db, row.id, blank, timedOut ? "timed_out" : "provider_rejected", attempt);
     return "done";
   }
 }
@@ -327,7 +334,7 @@ async function gatherItems(db: Queryable, websiteId: string | null): Promise<Ite
        and ($1::uuid is null or website_id = $1)`,
     [websiteId],
   );
-  const settings = await db.query<{ client_id: string; website_id: string; page_path: string; indexable: boolean }>(
+  const settings = await db.query<{ client_id: string; website_id: string; page_path: string; indexable: boolean | null }>(
     `select client_id, website_id, page_path, indexable from seo_page_settings
      where ($1::uuid is null or website_id = $1)`,
     [websiteId],
@@ -355,7 +362,11 @@ async function gatherItems(db: Queryable, websiteId: string | null): Promise<Ite
   }
   for (const setting of settings.rows) {
     const path = normalizeIndexPath(setting.page_path);
-    if (path) put({ clientId: setting.client_id, websiteId: setting.website_id, pagePath: path, itemKind: "setting", configured: setting.indexable ? "index_allowed" : "noindex_saved", rank: 1 });
+    if (!path) continue;
+    // An inherited preference (null) keeps the blog article's value, or the website default of index allowed (D61).
+    const inherited = byKey.get(`${setting.website_id}:${path}`)?.configured ?? "index_allowed";
+    const configured: ConfiguredLabel = setting.indexable === null ? inherited : setting.indexable ? "index_allowed" : "noindex_saved";
+    put({ clientId: setting.client_id, websiteId: setting.website_id, pagePath: path, itemKind: "setting", configured, rank: 1 });
   }
   return [...byKey.values()];
 }
@@ -383,12 +394,41 @@ function displayGoogle(stored: Exclude<GoogleLabel, "reconnect_required"> | null
   return "connected";
 }
 
-async function recordInspection(db: Queryable, id: string, reading: InspectionReading, errorCode: string | null): Promise<void> {
+async function recordInspection(
+  db: Queryable,
+  id: string,
+  reading: InspectionReading,
+  errorCode: string | null,
+  attempt: { inspectionUrl: string | null; property: string; detail?: InspectionDetail },
+): Promise<void> {
   await db.query(
     `update seo_index_checks
      set live_status = $2, google_status = $3, coverage_state = $4, safe_error_code = $5, checked_at = now()
      where id = $1`,
     [id, errorCode ? "not_checked" : reading.live, errorCode ? "unknown" : reading.google, errorCode ? null : reading.coverage, errorCode],
+  );
+  // The append-only history keeps the last successful result beside a later failure (D61).
+  const detail = errorCode ? null : attempt.detail ?? null;
+  await db.query(
+    `insert into seo_url_inspections
+       (client_id, website_id, page_path, inspection_url, property, source, result, verdict, coverage_state,
+        indexing_state, page_fetch_state, robots_txt_state, last_crawl_time, google_canonical, safe_error_code)
+     select client_id, website_id, page_path, $2, $3, 'scheduled', $4, $5, $6, $7, $8, $9, $10, $11, $12
+     from seo_index_checks where id = $1`,
+    [
+      id,
+      attempt.inspectionUrl,
+      attempt.property,
+      errorCode ? "failed" : "succeeded",
+      detail?.verdict ?? null,
+      errorCode ? null : detail?.coverage ?? reading.coverage,
+      detail?.indexingState ?? null,
+      detail?.pageFetchState ?? null,
+      detail?.robotsTxtState ?? null,
+      detail?.lastCrawlTime?.toISOString() ?? null,
+      detail?.googleCanonical ?? null,
+      errorCode,
+    ],
   );
 }
 

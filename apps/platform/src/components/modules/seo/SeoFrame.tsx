@@ -4,7 +4,7 @@ import { PageHeader } from "@/components/ui/Card";
 import { EmptyState, Notice } from "@/components/ui/Notice";
 import { SeoPageLinks, SeoSectionLinks } from "@/components/modules/SeoSubnav";
 import { InnerNavFrame } from "@/components/shell/InnerNav";
-import { SeoContextForm } from "@/components/modules/seo/SeoContextForm";
+import { SeoScopeProvider, SeoScopedContent, SeoWebsiteSelector } from "@/components/modules/seo/SeoScope";
 import { environmentLabel, type SeoContext } from "@/lib/seo-workspace";
 
 export function HiddenSeoContext({ ctx, tab, extra }: { ctx: SeoContext; tab?: string; extra?: Record<string, string | undefined> }) {
@@ -52,6 +52,7 @@ export function SeoFrame({
   const selected = ctx.selected;
   const blocked = ctx.demoConflict || (!ctx.demo && requireWebsite && !selected);
   return (
+    <SeoScopeProvider currentKey={selected?.id ?? ""} savedUnavailable={ctx.savedUnavailable}>
     <InnerNavFrame
       label="SEO"
       nav={
@@ -69,20 +70,29 @@ export function SeoFrame({
       />
       {ctx.contextNote && <div className="mb-4"><Notice tone="neutral">{ctx.contextNote}</Notice></div>}
       {selected && (
-        <div className="mb-4 flex flex-wrap items-center gap-2 text-sm">
-          <Badge tone={selected.environment === "production" ? "good" : "warn"}>{environmentLabel(selected.environment)}</Badge>
-          <span className="font-medium">{selected.name}</span>
-          <span className="text-muted">{selected.platform}</span>
-          {selected.url ? <a href={selected.url} target="_blank" rel="noreferrer" className="text-action hover:underline">View public website</a> : <span className="text-muted">No public URL recorded</span>}
-        </div>
+        <dl className="mb-4 flex flex-wrap items-center gap-x-4 gap-y-2 text-sm" aria-label="Selected website">
+          <div className="flex gap-1"><dt className="text-muted">Organisation:</dt><dd className="font-medium">{selected.clientName}</dd></div>
+          <div className="flex gap-1"><dt className="text-muted">Website:</dt><dd className="font-medium">{selected.name}</dd></div>
+          <div className="flex items-center gap-1"><dt className="text-muted">Environment:</dt><dd><Badge tone={selected.environment === "production" ? "good" : "warn"}>{environmentLabel(selected.environment)}</Badge></dd></div>
+          <div className="flex gap-1"><dt className="text-muted">Platform:</dt><dd>{selected.platform}</dd></div>
+          <div>{selected.url ? <a href={selected.url} target="_blank" rel="noreferrer" className="text-action hover:underline">View public website</a> : <span className="text-muted">No public URL recorded</span>}</div>
+        </dl>
       )}
       <details className="card mb-5 p-4" open={!selected}>
-        <summary className="cursor-pointer text-sm font-semibold">Change clinic or website</summary>
-        <SeoContextForm pathname={pathname} tab={currentTab} clients={ctx.clients} sites={ctx.sites} client={ctx.client} website={ctx.website} />
+        <summary className="cursor-pointer text-sm font-semibold">Change website or environment</summary>
+        <SeoWebsiteSelector
+          pathname={pathname}
+          tab={currentTab}
+          sites={ctx.sites.map((site) => ({ id: site.id, clientName: site.clientName, name: site.name, environment: site.environment }))}
+          website={ctx.website}
+        />
       </details>
-      {blocked ? (
-        <EmptyState title={ctx.sites.length === 0 ? "No active website is available" : ctx.client && ctx.sites.every((site) => site.clientId !== ctx.client) ? "This clinic has no active website" : "Choose a website"}>SEO data stays empty until a clinic and website are selected. No default clinic is assumed.</EmptyState>
-      ) : children}
+      <SeoScopedContent>
+        {blocked ? (
+          <EmptyState title={ctx.sites.length === 0 ? "No active website is available" : ctx.client && ctx.sites.every((site) => site.clientId !== ctx.client) ? "This clinic has no active website" : "Choose a website"}>SEO data stays empty until a website and environment are selected. No default clinic is assumed.</EmptyState>
+        ) : children}
+      </SeoScopedContent>
     </InnerNavFrame>
+    </SeoScopeProvider>
   );
 }

@@ -1,5 +1,4 @@
-import Link from "next/link";
-import { canEditClient, formatDateTime, indexLabels, listSpeedChecks, listWebsiteIndex } from "@clinic-genie/db";
+import { canEditClient, formatDateTime, indexLabels, listSpeedChecks, listWebsiteIndex, readLatestRobots, readSiteChecks, readSitemapStatus } from "@clinic-genie/db";
 import { requireAccess } from "@/lib/session";
 import { staffTx } from "@/lib/db";
 import { Badge, type Tone } from "@/components/ui/Badge";
@@ -8,7 +7,8 @@ import { Button } from "@/components/ui/Button";
 import { SeoFrame, Unavailable } from "@/components/modules/seo/SeoFrame";
 import { DemoNote } from "@/components/modules/seo/OverviewPanels";
 import { runSiteCheck } from "@/app/actions/seo";
-import { loadSeoContext, queryText, selectedTab, seoHref, type SeoSearch } from "@/lib/seo-workspace";
+import { CrawlSettingsPanel, TechnicalNotice, WebsiteChecksPanel } from "@/components/modules/seo/TechnicalPanels";
+import { loadSeoContext, queryText, selectedTab, type SeoSearch } from "@/lib/seo-workspace";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Site health" };
@@ -39,15 +39,19 @@ export default async function SiteHealthPage({ searchParams }: { searchParams: P
   const indexRows = site && tab === "indexing" ? await staffTx(access, (db) => listWebsiteIndex(db, site.id)) : [];
   const speedRows = site && tab === "speed" ? await staffTx(access, (db) => listSpeedChecks(db, site.id)) : [];
   const canCheck = Boolean(site && canEditClient(access, site.clientId));
+  // SEO-04 (D62): stored results for the selected website and environment only.
+  const checks = site && tab === "checks" ? await staffTx(access, (db) => readSiteChecks(db, site.id)) : null;
+  const crawl = site && tab === "crawl" ? await staffTx(access, async (db) => ({ sitemap: await readSitemapStatus(db, site.id), robots: await readLatestRobots(db, site.id) })) : null;
+  const googleTab = tab === "indexing" || tab === "speed";
   return (
     <SeoFrame
       ctx={ctx}
       pathname="/seo/site-health"
       title="Site Health"
-      description="Public pages are listed here. Run check reads Google's index verdict when Search Console is connected. It does not submit pages for indexing. Broken links are not crawled, and a missing speed score is not a pass."
+      description="Read-only checks of the selected website: page responses, sitemap, robots.txt, Google's index verdict and speed. Nothing is submitted or changed on the website, and a page that was not checked is not marked passed."
       tabs={TABS}
       currentTab={tab}
-      action={canCheck && site ? (
+      action={!googleTab ? undefined : canCheck && site ? (
         <form action={runSiteCheck}>
           <input type="hidden" name="clientId" value={site.clientId} />
           <input type="hidden" name="websiteId" value={site.id} />
@@ -56,8 +60,9 @@ export default async function SiteHealthPage({ searchParams }: { searchParams: P
         </form>
       ) : <Button type="button" disabled>Run check</Button>}
     >
+      <TechnicalNotice notice={queryText(query, "notice")} />
       {ctx.demo ? <DemoNote>No sample errors or speeds are shown.</DemoNote> : tab === "checks" ? (
-        <Unavailable title="No scan results">Broken links, response errors, duplicate metadata, headings, canonical conflicts and schema findings are unavailable. A page that was not scanned is not marked Passed.</Unavailable>
+        site && checks ? <WebsiteChecksPanel websiteId={site.id} view={checks} canCheck={canCheck} /> : null
       ) : tab === "indexing" ? (
         <Card>
           <CardHeader title="Indexing" description="Every public page is index allowed unless a noindex preference is saved. Live and Google come from a Search Console check. A draft article is not listed." />
@@ -115,20 +120,7 @@ export default async function SiteHealthPage({ searchParams }: { searchParams: P
           </Card>
         )
       ) : (
-        <div className="space-y-4">
-          <Unavailable title="Sitemap and robots.txt have not been generated here">A supported clinic website may generate its own files. This screen has not fetched them, counted URLs or submitted a sitemap.</Unavailable>
-          <Card>
-            <CardHeader title="Robots rules" description="Plain-language summary. Raw editing is not available." />
-            <div className="space-y-3 px-5 pb-5 text-sm">
-              <p>Crawl blocking and noindex are different controls. A saved noindex preference does not by itself change robots.txt.</p>
-              <Link href={seoHref("/seo/tasks", ctx, { tab: "issues" })} className="text-action hover:underline">Create or review a task</Link>
-              <details>
-                <summary className="cursor-pointer font-medium">Advanced</summary>
-                <p className="mt-2 text-muted">Raw robots.txt editing, rule comparison and restore are not implemented. Preview protection must not rely on robots.txt alone.</p>
-              </details>
-            </div>
-          </Card>
-        </div>
+        site && crawl ? <CrawlSettingsPanel websiteId={site.id} sitemap={crawl.sitemap} robots={crawl.robots} canCheck={canCheck} /> : null
       )}
     </SeoFrame>
   );

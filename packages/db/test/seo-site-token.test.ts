@@ -19,8 +19,12 @@ describe("SEO website API tokens", () => {
       const second = await issueSeoSiteToken(db, clientId, websiteId, admin.id);
       expect(first).not.toEqual(second);
       expect(await hasActiveSeoSiteToken(db, websiteId)).toBe(true);
+      // The public route always reads as the service (D12); each authenticated read is publication evidence (D61).
+      await applyContext(db, SERVICE);
       expect(await getPublishedSeoConfiguration(db, websiteId, second)).not.toBeNull();
       expect(await getPublishedSeoConfiguration(db, websiteId, first)).toBeNull();
+      expect((await db.query("select count(*)::int as n from seo_settings_deliveries where website_id = $1", [websiteId])).rows[0].n).toBe(1);
+      await applyContext(db, staffCtx(admin));
       const audit = await db.query<{ metadata: string }>(
         "select metadata::text as metadata from audit_events where action = 'seo.site_token.rotate' and target_id = $1",
         [websiteId],

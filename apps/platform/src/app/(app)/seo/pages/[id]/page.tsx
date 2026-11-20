@@ -1,139 +1,243 @@
+import type { ReactNode } from "react";
 import Link from "next/link";
-import { notFound } from "next/navigation";
-import { canEditClient, formatDate, getSeoPage, listActiveStaff, listApprovals, listSeoPageSettings, listWebsites, readPageIndex } from "@clinic-genie/db";
+import { canEditClient, canPublishClient, effectivePageSeo, formatDate, formatDateTime, listActiveStaff, listApprovals, listWebsites, pageEditRoute, type EffectiveValue, type PageEvidence } from "@clinic-genie/db";
 import { requireAccess } from "@/lib/session";
 import { staffTx } from "@/lib/db";
-import { PageHeader, Card, CardHeader, KeyValue } from "@/components/ui/Card";
-import { Badge, CONTENT_TONE, FLAG_TONE, label } from "@/components/ui/Badge";
+import { Card, CardHeader, KeyValue } from "@/components/ui/Card";
+import { Badge, CONTENT_TONE, label, type Tone } from "@/components/ui/Badge";
+import { Button, LinkButton } from "@/components/ui/Button";
+import { EmptyState, Notice } from "@/components/ui/Notice";
 import { SeoChangeForm, SeoPageForm, VerifyChangeForm } from "@/components/modules/SeoForms";
-import { SeoSectionLinks } from "@/components/modules/SeoSubnav";
-import { InnerNavAnchor, InnerNavFrame, InnerNavGroup } from "@/components/shell/InnerNav";
-import { Unavailable } from "@/components/modules/seo/SeoFrame";
+import { SeoFrame } from "@/components/modules/seo/SeoFrame";
+import { PageSeoForm } from "@/components/modules/seo/PageSeoForm";
 import { archivePageAction } from "@/app/actions/seo";
-import { Button } from "@/components/ui/Button";
-import { loadSeoContext, seoHref } from "@/lib/seo-workspace";
+import { checkLivePageAction } from "@/app/actions/seo-pages";
+import { SEO_PAGES_TABS, loadScopedPageDetail } from "@/lib/seo-page-detail";
+import { indexingLabel, inspectionErrorText, liveErrorText, pageSourceLabel, valueSourceLabel, verdictLabel, verdictTone } from "@/lib/seo-pages-view";
+import { queryText, seoHref, type SeoSearch } from "@/lib/seo-workspace";
 
 export const dynamic = "force-dynamic";
+export const metadata = { title: "Page SEO settings" };
 
-export default async function SeoPageDetail({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ edit?: string; client?: string; website?: string }> }) {
+function Value<T>({ name, value, render }: { name: string; value: EffectiveValue<T>; render: (value: T | null) => ReactNode }) {
+  return (
+    <div className="grid gap-1 border-b border-line/70 py-3 last:border-0 sm:grid-cols-[12rem_minmax(0,1fr)]">
+      <dt className="text-sm font-medium">{name}</dt>
+      <dd className="space-y-1 text-sm">
+        <div className="break-words">{render(value.value)}</div>
+        <Badge tone={value.source === "override" ? "info" : "neutral"}>{valueSourceLabel(value.source)}</Badge>
+      </dd>
+    </div>
+  );
+}
+
+function EvidenceRow({ name, tone, state, children }: { name: string; tone: Tone; state: string; children: ReactNode }) {
+  return (
+    <li className="grid gap-1 px-5 py-3 sm:grid-cols-[10rem_minmax(0,1fr)]" data-evidence={name}>
+      <div className="text-sm font-medium">{name}</div>
+      <div className="space-y-1 text-sm">
+        <Badge tone={tone}>{state}</Badge>
+        <div className="text-muted">{children}</div>
+      </div>
+    </li>
+  );
+}
+
+function PublishedRow({ evidence }: { evidence: PageEvidence }) {
+  const published = evidence.published;
+  switch (published.state) {
+    case "published":
+      return <EvidenceRow name="Published" tone="good" state="Published">The website fetched these settings at {formatDateTime(published.at)}, after the last save.</EvidenceRow>;
+    case "waiting":
+      return <EvidenceRow name="Published" tone="warn" state="Not yet published">The website has not fetched its settings since this save. {published.lastFetch ? `Last fetch: ${formatDateTime(published.lastFetch)}.` : "No fetch has been recorded."}</EvidenceRow>;
+    case "no_credential":
+      return <EvidenceRow name="Published" tone="neutral" state="Not published">No website settings API credential is issued, so the website cannot fetch these settings.</EvidenceRow>;
+    default:
+      return <EvidenceRow name="Published" tone="neutral" state="No override">Nothing is saved for this page in Genie Works, so there is nothing to publish.</EvidenceRow>;
+  }
+}
+
+function LiveRow({ evidence }: { evidence: PageEvidence }) {
+  const live = evidence.live;
+  const observed = live.state === "not_checked" ? null : live.check;
+  const seen = observed && !observed.errorCode ? (
+    <dl className="mt-1 space-y-0.5 text-xs">
+      <div>Served title: {observed.title ?? "None"}</div>
+      <div>Served description: {observed.description ?? "None"}</div>
+      <div>Served robots: {observed.robots ?? "None (indexing allowed by default)"}</div>
+    </dl>
+  ) : null;
+  switch (live.state) {
+    case "matches":
+      return <EvidenceRow name="Live checked" tone="good" state="Live page matches">Checked {formatDateTime(live.check.checkedAt)}. The saved overrides are served.{seen}</EvidenceRow>;
+    case "differs":
+      return <EvidenceRow name="Live checked" tone="warn" state="Live page differs">Checked {formatDateTime(live.check.checkedAt)}. The served {live.fields.join(", ")} does not match the saved override.{seen}</EvidenceRow>;
+    case "observed":
+      return <EvidenceRow name="Live checked" tone="info" state="Observed">Checked {formatDateTime(live.check.checkedAt)}. No override is saved, so this is what the website serves by default.{seen}</EvidenceRow>;
+    case "failed":
+      return <EvidenceRow name="Live checked" tone="bad" state="Check failed">Checked {formatDateTime(live.check.checkedAt)}. {liveErrorText(live.check.errorCode)}</EvidenceRow>;
+    case "before_save":
+      return <EvidenceRow name="Live checked" tone="neutral" state="Not checked since this save">The last live check, {formatDateTime(live.check.checkedAt)}, was before the latest save.{seen}</EvidenceRow>;
+    default:
+      return <EvidenceRow name="Live checked" tone="neutral" state="Not checked">Nobody has checked what the public page serves.</EvidenceRow>;
+  }
+}
+
+export default async function PageSeoSettings({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<SeoSearch & { edit?: string }> }) {
   const access = await requireAccess();
   const { id } = await params;
   const query = await searchParams;
-  const data = await staffTx(access, async (db) => {
-    const page = await getSeoPage(db, id);
-    if (!page) return null;
-    const websites = await listWebsites(db, page.client_id);
-    const owners = await listActiveStaff(db);
-    const approvals = await listApprovals(db, { clientId: page.client_id, statuses: ["approved"] });
-    const settings = page.website_id ? await listSeoPageSettings(db, { websiteId: page.website_id }) : [];
-    const indexState = page.website_id ? await readPageIndex(db, page.website_id, page.page_path) : null;
-    return { page, websites, owners, approvals, settings, indexState };
-  });
-  if (!data) notFound();
-  const { page } = data;
-  const setting = data.settings.find((item) => item.page_path === page.page_path);
-  const canEdit = canEditClient(access, page.client_id);
-  const ctx = await loadSeoContext(access, { client: page.client_id, website: page.website_id ?? undefined });
-  const redirectHref = seoHref("/seo/redirects", { client: page.client_id, website: page.website_id ?? undefined, demo: false }, { tab: "redirects", new: "1", from: page.page_path });
-  const title = setting?.title || page.page_title || page.page_path;
-  const description = setting?.description || "No meta description is saved for this path.";
-  const sections = [
-    ["appearance", "Search appearance"],
-    ["url", "URL and indexing"],
-    ["content", "Content checks"],
-    ["social", "Social sharing"],
-    ["schema", "Structured data"],
-    ["history", "History"],
-  ] as const;
+  const { ctx, detail } = await loadScopedPageDetail(access, id, query, "");
+  const site = ctx.selected;
+  if (!detail || !site) {
+    return (
+      <SeoFrame ctx={ctx} pathname="/seo/pages" title="Page SEO settings" description="Search title, description and indexing preference for one page." tabs={SEO_PAGES_TABS} currentTab="pages">
+        <EmptyState title="This page is not part of the selected website and environment" action={site ? <LinkButton href={seoHref("/seo/pages", ctx, { tab: "pages" })} variant="secondary">Open the page list</LinkButton> : undefined}>
+          Open the page from the page list of its own website. No settings or Google data are shown for it here.
+        </EmptyState>
+      </SeoFrame>
+    );
+  }
+  const { page, evidence, mapping } = detail;
+  const effective = effectivePageSeo(page);
+  const route = pageEditRoute(site.platform, page);
+  const canEdit = canEditClient(access, site.clientId);
+  const canPublish = canPublishClient(access, site.clientId);
+  const inspectionHref = `/seo/pages/${page.id}/inspection?${new URLSearchParams({ website: site.id })}`;
+  const notice = queryText(query, "notice");
+  const mappingForms = mapping && canEdit
+    ? await staffTx(access, async (db) => ({
+      websites: await listWebsites(db, mapping.client_id),
+      owners: await listActiveStaff(db),
+      approvals: await listApprovals(db, { clientId: mapping.client_id, statuses: ["approved"] }),
+    }))
+    : null;
+  const google = evidence.google;
   return (
-    <InnerNavFrame
-      label="SEO"
-      nav={
-        <>
-          <SeoSectionLinks pathname="/seo/pages" ctx={ctx} />
-          <InnerNavGroup title="On this page">
-            {sections.map(([id, name]) => <InnerNavAnchor key={id} href={`#${id}`}>{name}</InnerNavAnchor>)}
-          </InnerNavGroup>
-        </>
-      }
+    <SeoFrame
+      ctx={ctx}
+      pathname="/seo/pages"
+      title={page.title ?? page.path}
+      description="Search title, description and indexing preference for this page, with separate evidence for saving, publishing, the live page and Google."
+      tabs={SEO_PAGES_TABS}
+      currentTab="pages"
+      action={<LinkButton href={inspectionHref} variant="secondary">Inspect URL</LinkButton>}
     >
-      <PageHeader eyebrow={<Link href={seoHref("/seo/pages", ctx, { tab: "pages" })} className="hover:underline">{page.client_name}</Link>} title={page.page_path} description={<span className="flex flex-wrap gap-2 items-center"><Badge tone={CONTENT_TONE[page.content_status]}>{label(page.content_status)}</Badge>{page.mapping_flag !== "none" && <Badge tone={FLAG_TONE[page.mapping_flag]}>{label(page.mapping_flag)}</Badge>}{page.archived_at && <Badge>Archived</Badge>}</span>} />
-      <div className="grid gap-6 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
-        <div className="space-y-6">
-          <Card id="appearance" className="p-5">
-            <h2 className="font-semibold">Search appearance</h2>
-            <p className="mt-1 text-xs text-muted">The preview is illustrative. It is not a guarantee of how Google displays the page.</p>
-            <div className="mt-3 rounded-2xl bg-surface-muted p-4">
-              <div className="text-sm text-action">{title}</div>
-              <div className="text-xs text-muted">{page.website_name ?? "Website"}{page.page_path}</div>
-              <p className="mt-1 text-sm">{description}</p>
-            </div>
-            <div className="mt-4"><KeyValue items={[{ label: "SEO title", value: title }, { label: "Meta description", value: setting?.description ?? null }, { label: "Inherited title", value: setting ? null : page.page_title }]} /></div>
-            {canEdit && !page.archived_at && (
-              <div className="mt-4 flex flex-wrap gap-3 items-center">
-                <Link href={query.edit ? `/seo/pages/${id}` : `/seo/pages/${id}?edit=1`} className="text-sm text-action hover:underline">{query.edit ? "Close editor" : "Edit mapping"}</Link>
-                <form action={archivePageAction}><input type="hidden" name="pageId" value={id} /><Button type="submit" variant="ghost" size="sm">Archive page</Button></form>
-              </div>
+      <div className="space-y-5" data-page-id={page.id}>
+        {notice === "live_checked" && <Notice tone="neutral">The live page was read. Its served values are below.</Notice>}
+        {notice === "live_failed" && <Notice tone="neutral">The live page could not be read. The reason is below.</Notice>}
+        <div className="flex flex-wrap items-center gap-2 text-sm">
+          <span className="font-mono break-all">{page.path}</span>
+          {detail.url && <a href={detail.url} target="_blank" rel="noreferrer" className="text-action hover:underline">Open the public page</a>}
+          {page.sources.map((source) => <Badge key={source}>{pageSourceLabel(source)}</Badge>)}
+        </div>
+
+        <Card>
+          <CardHeader title="Search appearance and indexing" description="Effective values. A page override replaces the inherited value for this page only." />
+          <dl className="px-5 pb-2">
+            <Value name="SEO title" value={effective.title} render={(value) => value ?? <span className="text-muted">Set by the website (not visible to Genie Works)</span>} />
+            <Value name="Meta description" value={effective.description} render={(value) => value ?? <span className="text-muted">Set by the website (not visible to Genie Works)</span>} />
+            <Value name="Indexing preference" value={effective.indexable} render={(value) => indexingLabel(value)} />
+          </dl>
+          <p className="px-5 pb-4 text-xs text-muted">The indexing preference is this site&apos;s instruction to search engines. Google&apos;s reported indexing status is shown separately below.</p>
+          <div className="border-t border-line px-5 py-4">
+            {route === "settings_api" ? (
+              canPublish ? (
+                <PageSeoForm
+                  clientId={site.clientId}
+                  websiteId={site.id}
+                  pagePath={page.setting?.pagePath ?? page.path}
+                  canonicalPath={page.setting?.canonicalPath ?? null}
+                  title={page.setting?.title ?? null}
+                  description={page.setting?.description ?? null}
+                  indexable={page.setting?.indexable ?? null}
+                />
+              ) : <p className="text-sm text-muted">Saving page settings stays with an administrator or manager.</p>
+            ) : route === "blog_editor" ? (
+              <p className="text-sm text-muted">This is a blog article. Its title, description and indexing are edited in the blog editor, which publishes them. <Link href={`/blog/${page.blog!.articleId}`} className="text-action hover:underline">Open the blog editor</Link></p>
+            ) : (
+              <p className="text-sm text-muted">{site.platform} has no approved editing route from Genie Works, so these settings are read-only here. Use Check live page to see what the page serves.</p>
             )}
-            {canEdit && query.edit && <div className="mt-4"><SeoPageForm clientId={page.client_id} websites={data.websites} owners={data.owners.filter((owner) => owner.platform_role !== "read_only")} values={page as unknown as Record<string, unknown> & { id: string }} /></div>}
-            <p className="mt-3 text-xs text-muted">Saving the mapping stores a staff draft record. It does not publish the public page. Use Settings to publish a title and description to a connected website.</p>
-          </Card>
-          <Card id="url" className="p-5">
-            <h2 className="font-semibold">URL and indexing</h2>
-            <div className="mt-3"><KeyValue items={[
-              { label: "Path", value: page.page_path },
-              { label: "Website", value: page.website_name },
-              { label: "Canonical path", value: setting?.canonical_path ?? null },
-              { label: "Configured indexing", value: data.indexState?.configured ?? (setting ? (setting.indexable ? "Index allowed" : "Noindex saved") : "Not saved") },
-              { label: "Live indexability", value: data.indexState?.live ?? "Not checked" },
-              { label: "Google indexing", value: data.indexState?.google ?? "Not connected" },
-              { label: "Google detail", value: data.indexState?.detail ?? null },
-            ]} /></div>
-            {page.content_status === "published" && <p className="mt-3 text-sm">Changing this published path should propose a redirect. <Link href={redirectHref} className="text-action hover:underline">Propose a redirect from {page.page_path}</Link></p>}
-            <details className="mt-3 text-sm"><summary className="cursor-pointer font-medium">Advanced</summary><p className="mt-2 text-muted">Extra robots directives and link tags are not stored. The saved preference is the staff control. A Search Console check reads the Google verdict and does not submit the page.</p></details>
-          </Card>
-          <Card id="content" className="p-5">
-            <h2 className="font-semibold">Content checks</h2>
-            <div className="mt-3"><KeyValue items={[{ label: "Focus topic", value: page.primary_keyword }, { label: "Secondary keywords", value: page.secondary_keywords.join(", ") || null }, { label: "Search intent", value: page.search_intent ? label(page.search_intent) : null }, { label: "Mapping", value: page.mapping_flag === "none" ? "None recorded" : label(page.mapping_flag) }]} /></div>
-            {page.mapping_flag !== "none" && <p className="mt-3 text-sm"><strong>What was found:</strong> {page.flag_note}</p>}
-            <p className="mt-3 text-sm text-muted">Headings are edited in the content source. This screen does not invent a replacement H1. No content crawl has produced internal-link recommendations.</p>
-            {page.page_path.includes("blog") && <Link href="/blog" className="mt-3 inline-block text-sm text-action hover:underline">Open the blog editor</Link>}
-          </Card>
-          <Card id="social" className="p-5"><h2 className="font-semibold">Social sharing</h2><div className="mt-3"><Unavailable title="Open Graph and X cards are not stored">No social title, description, image or card setting is saved for this page.</Unavailable></div></Card>
-          <Card id="schema" className="p-5"><h2 className="font-semibold">Structured data</h2><div className="mt-3"><Unavailable title="JSON-LD is not stored">Presets, custom schema, variables and validation are unavailable. No schema is published from this screen.</Unavailable></div></Card>
-          <Card id="history">
-            <CardHeader title="History" description="Changes, approval links and staff verification. Publication to the live site is not recorded here." />
-            <ol className="divide-y divide-line">
-              {page.changes.length === 0 && <li className="px-5 py-3 text-sm text-muted">No changes recorded.</li>}
-              {page.changes.map((change) => (
-                <li key={change.id} className="px-5 py-4 text-sm">
-                  <div className="flex flex-wrap gap-2 items-center">
-                    <Badge tone="info">{label(change.change_type)}</Badge>
-                    <span>{formatDate(change.changed_on)} by {change.changed_by_name}</span>
-                    {change.approval_id && <Link href={`/approvals/${change.approval_id}`} className="text-action hover:underline text-xs">Approval</Link>}
-                    {change.verification_on ? <Badge tone="good">Verified {formatDate(change.verification_on)}</Badge> : <Badge tone="warn">Draft</Badge>}
-                  </div>
-                  <div className="grid gap-2 sm:grid-cols-2 mt-2">
-                    <div className="rounded-md bg-surface-muted p-2"><div className="text-xs text-muted">Before</div>{change.before_value ?? <span className="text-muted">Not recorded</span>}</div>
-                    <div className="rounded-md bg-surface-muted p-2"><div className="text-xs text-muted">After</div>{change.after_value ?? <span className="text-muted">Not recorded</span>}</div>
-                  </div>
-                  <div className="mt-2"><span className="text-muted">Reason:</span> {change.reason}</div>
-                  {change.outcome_note && <div className="mt-1"><span className="text-muted">Observed afterwards ({change.verified_by_name}):</span> {change.outcome_note}</div>}
-                  {canEdit && !change.verification_on && <VerifyChangeForm pageId={id} changeId={change.id} />}
-                </li>
-              ))}
-            </ol>
-          </Card>
-        </div>
-        <div>
-          {canEdit && !page.archived_at && (
-            <Card>
-              <CardHeader title="Record a change" description="This saves the staff record. It does not publish the website." />
-              <div className="px-5 pb-5"><SeoChangeForm pageId={id} approvals={data.approvals} /></div>
-            </Card>
+          </div>
+        </Card>
+
+        <Card>
+          <CardHeader title="Evidence" description="Each state advances only when its own source confirms it." />
+          <ul className="divide-y divide-line">
+            <EvidenceRow name="Saved" tone={evidence.saved ? "good" : "neutral"} state={evidence.saved ? "Saved" : "No override saved"}>
+              {evidence.saved ? `Saved in Genie Works ${formatDateTime(evidence.saved.at)}${evidence.saved.by ? ` by ${evidence.saved.by}` : ""}.` : route === "blog_editor" ? "Managed in the blog editor." : "The page uses inherited values."}
+            </EvidenceRow>
+            <PublishedRow evidence={evidence} />
+            <LiveRow evidence={evidence} />
+          </ul>
+          {canEdit && (
+            <form action={checkLivePageAction} className="border-t border-line px-5 py-4">
+              <input type="hidden" name="websiteId" value={site.id} />
+              <input type="hidden" name="pageId" value={page.id} />
+              <Button type="submit" variant="secondary" size="sm">Check live page</Button>
+              <p className="mt-2 text-xs text-muted">Reads the page from the website&apos;s registered HTTPS address and stores the served title, description and robots directives.</p>
+            </form>
           )}
-        </div>
+        </Card>
+
+        <Card>
+          <CardHeader title="Google" description="What Google last reported for this URL. Separate from the site's indexing preference." />
+          <div className="space-y-3 px-5 pb-5 text-sm">
+            {google.lastSuccess ? (
+              <div className="flex flex-wrap items-center gap-2">
+                <Badge tone={verdictTone(google.lastSuccess.verdict)}>{verdictLabel(google.lastSuccess.verdict)}</Badge>
+                <span>{google.lastSuccess.coverage ?? "No coverage reason reported"}</span>
+                <span className="text-muted">Checked {formatDateTime(google.lastSuccess.checkedAt)}</span>
+              </div>
+            ) : <p className="text-muted">No Google result is stored for this URL.</p>}
+            {google.newerFailure && <p>A newer request failed {formatDateTime(google.newerFailure.checkedAt)}: {inspectionErrorText(google.newerFailure.errorCode)}</p>}
+            <Link href={inspectionHref} className="text-action hover:underline">Open URL Inspection</Link>
+          </div>
+        </Card>
+
+        {mapping && (
+          <Card>
+            <CardHeader title="Page mapping and change history" description="Staff records for this mapped page. They do not publish the website." />
+            <div className="space-y-4 px-5 pb-5">
+              <KeyValue items={[
+                { label: "Mapped title", value: mapping.page_title },
+                { label: "Content status", value: <Badge tone={CONTENT_TONE[mapping.content_status]}>{label(mapping.content_status)}</Badge> },
+                { label: "Focus topic", value: mapping.primary_keyword },
+                { label: "Mapping flag", value: mapping.mapping_flag === "none" ? "None recorded" : label(mapping.mapping_flag) },
+              ]} />
+              {canEdit && !mapping.archived_at && mappingForms && (
+                <>
+                  <div className="flex flex-wrap items-center gap-3">
+                    <Link href={`/seo/pages/${page.id}?${new URLSearchParams({ website: site.id, ...(query.edit ? {} : { edit: "1" }) })}`} className="text-sm text-action hover:underline">{query.edit ? "Close mapping editor" : "Edit mapping"}</Link>
+                    <form action={archivePageAction}><input type="hidden" name="pageId" value={mapping.id} /><Button type="submit" variant="ghost" size="sm">Archive page</Button></form>
+                  </div>
+                  {query.edit && <SeoPageForm clientId={mapping.client_id} websites={mappingForms.websites} owners={mappingForms.owners.filter((owner) => owner.platform_role !== "read_only")} values={mapping as unknown as Record<string, unknown> & { id: string }} />}
+                </>
+              )}
+              <ol className="divide-y divide-line rounded-xl border border-line">
+                {mapping.changes.length === 0 && <li className="px-4 py-3 text-sm text-muted">No changes recorded.</li>}
+                {mapping.changes.map((change) => (
+                  <li key={change.id} className="px-4 py-3 text-sm">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Badge tone="info">{label(change.change_type)}</Badge>
+                      <span>{formatDate(change.changed_on)} by {change.changed_by_name}</span>
+                      {change.verification_on ? <Badge tone="good">Verified {formatDate(change.verification_on)}</Badge> : <Badge tone="warn">Draft</Badge>}
+                    </div>
+                    <p className="mt-1 text-muted">Before: {change.before_value ?? "Not recorded"} · After: {change.after_value ?? "Not recorded"} · Reason: {change.reason}</p>
+                    {canEdit && !change.verification_on && <VerifyChangeForm pageId={mapping.id} changeId={change.id} />}
+                  </li>
+                ))}
+              </ol>
+              {canEdit && !mapping.archived_at && mappingForms && (
+                <div>
+                  <h3 className="mb-2 text-sm font-semibold">Record a change</h3>
+                  <SeoChangeForm pageId={mapping.id} approvals={mappingForms.approvals} />
+                </div>
+              )}
+            </div>
+          </Card>
+        )}
       </div>
-    </InnerNavFrame>
+    </SeoFrame>
   );
 }

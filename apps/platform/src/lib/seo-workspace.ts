@@ -2,8 +2,9 @@ import {
   addDays,
   canEditClient,
   canPublishClient,
-  daysBetween,
+  formatDateTime,
   getGoogleSiteVerification,
+  readSitemapStatus,
   hasActiveSeoSiteToken,
   getClient,
   listActiveWebsiteSummaries,
@@ -14,12 +15,9 @@ import {
   listSeoPages,
   listSeoRedirects,
   gscDueWindow,
-  latestPublishedReport,
   listTasks,
   listWebsites,
-  publishedReport,
   scopeWorkspace,
-  todaySgt,
   type AccessProfile,
   type PoolClient,
   type SeoBusinessProfileRow,
@@ -31,9 +29,11 @@ import {
   type WebsiteRow,
 } from "@clinic-genie/db";
 import { TASK_STATUSES } from "@clinic-genie/contracts";
+import { cookies } from "next/headers";
 import { staffTx } from "@/lib/db";
 import { shellClients } from "@/lib/client-registry";
 import { clientLabel } from "@/lib/client-label";
+import { SEO_WEBSITE_COOKIE, savedWebsiteId } from "@/lib/seo-scope";
 
 export type SeoSearch = Record<string, string | string[] | undefined>;
 
@@ -57,6 +57,8 @@ export interface SeoContext {
   client?: string;
   website?: string;
   contextNote?: string;
+  /** The remembered website is no longer readable, so the browser should forget it. */
+  savedUnavailable?: boolean;
 }
 
 export interface SetupCheck {
@@ -156,15 +158,6 @@ export function readGoogleControls(query: SeoSearch): GoogleControls {
   };
 }
 
-export interface SearchPerformance {
-  start: string;
-  end: string;
-  clicks: number | null;
-  impressions: number | null;
-  ctr: number | null;
-  position: number | null;
-}
-
 /** The overview range, ending on the latest Pacific day Search Console has published. */
 export function searchConsoleWindow(controls: GoogleControls, now = new Date()): { start: string; end: string } | null {
   const end = gscDueWindow(now).end;
@@ -178,46 +171,23 @@ export function searchConsoleWindow(controls: GoogleControls, now = new Date()):
   return { start: addDays(end, 1 - days), end };
 }
 
-/**
- * Reads the stored Search Console total for the selected range. A missing day is not filled in.
- * Until the next run stores a rolling range, the latest stored range of the same length is shown with its own dates.
- */
-export async function loadSearchPerformance(access: AccessProfile, clientId: string, websiteId: string, controls: GoogleControls, now = new Date()): Promise<SearchPerformance | null> {
-  const window = searchConsoleWindow(controls, now);
-  if (!window) return null;
-  return staffTx(access, async (db) => {
-    const query = { clientId, websiteId, templateKey: "gsc.totals" };
-    const report = await publishedReport(db, { ...query, start: window.start, end: window.end })
-      ?? (controls.range === "custom" ? null : await latestPublishedReport(db, { ...query, days: daysBetween(window.start, window.end) + 1, end: window.end }));
-    if (!report) return null;
-    const row = report.rows.find((item) => item.dimensionKey === "property") ?? report.rows[0];
-    const value = (key: string) => {
-      const metric = row?.metrics.find((item) => item.key === key && item.state === "available" && item.value !== null);
-      return metric?.value ?? null;
-    };
-    return { start: report.start, end: report.end, clicks: value("clicks"), impressions: value("impressions"), ctr: value("ctr"), position: value("position") };
-  });
-}
-
-export function googleQuery(controls: GoogleControls): Record<string, string | undefined> {
-  return {
-    range: controls.range,
-    metric: controls.metric,
-    record: controls.record,
-    direction: controls.direction,
-    changeMetric: controls.changeMetric,
-    from: controls.range === "custom" ? controls.from : undefined,
-    to: controls.range === "custom" ? controls.to : undefined,
-  };
+/** The website remembered from the last SEO visit (D60). Only a request; it is resolved like a URL value. */
+async function savedSeoWebsite(): Promise<string | undefined> {
+  return savedWebsiteId((await cookies()).get(SEO_WEBSITE_COOKIE)?.value);
 }
 
 export async function loadSeoContext(access: AccessProfile, query: SeoSearch): Promise<SeoContext> {
-  return staffTx(access, (db) => loadSeoContextWithDb(db, query));
+  const saved = await savedSeoWebsite();
+  return staffTx(access, (db) => loadSeoContextWithDb(db, query, saved));
 }
 
-async function loadSeoContextWithDb(db: PoolClient, query: SeoSearch): Promise<SeoContext> {
+/**
+ * Resolves the SEO selection on the server for every request (SEO-01.1). The URL wins. Without a website in
+ * the URL, the remembered website is used when the staff member can still read it and it fits the URL clinic.
+ */
+export async function loadSeoContextWithDb(db: PoolClient, query: SeoSearch, saved?: string): Promise<SeoContext> {
   const client = one(query.client);
-  const website = one(query.website);
+  const urlWebsite = one(query.website);
   const demo = false;
   // Copied, because an unlisted client is unshifted onto it below and the registry read is shared.
   const records = [...await shellClients(db)];
@@ -262,6 +232,9 @@ async function loadSeoContextWithDb(db: PoolClient, query: SeoSearch): Promise<S
       });
     }
   }
+  const savedSite = !urlWebsite && saved ? sites.find((site) => site.id === saved && (!client || site.clientId === client)) : undefined;
+  const website = urlWebsite ?? savedSite?.id;
+  const savedUnavailable = Boolean(!urlWebsite && saved && !sites.some((site) => site.id === saved));
   const loaded = {
     clients: records.map((item) => ({ id: item.id, name: clientLabel(item) })),
     sites,
@@ -277,16 +250,19 @@ async function loadSeoContextWithDb(db: PoolClient, query: SeoSearch): Promise<S
   const contextNote = selection.denied
     ? "That client is not available."
     : selection.websiteReplaced
-      ? "That website is not part of the selected client."
-      : undefined;
+      ? client ? "That website is not part of the selected client." : "That website is not available to you. Choose a website."
+      : savedUnavailable && !client
+        ? "The website you last opened is no longer available to you. Choose a website."
+        : undefined;
   return {
     ...loaded,
     selected,
     demo,
     demoConflict,
-    client: selection.denied ? undefined : selection.clientId ?? undefined,
+    client: selection.denied ? undefined : selection.clientId ?? selected?.clientId ?? undefined,
     website: selected?.id,
     contextNote,
+    savedUnavailable,
   };
 }
 
@@ -298,6 +274,8 @@ export function setupChecks(input: {
   verification: string | null;
   searchConsole: SearchConsoleConnection | null;
   profiles: SeoBusinessProfileRow[];
+  /** The latest full sitemap pass (SEO-04.1, D62). */
+  sitemapPass?: { checkedAt: Date; urlCount: number } | null;
 }): SetupCheck[] {
   const checks: SetupCheck[] = [
     {
@@ -319,13 +297,19 @@ export function setupChecks(input: {
         : "The redirect editor is available, but this website has no published-settings credential.",
       status: input.connected ? "unverified" : "attention",
     },
-    {
-      title: "Domain, sitemap and robots.txt",
-      detail: input.codeManaged
-        ? "Supported clinic-site code can generate a sitemap and robots.txt. This screen has not requested or checked the live files."
-        : "Sitemap and robots.txt behaviour depends on this website platform and has not been inspected.",
-      status: input.codeManaged ? "unverified" : "attention",
-    },
+    input.sitemapPass
+      ? {
+        title: "Domain, sitemap and robots.txt",
+        detail: `The live sitemap was read in full on ${formatDateTime(input.sitemapPass.checkedAt)} and lists ${input.sitemapPass.urlCount} URL(s). robots.txt is shown on Site Health, Crawl Settings.`,
+        status: "ready",
+      }
+      : {
+        title: "Domain, sitemap and robots.txt",
+        detail: input.codeManaged
+          ? "Supported clinic-site code can generate a sitemap and robots.txt. No full sitemap pass is recorded; check it on Site Health, Crawl Settings."
+          : "Sitemap and robots.txt behaviour depends on this website platform. No full sitemap pass is recorded; check it on Site Health, Crawl Settings.",
+        status: input.codeManaged ? "unverified" : "attention",
+      },
     {
       title: "Google Search Console",
       detail: input.searchConsole?.status === "connected"
@@ -368,7 +352,8 @@ async function loadWebsiteSeoData(db: PoolClient, site: SeoSite) {
   const verification = await getGoogleSiteVerification(db, site.id);
   const connections = await listConnections(db, site.clientId);
   const connected = await hasActiveSeoSiteToken(db, site.id);
-  return { pages, changes, tasks, settings, redirects, profiles, verification, searchConsole: pickSearchConsole(connections, site.id), connected };
+  const sitemap = await readSitemapStatus(db, site.id);
+  return { pages, changes, tasks, settings, redirects, profiles, verification, searchConsole: pickSearchConsole(connections, site.id), connected, sitemap };
 }
 
 function websiteSeoBundle(access: AccessProfile, site: SeoSite, loaded: Awaited<ReturnType<typeof loadWebsiteSeoData>>): WebsiteSeoBundle {
@@ -394,25 +379,11 @@ function websiteSeoBundle(access: AccessProfile, site: SeoSite, loaded: Awaited<
       verification: loaded.verification,
       searchConsole: loaded.searchConsole,
       profiles: loaded.profiles,
+      sitemapPass: loaded.sitemap.latestPass ? { checkedAt: loaded.sitemap.latestPass.checkedAt, urlCount: loaded.sitemap.latestPass.urlCount } : null,
     }),
     canEdit: canEditClient(access, site.clientId),
     canPublish: canPublishClient(access, site.clientId),
   };
-}
-
-/** Loads the SEO overview in one staff transaction after access is resolved. */
-export async function loadSeoOverview(access: AccessProfile, query: SeoSearch): Promise<{ ctx: SeoContext; bundle: WebsiteSeoBundle | null }> {
-  const loaded = await staffTx(access, async (db) => {
-    const ctx = await loadSeoContextWithDb(db, query);
-    const data = ctx.selected ? await loadWebsiteSeoData(db, ctx.selected) : null;
-    return { ctx, data };
-  });
-  if (!loaded.ctx.selected || !loaded.data) return { ctx: loaded.ctx, bundle: null };
-  return { ctx: loaded.ctx, bundle: websiteSeoBundle(access, loaded.ctx.selected, loaded.data) };
-}
-
-export function completedSince(today = todaySgt()): string {
-  return addDays(today, -30);
 }
 
 export function environmentLabel(environment: WebsiteRow["environment"]): "Production" | "Preview" | "Development" {

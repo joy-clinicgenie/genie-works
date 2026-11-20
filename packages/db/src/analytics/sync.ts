@@ -1120,3 +1120,25 @@ export function sealedToken(token: TokenBundle): { ciphertext: string; nonce: st
 export function windowLength(start: string, end: string): number {
   return daysBetween(start, end) + 1;
 }
+
+/**
+ * A fresh provider token for a direct read outside a sync job (D60). A Wix token is always re-issued for the
+ * stored instance, and a Google token with a refresh token is always refreshed, so the stored grant is tested.
+ */
+export async function freshProviderToken(connection: ConnectionRow, token: TokenBundle, deps: SyncDeps): Promise<TokenBundle> {
+  if (connection.provider === "wix") return refreshWix(connection, token, deps);
+  if (token.refreshToken) return refreshGoogle(token, deps);
+  return ensureAccessToken(connection, token, deps);
+}
+
+export type ProviderFailureCode = "reconnect_required" | "not_configured" | "rate_limited" | "provider_unavailable" | "provider_rejected";
+
+/** The safe code for an error thrown by a provider token refresh. */
+export function providerFailureCode(error: unknown): ProviderFailureCode {
+  if (error instanceof ReconnectError) return "reconnect_required";
+  if (error instanceof ConfigurationError) return "not_configured";
+  if (error instanceof RetryableError) return error.code === "rate_limited" ? "rate_limited" : "provider_unavailable";
+  // assertStatus throws this for a 4xx answer. Anything else means the request did not complete.
+  if (error instanceof Error && error.message === "provider_rejected") return "provider_rejected";
+  return "provider_unavailable";
+}
