@@ -184,7 +184,7 @@ async function clearFixture(db: pg.PoolClient): Promise<void> {
     "analytics_metric_values", "analytics_report_rows", "analytics_report_partitions", "analytics_coverage",
     "analytics_secrets", "analytics_jobs", "analytics_sync_runs", "analytics_connections",
     "saved_report_downloads", "saved_report_versions", "saved_reports",
-    "seo_changes", "seo_page_settings", "seo_redirects", "seo_site_tokens", "seo_index_checks", "seo_speed_checks", "seo_pages",
+    "seo_changes", "seo_page_settings", "seo_redirects", "seo_site_tokens", "seo_index_checks", "seo_speed_checks", "seo_settings_deliveries", "seo_page_live_checks", "seo_url_inspections", "seo_sitemap_checks", "seo_robots_checks", "seo_site_check_items", "seo_site_findings", "seo_site_check_runs", "seo_redirect_checks", "seo_nlweb_tests", "seo_nlweb_endpoints", "seo_crawler_events", "seo_crawler_batches", "seo_crawler_sources", "seo_answer_tests", "seo_branch_reviews", "seo_setup_reviews", "seo_recommendations", "seo_pages",
     "blog_activity", "blog_approvals", "blog_publications", "blog_preview_tokens",
     "blog_media", "blog_article_versions", "blog_articles",
     "task_notes", "task_history", "tasks",

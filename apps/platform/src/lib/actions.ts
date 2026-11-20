@@ -40,3 +40,11 @@ export function numberOrNull(form: FormData, key: string): number | null {
   const n = Number(v);
   return Number.isFinite(n) ? n : NaN;
 }
+
+/** The page indexing preference from the "indexing" field: null inherits the website default (D61). */
+export function indexingPreference(form: FormData): boolean | null {
+  const value = String(form.get("indexing") ?? "inherit");
+  if (value === "index") return true;
+  if (value === "noindex") return false;
+  return null;
+}

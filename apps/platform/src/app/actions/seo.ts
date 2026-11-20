@@ -11,7 +11,7 @@ import { requireAccess } from "@/lib/session";
 import { providerFetch } from "@/lib/provider-fetch";
 import { aiAccessFetcher } from "@/lib/ai-access-fetch";
 import { serviceTx, staffTx } from "@/lib/db";
-import { bool, optional, str, toActionError, type ActionState } from "@/lib/actions";
+import { bool, indexingPreference, optional, str, toActionError, type ActionState } from "@/lib/actions";
 
 function revalidate(id?: string) {
   revalidatePath("/seo", "layout");
@@ -112,19 +112,20 @@ export async function saveSeoPageSettingAction(_prev: ActionState, form: FormDat
   const clientId = str(form, "clientId");
   const websiteId = str(form, "websiteId");
   if (!canPublishClient(access, clientId)) return { ok: false, error: "You cannot publish SEO settings for this client." };
+  let outcome: "saved" | "cleared";
   try {
-    await staffTx(access, (db) => saveSeoPageSetting(db, clientId, websiteId, {
+    outcome = await staffTx(access, (db) => saveSeoPageSetting(db, clientId, websiteId, {
       pagePath: str(form, "pagePath"),
-      title: str(form, "title"),
-      description: str(form, "description"),
+      title: optional(form, "title"),
+      description: optional(form, "description"),
       canonicalPath: optional(form, "canonicalPath"),
-      indexable: bool(form, "indexable"),
+      indexable: indexingPreference(form),
     }, access.user.id));
   } catch (err) {
     return toActionError(err);
   }
   revalidatePath("/seo", "layout");
-  return { ok: true, message: "Published page SEO settings saved." };
+  return { ok: true, message: outcome === "cleared" ? "Overrides removed. The page inherits its defaults." : "Saved. It counts as published once the website fetches its settings." };
 }
 
 export async function saveGoogleVerificationAction(_prev: ActionState, form: FormData): Promise<ActionState> {
@@ -176,6 +177,9 @@ export async function saveSeoBusinessProfileAction(_prev: ActionState, form: For
       externalIdentifier: optional(form, "externalIdentifier"),
       setupStatus: status as SeoBusinessProfileRow["setup_status"],
       notes: optional(form, "notes"),
+      address: optional(form, "address"),
+      phone: optional(form, "phone"),
+      openingHours: optional(form, "openingHours"),
     }, access.user.id));
   } catch (err) {
     return toActionError(err);

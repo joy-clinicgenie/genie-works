@@ -10,12 +10,14 @@ export interface AuditInput {
   outcome: "success" | "denied" | "failure";
   /** Safe metadata only. Never names, emails, phone numbers, message text or tokens. */
   metadata?: Record<string, unknown>;
+  /** When the event happened. Defaults to the database time. */
+  occurredAt?: Date;
 }
 
 export async function recordAudit(db: Queryable, input: AuditInput): Promise<void> {
   await db.query(
-    `insert into audit_events (actor_type, actor_user_id, action, target_type, target_id, client_id, outcome, metadata)
-     values ($1, $2, $3, $4, $5, $6, $7, $8)`,
+    `insert into audit_events (actor_type, actor_user_id, action, target_type, target_id, client_id, outcome, metadata, occurred_at)
+     values ($1, $2, $3, $4, $5, $6, $7, $8, coalesce($9::timestamptz, now()))`,
     [
       input.actorType,
       input.actorUserId ?? null,
@@ -25,6 +27,7 @@ export async function recordAudit(db: Queryable, input: AuditInput): Promise<voi
       input.clientId ?? null,
       input.outcome,
       JSON.stringify(input.metadata ?? {}),
+      input.occurredAt?.toISOString() ?? null,
     ],
   );
 }

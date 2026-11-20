@@ -39,6 +39,9 @@ export interface AiAccessReading {
   llmsStatus: FileStatus;
   llmsHttp: number | null;
   llmsBytes: number | null;
+  /** The llms.txt URL that answered, and its text when found (SEO-05.1, D63). */
+  llmsUrl?: string | null;
+  llmsBody?: string | null;
   crawlers: CrawlerReading[];
   safeErrorCode: string | null;
 }
@@ -58,6 +61,14 @@ export interface TextFetchResult {
   contentType: string | null;
   body: string;
   bytes: number;
+  /** The X-Robots-Tag response header, when the fetcher reports it (D61 live page check). */
+  robotsHeader?: string | null;
+  /** The URL that answered, after any redirects the fetcher followed (D62). */
+  finalUrl?: string;
+  /** The Location header of a redirect the fetcher did not follow (D62 redirect checks). */
+  location?: string | null;
+  /** The body stopped at the fetcher's byte limit (D62). */
+  truncated?: boolean;
 }
 export type TextFetcher = (url: string) => Promise<TextFetchResult>;
 
@@ -106,7 +117,7 @@ export function aiAccessOrigin(url: string | null | undefined): string {
   return parsed.origin.toLowerCase();
 }
 
-interface RobotsGroup {
+export interface RobotsGroup {
   agents: string[];
   rules: Array<{ allow: boolean; path: string }>;
 }
@@ -205,13 +216,16 @@ export async function readAiAccess(fetcher: TextFetcher, origin: string): Promis
   }
 
   const llmsStatus: FileStatus = llms.result ? fileStatus(llms.result) : "error";
+  const llmsFound = llms.result && llmsStatus === "found" ? llms.result : null;
   return {
     origin,
     robotsStatus,
     robotsHttp: robots.result?.status ?? null,
     llmsStatus,
     llmsHttp: llms.result?.status ?? null,
-    llmsBytes: llms.result && llmsStatus === "found" ? llms.result.bytes : null,
+    llmsBytes: llmsFound ? llmsFound.bytes : null,
+    llmsUrl: llms.result?.finalUrl ?? `${origin}/llms.txt`,
+    llmsBody: llmsFound ? llmsFound.body.slice(0, LLMS_PREVIEW_CHARS) : null,
     crawlers,
     safeErrorCode: robots.code ?? llms.code,
   };
@@ -231,10 +245,10 @@ export async function recordAiAccessCheck(
   const r = input.reading;
   const { rows } = await db.query<{ id: string }>(
     `insert into seo_ai_access_checks
-       (client_id, website_id, origin, robots_status, robots_http, llms_status, llms_http, llms_bytes, crawlers, safe_error_code, checked_by)
-     values ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb, $10, $11)
+       (client_id, website_id, origin, robots_status, robots_http, llms_status, llms_http, llms_bytes, crawlers, safe_error_code, checked_by, llms_url, llms_body)
+     values ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb, $10, $11, $12, $13)
      returning id`,
-    [input.clientId, input.websiteId, r.origin, r.robotsStatus, r.robotsHttp, r.llmsStatus, r.llmsHttp, r.llmsBytes, JSON.stringify(r.crawlers), r.safeErrorCode, input.userId],
+    [input.clientId, input.websiteId, r.origin, r.robotsStatus, r.robotsHttp, r.llmsStatus, r.llmsHttp, r.llmsBytes, JSON.stringify(r.crawlers), r.safeErrorCode, input.userId, r.llmsUrl ?? null, r.llmsBody ?? null],
   );
   return rows[0]!.id;
 }
@@ -254,6 +268,8 @@ interface CheckDbRow {
   checked_by: string;
   checked_by_name: string | null;
   checked_at: Date;
+  llms_url: string | null;
+  llms_body: string | null;
 }
 
 /** Newest first. Rows for a client the caller cannot see are filtered by RLS. */
@@ -277,10 +293,42 @@ export async function listAiAccessChecks(db: Queryable, websiteId: string, limit
     llmsStatus: row.llms_status,
     llmsHttp: row.llms_http,
     llmsBytes: row.llms_bytes,
+    llmsUrl: row.llms_url,
+    llmsBody: row.llms_body,
     crawlers: row.crawlers,
     safeErrorCode: row.safe_error_code,
     checkedBy: row.checked_by,
     checkedByName: row.checked_by_name,
     checkedAt: row.checked_at,
   }));
+}
+
+/** Characters of llms.txt kept for the preview (stored up to 64 KB). */
+export const LLMS_PREVIEW_CHARS = 60_000;
+
+export interface LlmsLink {
+  label: string;
+  url: string;
+  notes: string | null;
+}
+
+/**
+ * Markdown links in llms.txt (`[label](url)`, optionally followed by `: notes`). Relative links are resolved
+ * against the file URL (D63); links that do not resolve to http(s) are left out.
+ */
+export function parseLlmsLinks(body: string, fileUrl: string): LlmsLink[] {
+  const links: LlmsLink[] = [];
+  for (const line of body.split(/\r\n|\r|\n/)) {
+    for (const match of line.matchAll(/\[([^\]\n]+)\]\(\s*([^)\s]+)(?:\s+"[^"]*")?\s*\)(?:\s*:\s*([^\[\n]+))?/g)) {
+      let url: URL;
+      try {
+        url = new URL(match[2]!, fileUrl);
+      } catch {
+        continue;
+      }
+      if (url.protocol !== "https:" && url.protocol !== "http:") continue;
+      links.push({ label: match[1]!.trim(), url: url.toString(), notes: match[3]?.trim() || null });
+    }
+  }
+  return links;
 }

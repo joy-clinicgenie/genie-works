@@ -57,6 +57,29 @@ export const BACKUP_TABLES = [
   // Site Health results (migration 0039). They reference websites and hold no secret.
   "seo_index_checks",
   "seo_speed_checks",
+  // Page SEO evidence and URL Inspection history (migration 0048, D61). No secret or page body.
+  "seo_settings_deliveries",
+  "seo_page_live_checks",
+  "seo_url_inspections",
+  // Technical SEO check results (migration 0049, D62). Public responses only; no secret.
+  "seo_sitemap_checks",
+  "seo_robots_checks",
+  "seo_site_check_runs",
+  "seo_site_check_items",
+  "seo_site_findings",
+  "seo_redirect_checks",
+  // AI visibility (migration 0050, D63). Crawler events hold no visitor data; source tokens are stored as hashes.
+  "seo_nlweb_endpoints",
+  "seo_nlweb_tests",
+  "seo_crawler_sources",
+  "seo_crawler_batches",
+  "seo_crawler_events",
+  "seo_answer_tests",
+  // Staff listing reviews (migration 0051, D64).
+  "seo_branch_reviews",
+  // Setup reviews and recommendations (migration 0052, D65).
+  "seo_setup_reviews",
+  "seo_recommendations",
   // AI access checks (migration 0046, D57). robots.txt and llms.txt readings only.
   "seo_ai_access_checks",
   "ads_audits",

@@ -62,6 +62,8 @@ export const GA4_TEMPLATES: Record<string, { metrics: string[]; dimensions: stri
   "ga4.engagement": { metrics: ["engagementRate", "averageSessionDuration", "screenPageViewsPerSession", "bounceRate"], dimensions: [] },
   "ga4.pages": { metrics: ["screenPageViews", "userEngagementDuration", "activeUsers"], dimensions: ["pagePath"] },
   "ga4.visitor_type": { metrics: ["activeUsers"], dimensions: ["newVsReturning"] },
+  // AI referral sessions (D63). Prepared on demand for one preset window; not part of the scheduled run.
+  "ga4.session_source": { metrics: ["sessions"], dimensions: ["sessionSource"] },
 };
 
 export function ga4Template(template: string): { metrics: string[]; dimensions: string[] } {

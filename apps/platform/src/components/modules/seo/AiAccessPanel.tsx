@@ -1,4 +1,4 @@
-import { AI_CRAWLERS, formatDateTime, type AiAccessCheckRow, type CrawlerReading, type FileStatus } from "@clinic-genie/db";
+import { AI_CRAWLERS, formatDateTime, parseLlmsLinks, type AiAccessCheckRow, type CrawlerReading, type FileStatus } from "@clinic-genie/db";
 import { Badge, type Tone } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Card, CardHeader } from "@/components/ui/Card";
@@ -114,16 +114,43 @@ export function AiAccessPanel({ clientId, websiteId, canCheck, checks, notice }:
         )}
       </Card>
 
-      <Card className="p-5">
+      <Card className="p-5" id="llms">
         <div className="flex items-start justify-between gap-3">
           <h2 className="font-semibold">llms.txt</h2>
           {latest ? <FileBadge status={latest.llmsStatus} /> : <Badge>Not checked</Badge>}
         </div>
         <p className="mt-1 text-sm text-muted">
           A plain-text guide to the site for AI assistants. It is read here, not edited.
-          {latest?.llmsStatus === "found" && <> Size {bytes(latest.llmsBytes)}. <a href={`${latest.origin}/llms.txt`} target="_blank" rel="noreferrer" className="text-action hover:underline">Open llms.txt</a></>}
+          {latest && <> Retrieved {formatDateTime(latest.checkedAt)} · {latest.llmsHttp === null ? "no response" : `HTTP ${latest.llmsHttp}`}.</>}
+          {latest?.llmsStatus === "found" && <> Size {bytes(latest.llmsBytes)}.</>}
+          {latest && <> <a href={latest.llmsUrl ?? `${latest.origin}/llms.txt`} target="_blank" rel="noreferrer" className="text-action hover:underline">Open the live file</a></>}
           {latest?.llmsStatus === "not_text" && " The address answered with a web page, not a text file."}
+          {latest && latest.llmsStatus !== "found" && " No current preview."}
         </p>
+        {latest?.llmsStatus === "found" && latest.llmsBody ? (() => {
+          const links = parseLlmsLinks(latest.llmsBody, latest.llmsUrl ?? `${latest.origin}/llms.txt`);
+          return (
+            <div className="mt-4 space-y-3 text-sm">
+              <div>
+                <h3 className="font-semibold">Linked pages ({links.length})</h3>
+                {links.length === 0 ? <p className="text-muted">The file lists no page links.</p> : (
+                  <ul className="mt-1 space-y-1" data-llms-links>
+                    {links.map((link, index) => (
+                      <li key={`${index}-${link.url}`}>
+                        <span className="font-medium">{link.label}</span> · <a href={link.url} target="_blank" rel="noreferrer" className="break-all text-action hover:underline">{link.url}</a>
+                        {link.notes && <span className="text-muted"> · {link.notes}</span>}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+              <details>
+                <summary className="cursor-pointer font-medium">Preview</summary>
+                <pre className="mt-2 max-h-80 overflow-auto whitespace-pre-wrap break-all rounded-xl bg-surface-muted p-3 text-xs">{latest.llmsBody}</pre>
+              </details>
+            </div>
+          );
+        })() : null}
       </Card>
 
       {checks.length > 1 && (
