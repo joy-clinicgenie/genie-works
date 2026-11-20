@@ -11,6 +11,9 @@ const nextConfig: NextConfig = {
   serverExternalPackages: ["pg", "embedded-postgres"],
   typedRoutes: false,
   poweredByHeader: false,
+  experimental: {
+    agentUpgrade: "security",
+  },
   async rewrites() {
     return [{ source: "/favicon.ico", destination: "/brandmark.svg" }];
   },
