@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import {
   RegistryRuleError, archiveClient, archiveClientFileLink, bindWixEnquiryForm, canManageAssignments, canManageRegistry, canManageUsers, clearWixEnquiryForm, createAccountReference, createClient, createClientContact, createClientFileLink, createWebsite, grantMembership, listAccountReferences, listWebsites, restoreClient,
-  revokeMembership, setWebsiteEnquiryKey, updateAccountReference, updateClient, updateClientContact, updateWebsite, type ClientChannel, type WebsiteRow,
+  revokeMembership, setWebsiteEnquiryKey, setWebsiteRemoved, updateAccountReference, updateClient, updateClientContact, updateWebsite, type ClientChannel, type WebsiteRow,
 } from "@clinic-genie/db";
 import { CLIENT_CHANNELS } from "@clinic-genie/contracts";
 import { requireAccess } from "@/lib/session";
@@ -139,6 +139,22 @@ export async function saveWebsiteAction(_prev: ActionState, form: FormData): Pro
   }
   revalidatePath(`/clients/${clientId}`, "layout");
   return { ok: true, message: "Website saved." };
+}
+
+/** Removes a website from use (archives it) or restores it (D82). Registry managers only. */
+export async function removeWebsiteAction(_prev: ActionState, form: FormData): Promise<ActionState> {
+  const access = await requireAccess();
+  if (!canManageRegistry(access)) return { ok: false, error: "You do not have permission for this action." };
+  const clientId = str(form, "clientId");
+  const restore = bool(form, "restore");
+  try {
+    await staffTx(access, (db) => setWebsiteRemoved(db, { websiteId: str(form, "websiteId"), clientId, removed: !restore, actorUserId: access.user.id }));
+  } catch (err) {
+    return toActionError(err);
+  }
+  revalidatePath(`/clients/${clientId}`, "layout");
+  revalidatePath("/seo", "layout");
+  return { ok: true, message: restore ? "Website restored." : "Website removed." };
 }
 
 export async function saveWixEnquiryBindingAction(_prev: ActionState, form: FormData): Promise<ActionState> {

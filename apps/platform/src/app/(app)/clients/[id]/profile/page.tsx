@@ -2,7 +2,8 @@ import { canManageAssignments, canManageRegistry, canManageUsers, formatDateTime
 import { requireClientAccess } from "@/lib/session";
 import { staffTx } from "@/lib/db";
 import { Card, CardHeader } from "@/components/ui/Card";
-import { ClientForm, ContactForm, FileLinkForm, ReferenceForm, WebsiteForm } from "@/components/modules/ClientForms";
+import { ClientForm, ContactForm, FileLinkForm, ReferenceForm, RemoveWebsiteForm, StagedLabel, WebsiteForm } from "@/components/modules/ClientForms";
+import { ProfileEditSession } from "@/components/modules/ProfileEditSession";
 import { archiveClientAction, archiveFileLinkAction, membershipAction } from "@/app/actions/clients";
 import { Button } from "@/components/ui/Button";
 import { Badge, label } from "@/components/ui/Badge";
@@ -24,6 +25,8 @@ const HISTORY: Record<string, string> = {
   "membership.revoke": "Removed a staff member",
   "website.create": "Added a website",
   "website.update": "Updated a website",
+  "website.remove": "Removed a website",
+  "website.restore": "Restored a website",
   "website.enquiry_key": "Updated the enquiry key",
   "wix_enquiry.bind": "Connected a Wix form",
   "wix_enquiry.clear": "Returned a website to its enquiry database",
@@ -50,7 +53,11 @@ export default async function ClientProfilePage({ params }: { params: Promise<{ 
   const admin = canManageUsers(access);
   const nonMembers = data.allStaff.filter((s) => s.active && !data.members.some((m) => m.user_id === s.id));
   const client = data.client;
+  const activeSites = data.websites.filter((site) => site.status !== "archived");
+  const removedSites = data.websites.filter((site) => site.status === "archived");
   return (
+    // D83: every edit and removal on this page waits for the one Save button in the bar below.
+    <ProfileEditSession>
     <div className="space-y-6">
       <Card>
         <CardHeader title="Client profile" description="Reference, names, address, general contact details and the staff responsible for operations." />
@@ -80,17 +87,17 @@ export default async function ClientProfilePage({ params }: { params: Promise<{ 
             <Notice tone="neutral">Only admins and managers can edit the profile.</Notice>
           )}
           {manage && (
-            <form action={archiveClientAction} className="mt-6 border-t border-line pt-4">
+            <form action={archiveClientAction} className="mt-6 border-t border-line pt-4" data-staged={client.status === "active" ? "Deactivate client" : "Restore client"}>
               <input type="hidden" name="clientId" value={id} />
               {client.status === "active" ? (
                 <>
                   <p className="text-sm text-muted mb-2">Deactivating hides the client from the active directory. Every task, decision and record is kept.</p>
-                  <Button type="submit" variant="danger" size="sm">Deactivate client</Button>
+                  <Button type="submit" variant="danger" size="sm"><StagedLabel idle="Deactivate client" /></Button>
                 </>
               ) : (
                 <>
                   <input type="hidden" name="restore" value="1" />
-                  <Button type="submit" variant="secondary" size="sm">Restore client</Button>
+                  <Button type="submit" variant="secondary" size="sm"><StagedLabel idle="Restore client" /></Button>
                 </>
               )}
             </form>
@@ -128,10 +135,10 @@ export default async function ClientProfilePage({ params }: { params: Promise<{ 
                 <li key={m.id} className="flex items-center justify-between gap-3 py-2">
                   <span>{m.user_name} <Badge>{label(m.user_role)}</Badge> <span className="text-xs text-muted">{m.user_email}</span></span>
                   {assign && (
-                    <form action={membershipAction}>
+                    <form action={membershipAction} data-staged={`Remove from team: ${m.user_name}`}>
                       <input type="hidden" name="clientId" value={id} />
                       <input type="hidden" name="membershipId" value={m.id} />
-                      <Button type="submit" variant="ghost" size="sm">Remove</Button>
+                      <Button type="submit" variant="ghost" size="sm"><StagedLabel idle="Remove" /></Button>
                     </form>
                   )}
                 </li>
@@ -139,7 +146,7 @@ export default async function ClientProfilePage({ params }: { params: Promise<{ 
               {data.members.length === 0 && <li className="py-2 text-muted">No staff assigned.</li>}
             </ul>
             {assign && nonMembers.length > 0 && (
-              <form key={data.members.map((m) => m.id).join(",")} action={membershipAction} className="flex items-end gap-2">
+              <form key={data.members.map((m) => m.id).join(",")} action={membershipAction} className="flex items-end gap-2" data-edit-form="Assign staff">
                 <input type="hidden" name="clientId" value={id} />
                 <label className="flex-1 text-sm">
                   <span className="mb-1 block text-xs font-medium">Assign staff</span>
@@ -150,7 +157,7 @@ export default async function ClientProfilePage({ params }: { params: Promise<{ 
                     ))}
                   </Select>
                 </label>
-                <Button type="submit" variant="secondary" size="sm">Assign</Button>
+                <Button type="submit" variant="secondary" size="sm" data-form-submit="">Assign</Button>
               </form>
             )}
             <p className="text-xs text-muted">An assignment covers every website of this client. {!assign && "Only an admin can assign or remove staff."}</p>
@@ -171,10 +178,10 @@ export default async function ClientProfilePage({ params }: { params: Promise<{ 
                   <span className="mt-1 block text-xs text-muted">Opening the file depends on the site that hosts it.</span>
                 </span>
                 {manage && (
-                  <form action={archiveFileLinkAction}>
+                  <form action={archiveFileLinkAction} data-staged={`Remove file link: ${file.title}`}>
                     <input type="hidden" name="clientId" value={id} />
                     <input type="hidden" name="fileLinkId" value={file.id} />
-                    <Button type="submit" variant="ghost" size="sm">Remove</Button>
+                    <Button type="submit" variant="ghost" size="sm"><StagedLabel idle="Remove" /></Button>
                   </form>
                 )}
               </li>
@@ -221,12 +228,26 @@ export default async function ClientProfilePage({ params }: { params: Promise<{ 
       <Card>
         <CardHeader title="Websites" />
         <div className="space-y-6 px-5 pb-5">
-          {data.websites.length === 0 && <p className="text-sm text-muted">{manage ? "No websites recorded yet. Add a placeholder address below, not a real clinic URL." : "No websites recorded."}</p>}
-          {data.websites.map((w) => (
+          {activeSites.length === 0 && <p className="text-sm text-muted">{manage ? "No websites recorded yet. Add a placeholder address below, not a real clinic URL." : "No websites recorded."}</p>}
+          {activeSites.map((w) => (
             <div key={w.id} className="border-b border-line pb-5">
               {manage ? <WebsiteForm clientId={id} clientSlug={client.slug} admin={admin} values={w} /> : <p className="text-sm">{w.name}{w.url ? ` · ${w.url}` : ""} · {w.platform} · {label(w.environment)} · {label(w.status)}{w.enquiry_key ? ` · Enquiry key ${w.enquiry_key}` : ""} · {w.enquiry_source === "wix" ? "Wix form" : "Enquiry database"}</p>}
             </div>
           ))}
+          {removedSites.length > 0 && (
+            // D82: removed websites are archived, not deleted, and can be restored.
+            <details className="rounded-2xl bg-surface-muted px-4 py-3">
+              <summary className="cursor-pointer text-sm font-semibold">Removed websites ({removedSites.length})</summary>
+              <ul className="mt-3 space-y-3">
+                {removedSites.map((w) => (
+                  <li key={w.id} className="text-sm">
+                    <div>{w.name}{w.url ? ` · ${w.url}` : ""} · {w.platform} · {label(w.environment)}{w.archived_at ? ` · removed ${formatDateTime(w.archived_at)}` : ""}</div>
+                    {manage && <RemoveWebsiteForm clientId={id} websiteId={w.id} name={w.name} restore />}
+                  </li>
+                ))}
+              </ul>
+            </details>
+          )}
           {manage && <div><h3 className="mb-2 text-sm font-semibold">Add a website</h3><WebsiteForm key={data.websites.map((w) => w.id).join(",") || "none"} clientId={id} clientSlug={client.slug} admin={admin} /></div>}
         </div>
       </Card>
@@ -244,5 +265,6 @@ export default async function ClientProfilePage({ params }: { params: Promise<{ 
         </ol>
       </Card>
     </div>
+    </ProfileEditSession>
   );
 }

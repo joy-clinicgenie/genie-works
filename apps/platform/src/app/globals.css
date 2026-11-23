@@ -145,3 +145,23 @@ body {
   -webkit-backdrop-filter: blur(18px);
   backdrop-filter: blur(18px);
 }
+
+/* D83: on a client's Edit profile, forms save through the one Save bar, and staged actions show Undo. */
+[data-edit-session] [data-form-submit] {
+  display: none;
+}
+.staged-on {
+  display: none;
+}
+[data-staged-on] .staged-idle {
+  display: none;
+}
+[data-staged-on] .staged-on {
+  display: inline;
+}
+[data-edit-session] form[data-dirty],
+[data-edit-session] form[data-staged-on] {
+  box-shadow: inset 3px 0 0 var(--color-action);
+  padding-left: 0.75rem;
+  border-radius: 0.5rem;
+}

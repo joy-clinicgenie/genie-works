@@ -367,6 +367,26 @@ export async function updateWebsite(
   await recordAudit(db, { actorType: "staff", actorUserId, action: "website.update", targetType: "website", targetId: id, clientId: site.client_id, outcome: "success", metadata: { status: input.status } });
 }
 
+/**
+ * Removes a website from use, or restores it (D82). Removal archives it, so it leaves every website list, selector and
+ * report, while its history, audit trail and stored data stay. A website with an active analytics connection is not
+ * removed, because the worker would keep syncing it: disconnect it first.
+ */
+export async function setWebsiteRemoved(db: Queryable, input: { websiteId: string; clientId: string; removed: boolean; actorUserId: string }): Promise<void> {
+  await requireWebsiteForClient(db, input.websiteId, input.clientId);
+  if (input.removed) {
+    const live = await db.query("select 1 from analytics_connections where website_id = $1 and disconnected_at is null and status <> 'disconnected' limit 1", [input.websiteId]);
+    if (live.rowCount) throw new RegistryRuleError("This website still has an analytics connection. Disconnect it in SEO → Website Connections, then remove the website.");
+  }
+  const { rowCount } = await db.query(
+    `update websites set status = $3, archived_at = ${input.removed ? "coalesce(archived_at, now())" : "null"}
+     where id = $1 and client_id = $2`,
+    [input.websiteId, input.clientId, input.removed ? "archived" : "active"],
+  );
+  if (!rowCount) throw new RegistryRuleError("Website was not changed. You may not have permission to change it.");
+  await recordAudit(db, { actorType: "staff", actorUserId: input.actorUserId, action: input.removed ? "website.remove" : "website.restore", targetType: "website", targetId: input.websiteId, clientId: input.clientId, outcome: "success" });
+}
+
 /** Staff who manage the registry can point this website at its own enquiry rows. */
 export async function setWebsiteEnquiryKey(db: Queryable, websiteId: string, clientId: string, enquiryKey: string, actorUserId: string): Promise<void> {
   await requireWebsiteForClient(db, websiteId, clientId);

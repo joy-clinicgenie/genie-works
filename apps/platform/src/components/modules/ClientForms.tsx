@@ -2,7 +2,7 @@
 
 import { useActionState, useState } from "react";
 import { ACCOUNT_REFERENCE_KINDS, CLIENT_CHANNELS } from "@clinic-genie/contracts";
-import { createClientAction, saveContactAction, saveFileLinkAction, saveReferenceAction, saveWebsiteAction, saveWixEnquiryBindingAction, updateClientAction } from "@/app/actions/clients";
+import { createClientAction, removeWebsiteAction, saveContactAction, saveFileLinkAction, saveReferenceAction, saveWebsiteAction, saveWixEnquiryBindingAction, updateClientAction } from "@/app/actions/clients";
 import type { ActionState } from "@/lib/actions";
 import { Button } from "@/components/ui/Button";
 import { Checkbox, Field, FormError, Input, Select, Textarea } from "@/components/ui/Field";
@@ -54,7 +54,7 @@ export function ClientForm({ mode, staff, values }: { mode: "create" | "edit"; s
   const [administrationOwner, setAdministrationOwner] = useState(values.administrationOwnerUserId ?? "");
   const err = (f: string) => (state && !state.ok && state.field === f ? state.error : null);
   return (
-    <form action={action} className="space-y-5">
+    <form action={action} className="space-y-5" data-edit-form={mode === "edit" ? "Client profile" : undefined}>
       {values.clientId && <input type="hidden" name="clientId" value={values.clientId} />}
       <div className="grid gap-4 sm:grid-cols-2">
         <Field label="Client ID" htmlFor="referenceNumber" error={err("referenceNumber")} hint="Unique client reference, for example CG-001.">
@@ -71,7 +71,7 @@ export function ClientForm({ mode, staff, values }: { mode: "create" | "edit"; s
         </Field>
         {mode === "create" ? (
           <Field label="Identifier" htmlFor="slug" required hint="Lowercase, numbers and hyphens. Permanent." error={err("slug")}>
-            <Input id="slug" name="slug" value={slug} onChange={(e) => setSlug(e.target.value)} required pattern="[a-z0-9][a-z0-9-]{1,62}" {...describedBy("slug", err("slug"), true)} />
+            <Input id="slug" name="slug" value={slug} onChange={(e) => setSlug(e.target.value)} required pattern="[a-z0-9][a-z0-9\-]{1,62}" {...describedBy("slug", err("slug"), true)} />
           </Field>
         ) : (
           <Field label="Identifier" htmlFor="slug-ro" hint="Permanent. It does not change.">
@@ -134,7 +134,7 @@ export function ClientForm({ mode, staff, values }: { mode: "create" | "edit"; s
         <Textarea id="notes" name="notes" value={notes} onChange={(e) => setNotes(e.target.value)} maxLength={4000} />
       </Field>
       <FormError state={banner(state)} />
-      <Button type="submit" disabled={pending} aria-busy={pending}>{pending ? "Saving…" : mode === "create" ? "Create client" : "Save details"}</Button>
+      <Button type="submit" disabled={pending} aria-busy={pending} data-form-submit={mode === "edit" ? "" : undefined}>{pending ? "Saving…" : mode === "create" ? "Create client" : "Save details"}</Button>
     </form>
   );
 }
@@ -150,7 +150,7 @@ export function ContactForm({ clientId, values }: { clientId: string; values?: {
   const err = (f: string) => (state && !state.ok && state.field === f ? state.error : null);
   const id = values?.id ?? "new";
   return (
-    <form action={action} className="space-y-4">
+    <form action={action} className="space-y-4" data-edit-form="Contact">
       <input type="hidden" name="clientId" value={clientId} />
       {values && <input type="hidden" name="contactId" value={values.id} />}
       <div className="grid gap-4 sm:grid-cols-2">
@@ -170,7 +170,7 @@ export function ContactForm({ clientId, values }: { clientId: string; values?: {
       <Checkbox name="isPrimary" label="Primary contact" checked={primary} onChange={(e) => setPrimary(e.target.checked)} />
       {values && <Checkbox name="deactivate" label="Deactivate this contact" checked={deactivate} onChange={(e) => setDeactivate(e.target.checked)} />}
       <FormError state={banner(state)} />
-      <Button type="submit" variant={values ? "secondary" : "primary"} size="sm" disabled={pending} aria-busy={pending}>{pending ? "Saving…" : values ? "Save contact" : "Add contact"}</Button>
+      <Button type="submit" variant={values ? "secondary" : "primary"} size="sm" disabled={pending} aria-busy={pending} data-form-submit="">{pending ? "Saving…" : values ? "Save contact" : "Add contact"}</Button>
     </form>
   );
 }
@@ -188,7 +188,7 @@ export function WebsiteForm({ clientId, clientSlug, admin = false, values }: { c
   const id = values?.id ?? "new";
   return (
     <>
-    <form action={action} className="space-y-4">
+    <form action={action} className="space-y-4" data-edit-form="Website">
       <input type="hidden" name="clientId" value={clientId} />
       {values && <input type="hidden" name="websiteId" value={values.id} />}
       <div className="grid gap-4 sm:grid-cols-2">
@@ -222,7 +222,7 @@ export function WebsiteForm({ clientId, clientSlug, admin = false, values }: { c
       </Field>
       {values ? (
         <Field label="Enquiry key" htmlFor={`w-key-${id}`} hint={`Maps this website to its own enquiry rows. It starts with ${clientSlug}. The message stays on the website.`} error={err("enquiryKey")}>
-          <Input id={`w-key-${id}`} name="enquiryKey" value={enquiryKey} onChange={(e) => setEnquiryKey(e.target.value)} required maxLength={64} pattern="[a-z0-9-]{1,64}" {...describedBy(`w-key-${id}`, err("enquiryKey"), true)} />
+          <Input id={`w-key-${id}`} name="enquiryKey" value={enquiryKey} onChange={(e) => setEnquiryKey(e.target.value)} required maxLength={64} pattern="[a-z0-9\-]{1,64}" {...describedBy(`w-key-${id}`, err("enquiryKey"), true)} />
         </Field>
       ) : (
         <p className="text-xs text-muted">An enquiry key is assigned from {clientSlug} and the environment. It maps the website to its own enquiry rows and does not copy the message.</p>
@@ -239,10 +239,39 @@ export function WebsiteForm({ clientId, clientSlug, admin = false, values }: { c
         </fieldset>
       )}
       <FormError state={banner(state)} />
-      <Button type="submit" variant={values ? "secondary" : "primary"} size="sm" disabled={pending} aria-busy={pending}>{pending ? "Saving…" : values ? "Save website" : "Add website"}</Button>
+      <Button type="submit" variant={values ? "secondary" : "primary"} size="sm" disabled={pending} aria-busy={pending} data-form-submit="">{pending ? "Saving…" : values ? "Save website" : "Add website"}</Button>
     </form>
-    {values && <WixBindingForm clientId={clientId} websiteId={values.id} admin={admin} source={values.enquiry_source ?? "database"} instanceId={values.wix_instance_id ?? ""} formId={values.wix_form_id ?? ""} formKey={values.wix_form_key ?? ""} />}
+    {/* D82: the Wix form section belongs only to Wix websites, or to one that already has a Wix form to clear. */}
+    {values && (/wix/i.test(values.platform) || values.enquiry_source === "wix") && <WixBindingForm clientId={clientId} websiteId={values.id} admin={admin} source={values.enquiry_source ?? "database"} instanceId={values.wix_instance_id ?? ""} formId={values.wix_form_id ?? ""} formKey={values.wix_form_key ?? ""} />}
+    {values && values.status !== "archived" && <RemoveWebsiteForm clientId={clientId} websiteId={values.id} name={values.name} />}
     </>
+  );
+}
+
+/** Removes a website from use after a confirmation (D82). It is archived, not deleted, and can be restored. */
+/** A staged action button's text: the action, or "Undo" once it is staged for Save (D83). */
+export function StagedLabel({ idle }: { idle: string }) {
+  return (
+    <>
+      <span className="staged-idle">{idle}</span>
+      <span className="staged-on">Undo</span>
+    </>
+  );
+}
+
+export function RemoveWebsiteForm({ clientId, websiteId, name, restore = false }: { clientId: string; websiteId: string; name: string; restore?: boolean }) {
+  const [state, action, pending] = useActionState(removeWebsiteAction, null);
+  return (
+    // D83: removing or restoring is staged on the Edit profile and applied by its one Save button.
+    <form action={action} className="mt-3 space-y-2" data-staged={restore ? `Restore website: ${name}` : `Remove website: ${name}`}>
+      <input type="hidden" name="clientId" value={clientId} />
+      <input type="hidden" name="websiteId" value={websiteId} />
+      {restore && <input type="hidden" name="restore" value="on" />}
+      <Button type="submit" variant={restore ? "secondary" : "danger"} size="sm" disabled={pending} aria-busy={pending}>
+        {pending ? (restore ? "Restoring…" : "Removing…") : <StagedLabel idle={restore ? "Restore website" : "Remove website"} />}
+      </Button>
+      <FormError state={state} />
+    </form>
   );
 }
 
@@ -256,7 +285,7 @@ function WixBindingForm({ clientId, websiteId, admin, source, instanceId, formId
     return <p className="text-xs text-muted">{source === "wix" ? "An administrator has connected one Wix form. Answers stay at Wix." : "An administrator can connect one Wix form. Answers stay at Wix, and this website currently reads its enquiry database."}</p>;
   }
   return (
-    <form action={action} className="space-y-4 border-t border-line pt-4">
+    <form action={action} className="space-y-4 border-t border-line pt-4" data-edit-form="Wix form">
       <input type="hidden" name="clientId" value={clientId} />
       <input type="hidden" name="websiteId" value={websiteId} />
       <div>
@@ -276,8 +305,8 @@ function WixBindingForm({ clientId, websiteId, admin, source, instanceId, formId
       </div>
       <FormError state={banner(state)} />
       <div className="flex flex-wrap gap-2">
-        <Button type="submit" name="binding" value="wix" variant="secondary" size="sm" disabled={pending} aria-busy={pending}>{pending ? "Saving…" : "Connect Wix form"}</Button>
-        {source === "wix" && <Button type="submit" name="binding" value="database" variant="ghost" size="sm" disabled={pending}>Use the enquiry database</Button>}
+        <Button type="submit" name="binding" value="wix" variant="secondary" size="sm" disabled={pending} aria-busy={pending} data-form-submit="">{pending ? "Saving…" : "Connect Wix form"}</Button>
+        {source === "wix" && <Button type="submit" name="binding" value="database" variant="ghost" size="sm" disabled={pending} data-direct="">Use the enquiry database</Button>}
       </div>
     </form>
   );
@@ -296,7 +325,7 @@ export function ReferenceForm({ clientId, staff, values }: { clientId: string; s
   const err = (f: string) => (state && !state.ok && state.field === f ? state.error : null);
   const k = values?.id ?? "new";
   return (
-    <form action={action} className="space-y-4">
+    <form action={action} className="space-y-4" data-edit-form="Account reference">
       <input type="hidden" name="clientId" value={clientId} />
       {values && <input type="hidden" name="referenceId" value={values.id} />}
       <div className="grid gap-4 sm:grid-cols-2">
@@ -330,7 +359,7 @@ export function ReferenceForm({ clientId, staff, values }: { clientId: string; s
         <Checkbox name="deactivate" label="Deactivate this reference" checked={deactivate} onChange={(e) => setDeactivate(e.target.checked)} />
       )}
       <FormError state={banner(state)} />
-      <Button type="submit" variant={values ? "secondary" : "primary"} size="sm" disabled={pending} aria-busy={pending}>{pending ? "Saving…" : values ? "Save reference" : "Add reference"}</Button>
+      <Button type="submit" variant={values ? "secondary" : "primary"} size="sm" disabled={pending} aria-busy={pending} data-form-submit="">{pending ? "Saving…" : values ? "Save reference" : "Add reference"}</Button>
     </form>
   );
 }
@@ -341,7 +370,7 @@ export function FileLinkForm({ clientId }: { clientId: string }) {
   const [url, setUrl] = useState("");
   const [notes, setNotes] = useState("");
   return (
-    <form action={action} className="space-y-3">
+    <form action={action} className="space-y-3" data-edit-form="File link">
       <input type="hidden" name="clientId" value={clientId} />
       <p className="text-xs text-muted">Save a titled https link. Genie Works controls who can see the link. The site that hosts the file controls who can open it.</p>
       <Field label="Title" htmlFor="file-title">
@@ -354,7 +383,7 @@ export function FileLinkForm({ clientId }: { clientId: string }) {
         <Textarea id="file-notes" name="notes" value={notes} onChange={(e) => setNotes(e.target.value)} maxLength={2000} />
       </Field>
       <FormError state={banner(state)} />
-      <Button type="submit" variant="secondary" size="sm" disabled={pending} aria-busy={pending}>{pending ? "Saving…" : "Add file link"}</Button>
+      <Button type="submit" variant="secondary" size="sm" disabled={pending} aria-busy={pending} data-form-submit="">{pending ? "Saving…" : "Add file link"}</Button>
     </form>
   );
 }
