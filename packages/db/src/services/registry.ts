@@ -2,6 +2,7 @@ import type { ClientChannel, PlatformRole } from "@clinic-genie/contracts";
 import type { Queryable } from "../client";
 import { recordAudit } from "./audit";
 import { recordTimeline } from "./timeline";
+import { PermissionDeniedError } from "./auth";
 
 export interface ClientRow {
   id: string;
@@ -308,6 +309,30 @@ export async function archiveClient(db: Queryable, id: string, actorUserId: stri
   if (!rowCount) return;
   await recordAudit(db, { actorType: "staff", actorUserId, action: "client.archive", targetType: "client", targetId: id, clientId: id, outcome: "success" });
   await recordTimeline(db, { clientId: id, eventType: "client_archived", title: "Client archived", relatedType: null, relatedId: null, actorUserId, dedupeKey: `client_archived:${id}:${Date.now()}` });
+}
+
+/**
+ * Deletes a client for good (D84): admin only, confirmed by typing the client's exact name. The client and every record
+ * tied to it disappear from every staff view (RLS, migration 0055); nothing is erased, so the append-only history
+ * stays for the audit trail. Its websites are removed first. Refused while an analytics connection is still live,
+ * because the worker would keep syncing it.
+ */
+export async function deleteClient(db: Queryable, input: { clientId: string; confirmName: string; actorUserId: string }): Promise<void> {
+  const role = (await db.query<{ admin: boolean }>("select app_platform_role() = 'admin' as admin")).rows[0];
+  if (!role?.admin) throw new PermissionDeniedError("Only an administrator can delete a client.");
+  const client = (await db.query<{ name: string }>("select name from clients where id = $1 for update", [input.clientId])).rows[0];
+  if (!client) throw new RegistryRuleError("That client is not available. It may already be deleted.");
+  if (input.confirmName.trim() !== client.name.trim()) throw new RegistryRuleError(`Type the client's name exactly as shown: ${client.name}`, "confirmName");
+  const live = await db.query(
+    "select 1 from analytics_connections where client_id = $1 and disconnected_at is null and status <> 'disconnected' limit 1",
+    [input.clientId],
+  );
+  if (live.rowCount) throw new RegistryRuleError("This client still has an analytics connection. Disconnect it in SEO → Website Connections, then delete the client.");
+  // Everything the staff role writes must happen before the client is hidden: afterwards RLS hides its rows.
+  await db.query("update websites set status = 'archived', archived_at = coalesce(archived_at, now()) where client_id = $1 and status <> 'archived'", [input.clientId]);
+  await recordAudit(db, { actorType: "staff", actorUserId: input.actorUserId, action: "client.delete", targetType: "client", targetId: input.clientId, clientId: input.clientId, outcome: "success" });
+  const done = (await db.query<{ ok: boolean }>("select app_mark_client_deleted($1) as ok", [input.clientId])).rows[0];
+  if (!done?.ok) throw new RegistryRuleError("Client was not deleted. You may not have permission to change it.");
 }
 
 export async function restoreClient(db: Queryable, id: string, actorUserId: string): Promise<void> {

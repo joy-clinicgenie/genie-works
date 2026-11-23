@@ -1,6 +1,6 @@
 # Build status
 
-Updated: 23 November 2026, Asia/Singapore. Decisions run through D83.
+Updated: 23 November 2026, Asia/Singapore. Decisions run through D84.
 
 Analytics Phase 1 (environment safety, D54) is implemented in the working tree and awaits review: see `docs/audits/ANALYTICS_PHASE_1_IMPLEMENTATION.md`. Nothing is committed or deployed. Synchronisation repairs (Phase 2 onward) have not started.
 

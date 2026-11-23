@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import {
-  RegistryRuleError, archiveClient, archiveClientFileLink, bindWixEnquiryForm, canManageAssignments, canManageRegistry, canManageUsers, clearWixEnquiryForm, createAccountReference, createClient, createClientContact, createClientFileLink, createWebsite, grantMembership, listAccountReferences, listWebsites, restoreClient,
+  RegistryRuleError, archiveClient, archiveClientFileLink, deleteClient, isAdmin, bindWixEnquiryForm, canManageAssignments, canManageRegistry, canManageUsers, clearWixEnquiryForm, createAccountReference, createClient, createClientContact, createClientFileLink, createWebsite, grantMembership, listAccountReferences, listWebsites, restoreClient,
   revokeMembership, setWebsiteEnquiryKey, setWebsiteRemoved, updateAccountReference, updateClient, updateClientContact, updateWebsite, type ClientChannel, type WebsiteRow,
 } from "@clinic-genie/db";
 import { CLIENT_CHANNELS } from "@clinic-genie/contracts";
@@ -101,6 +101,19 @@ export async function archiveClientAction(form: FormData): Promise<void> {
   await staffTx(access, (db) => (restore ? restoreClient(db, id, access.user.id) : archiveClient(db, id, access.user.id)));
   revalidatePath("/clients", "layout");
   redirect(`/clients/${id}`);
+}
+
+/** D84: admin only; the service checks the typed name and refuses while analytics is still connected. */
+export async function deleteClientAction(_prev: ActionState, form: FormData): Promise<ActionState> {
+  const access = await requireAccess();
+  if (!isAdmin(access)) return { ok: false, error: "Only an administrator can delete a client." };
+  try {
+    await staffTx(access, (db) => deleteClient(db, { clientId: str(form, "clientId"), confirmName: str(form, "confirmName"), actorUserId: access.user.id }));
+  } catch (err) {
+    return toActionError(err);
+  }
+  revalidatePath("/", "layout");
+  redirect("/clients");
 }
 
 export async function saveWebsiteAction(_prev: ActionState, form: FormData): Promise<ActionState> {

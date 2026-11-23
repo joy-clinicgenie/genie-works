@@ -1,0 +1,453 @@
+- generic [active] [ref=e1]:
+  - generic [ref=e2]:
+    - link "Skip to main content" [ref=e3] [cursor=pointer]:
+      - /url: "#main"
+    - complementary "Main navigation" [ref=e4]:
+      - img "Genie Works" [ref=e6]
+      - navigation "Main" [ref=e8]:
+        - generic [ref=e10]:
+          - paragraph [ref=e11]: Main Menu
+          - list [ref=e12]:
+            - listitem [ref=e13]:
+              - link "Dashboard" [ref=e14] [cursor=pointer]:
+                - /url: /
+            - listitem [ref=e22]:
+              - link "Clients" [ref=e23] [cursor=pointer]:
+                - /url: /clients
+        - generic [ref=e32]:
+          - paragraph [ref=e33]: Work
+          - list [ref=e34]:
+            - listitem [ref=e35]:
+              - link "SEO performance" [ref=e36] [cursor=pointer]:
+                - /url: /seo
+            - listitem [ref=e42]:
+              - link "Website analytics" [ref=e43] [cursor=pointer]:
+                - /url: /analytics
+            - listitem [ref=e49]:
+              - link "Leads and forms" [ref=e50] [cursor=pointer]:
+                - /url: /enquiries
+            - listitem [ref=e56]:
+              - link "Blog" [ref=e57] [cursor=pointer]:
+                - /url: /blog
+            - listitem [ref=e63]:
+              - link "Reports" [ref=e64] [cursor=pointer]:
+                - /url: /reports
+        - generic [ref=e71]:
+          - paragraph [ref=e72]: Others
+          - list [ref=e73]:
+            - listitem [ref=e74]:
+              - link "Settings" [ref=e75] [cursor=pointer]:
+                - /url: /settings
+            - listitem [ref=e81]:
+              - link "Admin" [ref=e82] [cursor=pointer]:
+                - /url: /admin
+      - generic [ref=e88]:
+        - generic [aria-hidden] [ref=e89]: DA
+        - generic [ref=e90]:
+          - generic [ref=e91]: Demo Admin
+          - generic [ref=e92]: Admin
+        - button "Sign out" [ref=e94]:
+          - generic [ref=e98]: Log out
+    - generic [ref=e99]:
+      - banner [ref=e100]:
+        - generic [ref=e101]:
+          - paragraph [ref=e102]: Clients
+          - generic [ref=e103]:
+            - generic [ref=e104]:
+              - combobox "Search clients and pages" [ref=e105]
+              - generic: K
+            - generic [ref=e106]:
+              - link "Reports" [ref=e107] [cursor=pointer]:
+                - /url: /reports
+              - button "Add new" [ref=e109]
+              - generic [ref=e112]: development
+      - main [ref=e115]:
+        - generic [ref=e116]:
+          - navigation "Client sections" [ref=e117]:
+            - generic [ref=e118]:
+              - generic [ref=e119]: This client
+              - list [ref=e120]:
+                - listitem [ref=e121]:
+                  - link "Profile" [ref=e122] [cursor=pointer]:
+                    - /url: /clients/152a6328-9912-4c85-9761-81d3a9199d0f#profile
+                - listitem [ref=e124]:
+                  - link "Workspace" [ref=e125] [cursor=pointer]:
+                    - /url: /clients/152a6328-9912-4c85-9761-81d3a9199d0f#workspace
+                - listitem [ref=e127]:
+                  - link "Account references" [ref=e128] [cursor=pointer]:
+                    - /url: /clients/152a6328-9912-4c85-9761-81d3a9199d0f#references
+            - generic [ref=e130]:
+              - generic [ref=e131]: Records
+              - list [ref=e132]:
+                - listitem [ref=e133]:
+                  - link "Approvals" [ref=e134] [cursor=pointer]:
+                    - /url: /clients/152a6328-9912-4c85-9761-81d3a9199d0f/approvals
+                - listitem [ref=e136]:
+                  - link "Reports" [ref=e137] [cursor=pointer]:
+                    - /url: /clients/152a6328-9912-4c85-9761-81d3a9199d0f/reports
+                - listitem [ref=e139]:
+                  - link "Timeline" [ref=e140] [cursor=pointer]:
+                    - /url: /clients/152a6328-9912-4c85-9761-81d3a9199d0f/timeline
+                - listitem [ref=e142]:
+                  - link "Edit profile" [ref=e143] [cursor=pointer]:
+                    - /url: /clients/152a6328-9912-4c85-9761-81d3a9199d0f/profile
+          - generic [ref=e145]:
+            - generic [ref=e146]:
+              - link "Clients" [ref=e148] [cursor=pointer]:
+                - /url: /clients
+              - generic [ref=e149]:
+                - generic [aria-hidden] [ref=e150]: DM
+                - heading "Delete Me Test" [level=1] [ref=e151]
+                - generic [ref=e152]: Active
+                - generic [ref=e154]: Demonstration data
+              - generic [ref=e156]: "Clinic Genie owner: Unassigned"
+            - generic [ref=e158]:
+              - generic [ref=e159]:
+                - generic [ref=e161]:
+                  - heading "Client profile" [level=2] [ref=e162]
+                  - paragraph [ref=e163]: Reference, names, address, general contact details and the staff responsible for operations.
+                - generic [ref=e164]:
+                  - generic [ref=e165]:
+                    - generic [ref=e166]:
+                      - generic [ref=e167]:
+                        - generic [ref=e168]: Client ID
+                        - textbox "Client ID" [ref=e169]
+                        - paragraph [ref=e170]: Unique client reference, for example CG-001.
+                      - generic [ref=e171]:
+                        - generic [ref=e172]: Short code
+                        - textbox "Short code" [ref=e173]
+                        - paragraph [ref=e174]: Clinic abbreviation, for example CFAC.
+                      - generic [ref=e175]:
+                        - generic [ref=e176]: Clinic name *
+                        - textbox "Clinic name" [ref=e177]: Delete Me Test
+                      - generic [ref=e178]:
+                        - generic [ref=e179]: Specialty
+                        - textbox "Specialty" [ref=e180]
+                      - generic [ref=e181]:
+                        - generic [ref=e182]: Identifier
+                        - textbox "Identifier" [ref=e183]: delete-me-test
+                        - paragraph [ref=e184]: Permanent. It does not change.
+                      - generic [ref=e185]:
+                        - generic [ref=e186]: Clinic Genie owner
+                        - combobox "Clinic Genie owner" [ref=e188] [cursor=pointer]:
+                          - option "Unassigned" [selected]
+                          - option "Demo Admin"
+                          - option "Demo Manager"
+                          - option "Demo Read-only"
+                          - option "Demo Reviewer"
+                          - option "Demo Specialist A"
+                          - option "Demo Specialist B"
+                          - option "Marketing Specialist"
+                          - option "V1-V01 Checker"
+                        - paragraph [ref=e189]: The staff member answerable for this client.
+                      - generic [ref=e190]:
+                        - generic [ref=e191]: Registered business name
+                        - textbox "Registered business name" [ref=e192]
+                      - generic [ref=e193]:
+                        - generic [ref=e194]: Public clinic name
+                        - textbox "Public clinic name" [ref=e195]
+                      - generic [ref=e196]:
+                        - generic [ref=e197]: General email
+                        - textbox "General email" [ref=e198]
+                      - generic [ref=e199]:
+                        - generic [ref=e200]: General telephone
+                        - textbox "General telephone" [ref=e201]
+                    - generic [ref=e202]:
+                      - generic [ref=e203]: Clinic address
+                      - textbox "Clinic address" [ref=e204]
+                    - group "Operational contacts" [ref=e205]:
+                      - paragraph [ref=e207]: Staff responsible for each kind of operational issue. These are not patient contacts.
+                      - generic [ref=e208]:
+                        - generic [ref=e209]:
+                          - generic [ref=e210]: Enquiries
+                          - combobox "Enquiries" [ref=e212] [cursor=pointer]:
+                            - option "Unassigned" [selected]
+                            - option "Demo Admin"
+                            - option "Demo Manager"
+                            - option "Demo Read-only"
+                            - option "Demo Reviewer"
+                            - option "Demo Specialist A"
+                            - option "Demo Specialist B"
+                            - option "Marketing Specialist"
+                            - option "V1-V01 Checker"
+                        - generic [ref=e213]:
+                          - generic [ref=e214]: Notification issues
+                          - combobox "Notification issues" [ref=e216] [cursor=pointer]:
+                            - option "Unassigned" [selected]
+                            - option "Demo Admin"
+                            - option "Demo Manager"
+                            - option "Demo Read-only"
+                            - option "Demo Reviewer"
+                            - option "Demo Specialist A"
+                            - option "Demo Specialist B"
+                            - option "Marketing Specialist"
+                            - option "V1-V01 Checker"
+                        - generic [ref=e217]:
+                          - generic [ref=e218]: Account administration
+                          - combobox "Account administration" [ref=e220] [cursor=pointer]:
+                            - option "Unassigned" [selected]
+                            - option "Demo Admin"
+                            - option "Demo Manager"
+                            - option "Demo Read-only"
+                            - option "Demo Reviewer"
+                            - option "Demo Specialist A"
+                            - option "Demo Specialist B"
+                            - option "Marketing Specialist"
+                            - option "V1-V01 Checker"
+                    - generic [ref=e221]:
+                      - generic [ref=e222]: Services
+                      - textbox "Services" [ref=e223]
+                      - paragraph [ref=e224]: A plain description of what the clinic offers. Channel tags below are not the service list.
+                    - group "Active channels" [ref=e225]:
+                      - generic [ref=e227]:
+                        - generic [ref=e228] [cursor=pointer]:
+                          - checkbox "Website" [checked] [ref=e229]
+                          - text: Website
+                        - generic [ref=e230] [cursor=pointer]:
+                          - checkbox "Seo" [ref=e231]
+                          - text: Seo
+                        - generic [ref=e232] [cursor=pointer]:
+                          - checkbox "Google ads" [ref=e233]
+                          - text: Google ads
+                        - generic [ref=e234] [cursor=pointer]:
+                          - checkbox "Social" [ref=e235]
+                          - text: Social
+                        - generic [ref=e236] [cursor=pointer]:
+                          - checkbox "Email" [ref=e237]
+                          - text: Email
+                        - generic [ref=e238] [cursor=pointer]:
+                          - checkbox "Other" [ref=e239]
+                          - text: Other
+                    - generic [ref=e240]:
+                      - generic [ref=e241]: Notes
+                      - textbox "Notes" [ref=e242]
+                  - generic [ref=e243]:
+                    - paragraph [ref=e244]: Deactivating hides the client from the active directory. Every task, decision and record is kept.
+                    - button "Deactivate client" [ref=e245] [cursor=pointer]
+              - generic [ref=e247]:
+                - generic [ref=e248]:
+                  - generic [ref=e250]:
+                    - heading "Client contacts" [level=2] [ref=e251]
+                    - paragraph [ref=e252]: People at the clinic. One contact can be marked primary.
+                  - generic [ref=e253]:
+                    - paragraph [ref=e254]: No contacts recorded yet.
+                    - generic [ref=e255]:
+                      - heading "Add a contact" [level=3] [ref=e256]
+                      - generic [ref=e257]:
+                        - generic [ref=e258]:
+                          - generic [ref=e259]:
+                            - generic [ref=e260]: Contact name *
+                            - textbox "Contact name" [ref=e261]
+                          - generic [ref=e262]:
+                            - generic [ref=e263]: Designation
+                            - textbox "Designation" [ref=e264]
+                          - generic [ref=e265]:
+                            - generic [ref=e266]: Work email
+                            - textbox "Work email" [ref=e267]
+                          - generic [ref=e268]:
+                            - generic [ref=e269]: Work telephone
+                            - textbox "Work telephone" [ref=e270]
+                        - generic [ref=e271] [cursor=pointer]:
+                          - checkbox "Primary contact" [ref=e272]
+                          - text: Primary contact
+                - generic [ref=e273]:
+                  - generic [ref=e275]:
+                    - heading "Assigned team" [level=2] [ref=e276]
+                    - paragraph [ref=e277]: Staff authorised to access this client. Admins and managers can already see every client.
+                  - generic [ref=e278]:
+                    - list [ref=e279]:
+                      - listitem [ref=e280]: No staff assigned.
+                    - generic [ref=e282]:
+                      - generic [ref=e283]: Assign staff
+                      - combobox "Assign staff" [ref=e285] [cursor=pointer]:
+                        - option "Choose staff" [disabled] [selected]
+                        - option "Demo Admin (Admin)"
+                        - option "Demo Manager (Manager)"
+                        - option "Demo Read-only (Read only)"
+                        - option "Demo Reviewer (Reviewer)"
+                        - option "Demo Specialist A (Specialist)"
+                        - option "Demo Specialist B (Specialist)"
+                        - option "Marketing Specialist (Admin)"
+                        - option "V1-V01 Checker (Specialist)"
+                    - paragraph [ref=e286]: An assignment covers every website of this client.
+              - generic [ref=e287]:
+                - generic [ref=e289]:
+                  - heading "Files" [level=2] [ref=e290]
+                  - paragraph [ref=e291]: Titled links only. Genie Works does not store the file itself.
+                - generic [ref=e292]:
+                  - list [ref=e293]:
+                    - listitem [ref=e294]: No file links recorded.
+                  - generic [ref=e295]:
+                    - paragraph [ref=e296]: Save a titled https link. Genie Works controls who can see the link. The site that hosts the file controls who can open it.
+                    - generic [ref=e297]:
+                      - generic [ref=e298]: Title
+                      - textbox "Title" [ref=e299]
+                    - generic [ref=e300]:
+                      - generic [ref=e301]: https link
+                      - textbox "https link" [ref=e302]:
+                        - /placeholder: https://
+                    - generic [ref=e303]:
+                      - generic [ref=e304]: Notes
+                      - textbox "Notes" [ref=e305]
+              - generic [ref=e306]:
+                - generic [ref=e308]:
+                  - heading "Booking" [level=2] [ref=e309]
+                  - paragraph [ref=e310]: An external booking destination, or the appointment enquiry form when none is saved. The fallback is the primary contact.
+                - generic [ref=e311]:
+                  - paragraph [ref=e312]: Appointment enquiry form. No external booking destination is saved.
+                  - paragraph [ref=e313]: No fallback contact is recorded.
+                  - paragraph [ref=e314]: Add or change a booking destination in Account references below.
+              - generic [ref=e315]:
+                - generic [ref=e317]:
+                  - heading "Account references" [level=2] [ref=e318]
+                  - paragraph [ref=e319]: A reference is a saved link, an identifier and the staff member who owns it. Credentials stay in the vault.
+                - generic [ref=e320]:
+                  - paragraph [ref=e321]: No account references recorded yet.
+                  - generic [ref=e322]:
+                    - heading "Add a reference" [level=3] [ref=e323]
+                    - generic [ref=e324]:
+                      - generic [ref=e325]:
+                        - generic [ref=e326]:
+                          - generic [ref=e327]: Kind
+                          - combobox "Kind" [ref=e329] [cursor=pointer]:
+                            - option "Ga4"
+                            - option "Search console"
+                            - option "Google ads"
+                            - option "Tag manager"
+                            - option "Google business"
+                            - option "Wix"
+                            - option "Hosting"
+                            - option "Domain"
+                            - option "Booking"
+                            - option "Other" [selected]
+                        - generic [ref=e330]:
+                          - generic [ref=e331]: Label *
+                          - textbox "Label" [ref=e332]
+                        - generic [ref=e333]:
+                          - generic [ref=e334]: Identifier
+                          - textbox "Identifier" [ref=e335]
+                          - paragraph [ref=e336]: Account or property ID as given by the client. Never a password.
+                        - generic [ref=e337]:
+                          - generic [ref=e338]: Link
+                          - textbox "Link" [ref=e339]:
+                            - /placeholder: https://
+                        - generic [ref=e340]:
+                          - generic [ref=e341]: Vault reference
+                          - textbox "Vault reference" [ref=e342]
+                          - paragraph [ref=e343]: Where the credential lives, for example vault://clinic-genie/client/ga4. The secret itself is not stored here.
+                        - generic [ref=e344]:
+                          - generic [ref=e345]: Account owner
+                          - combobox "Account owner" [ref=e347] [cursor=pointer]:
+                            - option "Unassigned" [selected]
+                            - option "Demo Admin"
+                            - option "Demo Manager"
+                            - option "Demo Read-only"
+                            - option "Demo Reviewer"
+                            - option "Demo Specialist A"
+                            - option "Demo Specialist B"
+                            - option "Marketing Specialist"
+                            - option "V1-V01 Checker"
+                          - paragraph [ref=e348]: Staff member who looks after this account.
+                      - generic [ref=e349]:
+                        - generic [ref=e350]: Notes
+                        - textbox "Notes" [ref=e351]
+              - generic [ref=e352]:
+                - heading "Websites" [level=2] [ref=e355]
+                - generic [ref=e356]:
+                  - generic [ref=e357]:
+                    - generic [ref=e358]:
+                      - generic [ref=e359]:
+                        - generic [ref=e360]:
+                          - generic [ref=e361]: Name *
+                          - textbox "Name" [ref=e362]: Delete Me site
+                        - generic [ref=e363]:
+                          - generic [ref=e364]: URL
+                          - textbox "URL" [ref=e365]:
+                            - /placeholder: https://
+                            - text: https://delete-me.example.invalid
+                        - generic [ref=e366]:
+                          - generic [ref=e367]: Platform
+                          - textbox "Platform" [ref=e368]: Next.js
+                          - paragraph [ref=e369]: For example Wix, WordPress, Next.js on Vercel.
+                        - generic [ref=e370]:
+                          - generic [ref=e371]: Environment
+                          - combobox "Environment" [ref=e373] [cursor=pointer]:
+                            - option "Production" [selected]
+                            - option "Staging"
+                            - option "Development"
+                        - generic [ref=e374]:
+                          - generic [ref=e375]: Status
+                          - combobox "Status" [ref=e377] [cursor=pointer]:
+                            - option "Active" [selected]
+                            - option "Archived"
+                      - generic [ref=e378]:
+                        - generic [ref=e379]: Notes
+                        - textbox "Notes" [ref=e380]
+                      - generic [ref=e381]:
+                        - generic [ref=e382]: Enquiry key
+                        - textbox "Enquiry key" [ref=e383]
+                        - paragraph [ref=e384]: Maps this website to its own enquiry rows. It starts with delete-me-test. The message stays on the website.
+                      - group "Article requirements" [ref=e385]:
+                        - paragraph [ref=e387]: Unchecked fields can be left empty when an article is submitted for review.
+                        - generic [ref=e388] [cursor=pointer]:
+                          - checkbox "Require an author" [ref=e389]
+                          - text: Require an author
+                        - generic [ref=e390] [cursor=pointer]:
+                          - checkbox "Require a category" [ref=e391]
+                          - text: Require a category
+                        - generic [ref=e392] [cursor=pointer]:
+                          - checkbox "Require a featured image and alt text" [ref=e393]
+                          - text: Require a featured image and alt text
+                        - generic [ref=e394] [cursor=pointer]:
+                          - checkbox "Require an SEO title and description" [ref=e395]
+                          - text: Require an SEO title and description
+                        - generic [ref=e396] [cursor=pointer]:
+                          - checkbox "Require a sharing title and description" [ref=e397]
+                          - text: Require a sharing title and description
+                    - button "Remove website" [ref=e399] [cursor=pointer]
+                  - generic [ref=e401]:
+                    - heading "Add a website" [level=3] [ref=e402]
+                    - generic [ref=e403]:
+                      - generic [ref=e404]:
+                        - generic [ref=e405]:
+                          - generic [ref=e406]: Name *
+                          - textbox "Name" [ref=e407]
+                        - generic [ref=e408]:
+                          - generic [ref=e409]: URL
+                          - textbox "URL" [ref=e410]:
+                            - /placeholder: https://
+                        - generic [ref=e411]:
+                          - generic [ref=e412]: Platform
+                          - textbox "Platform" [ref=e413]
+                          - paragraph [ref=e414]: For example Wix, WordPress, Next.js on Vercel.
+                        - generic [ref=e415]:
+                          - generic [ref=e416]: Environment
+                          - combobox "Environment" [ref=e418] [cursor=pointer]:
+                            - option "Production" [selected]
+                            - option "Staging"
+                            - option "Development"
+                      - generic [ref=e419]:
+                        - generic [ref=e420]: Notes
+                        - textbox "Notes" [ref=e421]
+                      - paragraph [ref=e422]: An enquiry key is assigned from delete-me-test and the environment. It maps the website to its own enquiry rows and does not copy the message.
+              - generic [ref=e423]:
+                - generic [ref=e425]:
+                  - heading "Record history" [level=2] [ref=e426]
+                  - paragraph [ref=e427]: Who created or updated this client record, and when. Contact details are not copied into the history.
+                - list [ref=e428]:
+                  - listitem [ref=e429]: No history recorded yet.
+              - generic [ref=e430]:
+                - generic [ref=e432]:
+                  - heading "Delete client" [level=2] [ref=e433]
+                  - paragraph [ref=e434]: Administrators only. This acts straight away; it is not part of Save.
+                - generic [ref=e436]:
+                  - paragraph [ref=e437]:
+                    - text: Deleting removes
+                    - strong [ref=e438]: Delete Me Test
+                    - text: and everything linked to it (websites, tasks, reports, SEO and history) from every list, for everyone. It cannot be undone here. The audit trail is kept.
+                  - generic [ref=e439]:
+                    - generic [ref=e440]: Type Delete Me Test to confirm
+                    - textbox "Type Delete Me Test to confirm" [ref=e441]
+                  - button "Delete client permanently" [disabled] [ref=e442]
+    - button "Hide menu labels" [pressed] [ref=e443]
+  - button "Open Next.js Dev Tools" [ref=e451] [cursor=pointer]

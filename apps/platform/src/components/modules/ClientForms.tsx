@@ -2,7 +2,7 @@
 
 import { useActionState, useState } from "react";
 import { ACCOUNT_REFERENCE_KINDS, CLIENT_CHANNELS } from "@clinic-genie/contracts";
-import { createClientAction, removeWebsiteAction, saveContactAction, saveFileLinkAction, saveReferenceAction, saveWebsiteAction, saveWixEnquiryBindingAction, updateClientAction } from "@/app/actions/clients";
+import { createClientAction, deleteClientAction, removeWebsiteAction, saveContactAction, saveFileLinkAction, saveReferenceAction, saveWebsiteAction, saveWixEnquiryBindingAction, updateClientAction } from "@/app/actions/clients";
 import type { ActionState } from "@/lib/actions";
 import { Button } from "@/components/ui/Button";
 import { Checkbox, Field, FormError, Input, Select, Textarea } from "@/components/ui/Field";
@@ -271,6 +271,33 @@ export function RemoveWebsiteForm({ clientId, websiteId, name, restore = false }
         {pending ? (restore ? "Restoring…" : "Removing…") : <StagedLabel idle={restore ? "Restore website" : "Remove website"} />}
       </Button>
       <FormError state={state} />
+    </form>
+  );
+}
+
+/**
+ * D84: delete a client for good. Admin only, and not staged on the page Save (data-direct): it acts at once, so the
+ * admin types the client's exact name first. The button stays disabled until the name matches.
+ */
+export function DeleteClientForm({ clientId, name }: { clientId: string; name: string }) {
+  const [state, action, pending] = useActionState(deleteClientAction, null);
+  const [typed, setTyped] = useState("");
+  const fieldError = state && !state.ok && state.field === "confirmName" ? state.error : null;
+  const matches = typed.trim() === name.trim();
+  return (
+    <form action={action} className="space-y-3" data-delete-client>
+      <input type="hidden" name="clientId" value={clientId} />
+      <p className="text-sm text-muted">
+        Deleting removes <strong className="text-ink">{name}</strong> and everything linked to it (websites, tasks, reports, SEO and history) from every
+        list, for everyone. It cannot be undone here. The audit trail is kept.
+      </p>
+      <Field label={`Type ${name} to confirm`} htmlFor="delete-confirm-name" error={fieldError}>
+        <Input id="delete-confirm-name" name="confirmName" value={typed} onChange={(e) => setTyped(e.target.value)} autoComplete="off" spellCheck={false} {...describedBy("delete-confirm-name", fieldError)} />
+      </Field>
+      <Button type="submit" variant="danger" size="sm" data-direct disabled={!matches || pending} aria-busy={pending}>
+        {pending ? "Deleting…" : "Delete client permanently"}
+      </Button>
+      <FormError state={banner(state)} />
     </form>
   );
 }

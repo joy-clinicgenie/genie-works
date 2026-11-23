@@ -2,7 +2,7 @@ import { canManageAssignments, canManageRegistry, canManageUsers, formatDateTime
 import { requireClientAccess } from "@/lib/session";
 import { staffTx } from "@/lib/db";
 import { Card, CardHeader } from "@/components/ui/Card";
-import { ClientForm, ContactForm, FileLinkForm, ReferenceForm, RemoveWebsiteForm, StagedLabel, WebsiteForm } from "@/components/modules/ClientForms";
+import { ClientForm, ContactForm, DeleteClientForm, FileLinkForm, ReferenceForm, RemoveWebsiteForm, StagedLabel, WebsiteForm } from "@/components/modules/ClientForms";
 import { ProfileEditSession } from "@/components/modules/ProfileEditSession";
 import { archiveClientAction, archiveFileLinkAction, membershipAction } from "@/app/actions/clients";
 import { Button } from "@/components/ui/Button";
@@ -16,6 +16,7 @@ const HISTORY: Record<string, string> = {
   "client.create": "Created the client",
   "client.update": "Updated client details",
   "client.archive": "Deactivated the client",
+  "client.delete": "Deleted the client",
   "client.restore": "Restored the client",
   "client_contact.create": "Added a client contact",
   "client_contact.update": "Updated a client contact",
@@ -264,6 +265,13 @@ export default async function ClientProfilePage({ params }: { params: Promise<{ 
           ))}
         </ol>
       </Card>
+
+      {admin && (
+        <Card>
+          <CardHeader title="Delete client" description="Administrators only. This acts straight away; it is not part of Save." />
+          <div className="px-5 pb-5"><DeleteClientForm clientId={id} name={client.name} /></div>
+        </Card>
+      )}
     </div>
     </ProfileEditSession>
   );
