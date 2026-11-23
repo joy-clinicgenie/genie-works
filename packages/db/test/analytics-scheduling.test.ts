@@ -58,6 +58,9 @@ async function clearQueue(db: Queryable): Promise<void> {
   await db.query("update analytics_jobs set state = 'cancelled', lease_owner = null, lease_until = null where state in ('queued', 'leased')");
 }
 
+// Version 2 plan per connection: 26 GA4 jobs (with the D56 previous windows), 13 Search Console and 1 Wix.
+const GA4_JOBS = 26;
+const SITE_JOBS = GA4_JOBS + 13 + 1;
 const NOW = new Date("2026-11-12T04:00:00.000Z"); // 12:00 on 12 Nov in Singapore.
 
 async function jobCounts(db: Queryable, connectionIds: string[]): Promise<Record<string, number>> {
@@ -73,11 +76,11 @@ describe("Phase 2.1 planning (no database)", () => {
   it("asks each provider for fewer requests than version 1, for the same reporting windows", () => {
     const v2 = { ga4: planDueJobs("ga4", NOW, "Asia/Singapore").length, gsc: planDueJobs("gsc", NOW, null).length, wix: planDueJobs("wix", NOW, "Asia/Singapore").length };
     const v1 = { ga4: dueJobs("ga4", NOW, "Asia/Singapore").length, gsc: dueJobs("gsc", NOW, null).length, wix: dueJobs("wix", NOW, "Asia/Singapore").length };
-    expect(v1).toEqual({ ga4: 31, gsc: 18, wix: 1 });
-    expect(v2).toEqual({ ga4: 20, gsc: 13, wix: 1 });
+    expect(v1).toEqual({ ga4: 40, gsc: 18, wix: 1 });
+    expect(v2).toEqual({ ga4: GA4_JOBS, gsc: 13, wix: 1 });
     // 1 GA4 + 10 Search Console + 10 Wix connections, as in the diagnostic.
-    expect(v1.ga4 + 10 * v1.gsc + 10 * v1.wix).toBe(221);
-    expect(v2.ga4 + 10 * v2.gsc + 10 * v2.wix).toBe(160);
+    expect(v1.ga4 + 10 * v1.gsc + 10 * v1.wix).toBe(230);
+    expect(v2.ga4 + 10 * v2.gsc + 10 * v2.wix).toBe(166);
   });
 
   for (const [label, instant] of [["Singapore morning", NOW], ["Pacific evening", new Date("2026-11-12T23:30:00.000Z")], ["month boundary", new Date("2026-12-31T20:00:00.000Z")]] as const) {
@@ -168,14 +171,14 @@ describe("Phase 2.1 synchronisation (local database, fictional provider)", () =>
       const ga4 = await connect(db, { clientId, websiteId, provider: "ga4", property: "700100" }, admin.id);
       const gsc = await connect(db, { clientId, websiteId, provider: "gsc", property: "sc-domain:fixture.example.invalid" }, admin.id);
       const wix = await connect(db, { clientId, websiteId, provider: "wix", property: "wix-fixture-site" }, admin.id);
-      expect(await enqueueDue(db, NOW, websiteId)).toBe(34);
+      expect(await enqueueDue(db, NOW, websiteId)).toBe(SITE_JOBS);
       const provider = fictionalProviders();
       const results = await drain(db, NOW, provider.fetch);
-      expect(results).toHaveLength(34);
+      expect(results).toHaveLength(SITE_JOBS);
       expect(new Set(results)).toEqual(new Set(["succeeded"]));
-      expect(provider.calls).toHaveLength(34);
-      expect(provider.calls.filter((c) => c.provider === "ga4")).toHaveLength(20);
-      expect(await jobCounts(db, [ga4.id, gsc.id, wix.id])).toEqual({ succeeded: 34 });
+      expect(provider.calls).toHaveLength(SITE_JOBS);
+      expect(provider.calls.filter((c) => c.provider === "ga4")).toHaveLength(GA4_JOBS);
+      expect(await jobCounts(db, [ga4.id, gsc.id, wix.id])).toEqual({ succeeded: SITE_JOBS });
 
       // Derived GA4 reports are ordinary exact-window reports, equal to the sum of the days.
       const today = "2026-11-12";
@@ -286,10 +289,10 @@ describe("Phase 2.1 synchronisation (local database, fictional provider)", () =>
       await clearQueue(db);
       const { clientId, websiteId } = await provisionClinic(db, admin.id);
       const connection = await connect(db, { clientId, websiteId, provider: "ga4", property: "700103" }, admin.id);
-      expect(await enqueueDue(db, NOW, websiteId)).toBe(20);
+      expect(await enqueueDue(db, NOW, websiteId)).toBe(GA4_JOBS);
       expect(await enqueueDue(db, NOW, websiteId)).toBe(0);
       expect(await enqueueDue(db, new Date(NOW.getTime() + 3_600_000), websiteId)).toBe(0);
-      expect((await jobCounts(db, [connection.id])).queued).toBe(20);
+      expect((await jobCounts(db, [connection.id])).queued).toBe(GA4_JOBS);
       const job = await db.query<Record<string, string>>(
         "select client_id, website_id, connection_id, template_key, query_hash, start_date::text, end_date::text from analytics_jobs where connection_id = $1 limit 1", [connection.id]);
       const row = job.rows[0]!;
@@ -328,7 +331,7 @@ describe("Phase 2.1 synchronisation (local database, fictional provider)", () =>
         order.push({ connection: job.connection_id, priority: rows[0]!.priority });
         await db.query("update analytics_jobs set state = 'succeeded', lease_owner = null, lease_until = null where id = $1", [job.id]);
       }
-      expect(order).toHaveLength(13 * 3 + 20);
+      expect(order).toHaveLength(13 * 3 + GA4_JOBS);
       // The first four leases go to four different connections.
       expect(new Set(order.slice(0, 4).map((o) => o.connection))).toEqual(new Set(connections.map((c) => c.id)));
       // Priority never goes backwards: all essentials precede all extras, across providers.
@@ -351,11 +354,11 @@ describe("Phase 2.1 synchronisation (local database, fictional provider)", () =>
         await enqueueDue(db, instant, v2.websiteId, { planner: "v2" });
         await enqueueDue(db, instant, v2.stagingId, { planner: "v1" });
         const queued = (await jobCounts(db, [v2Connection.id])).queued;
-        expect(queued).toBeLessThanOrEqual(20);
+        expect(queued).toBeLessThanOrEqual(GA4_JOBS);
       }
       const v2Counts = await jobCounts(db, [v2Connection.id]);
       const v1Counts = await jobCounts(db, [v1Connection.id]);
-      expect(v2Counts.queued).toBe(20);
+      expect(v2Counts.queued).toBe(GA4_JOBS);
       expect(v2Counts.cancelled).toBeGreaterThanOrEqual(6 * 17); // older windows retired, not deleted
       expect(v1Counts.queued).toBeGreaterThan(100);
     });
@@ -375,13 +378,13 @@ describe("Phase 2.1 synchronisation (local database, fictional provider)", () =>
         await enqueueDue(db, instant, websiteId);
         const results = await drain(db, instant, provider.fetch);
         expect(results.filter((r) => r !== "succeeded"), `day ${day}`).toEqual([]);
-        expect(results).toHaveLength(34);
+        expect(results).toHaveLength(SITE_JOBS);
         const counts = await jobCounts(db, [ga4.id, gsc.id, wix.id]);
         expect(counts.queued ?? 0).toBe(0);
         expect(counts.leased ?? 0).toBe(0);
         expect(counts.failed ?? 0).toBe(0);
       }
-      expect(provider.calls).toHaveLength(7 * 34);
+      expect(provider.calls).toHaveLength(7 * SITE_JOBS);
       // Day 0's 30-day window is still published after six later days.
       const day0Yesterday = "2026-11-11";
       const old = await publishedReport(db, { clientId, websiteId, templateKey: "ga4.acquisition", start: addDays(day0Yesterday, -29), end: day0Yesterday });
@@ -547,7 +550,7 @@ describe("Phase 2.1 synchronisation (local database, fictional provider)", () =>
       await enqueueDue(db, NOW, a.websiteId);
       await enqueueDue(db, NOW, b.websiteId);
       const results = await drain(db, NOW, fictionalProviders().fetch);
-      expect(results).toHaveLength(40);
+      expect(results).toHaveLength(2 * GA4_JOBS);
       const crossed = await db.query(
         `select 1 from analytics_report_partitions where (connection_id = $1 and client_id <> $2) or (connection_id = $3 and client_id <> $4)`,
         [ga.id, a.clientId, gb.id, b.clientId]);

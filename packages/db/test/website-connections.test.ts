@@ -167,8 +167,12 @@ describe("SEO website connections (SEO-08.1)", () => {
       const wixOk: FetchLike = async (url) => { wixCalls.push(url); return jsonResponse(200, { access_token: "wix", expires_in: 3600 }); };
       expect(await probeConnection(wixTarget, { ...deps, fetch: wixOk })).toBe("verified");
       expect(wixCalls).toEqual(["https://www.wixapis.com/oauth2/token"]);
-      const wixRevoked: FetchLike = async () => jsonResponse(401, {});
-      expect(await probeConnection(wixTarget, { ...deps, fetch: wixRevoked })).toBe("reconnect_required");
+      // Wix answers 401 both for wrong app credentials and for a removed app (recovery C1), so the check reports a
+      // rejection and leaves the status alone instead of asking for a reconnect.
+      const wixRefused: FetchLike = async () => jsonResponse(401, {});
+      expect(await probeConnection(wixTarget, { ...deps, fetch: wixRefused })).toBe("provider_rejected");
+      const wixInvalidGrant: FetchLike = async () => jsonResponse(400, { error: "invalid_grant" });
+      expect(await probeConnection(wixTarget, { ...deps, fetch: wixInvalidGrant })).toBe("reconnect_required");
 
       // A connection is only checked through its own website.
       expect(await loadConnectionCheckTarget(db, { websiteId: clinic.websiteId, connectionId: wix.id })).toBeNull();

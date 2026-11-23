@@ -271,9 +271,12 @@ export async function validateGa4(ctx: JobContext, end: string): Promise<Plan> {
   const bounce = metricValue(engagement, "range", "bounceRate");
   // GA4 defines bounce rate as the share of sessions that were not engaged, so the two should add to one.
   comparisons.push(compareNumbers("engagement rate + bounce rate = 1 (30 days)", p30, 1, rate === null || bounce === null ? null : rate + bounce, 0.1, "A definitional check, not a comparison of sources."));
-  // Row volume of the three 90-day bundles. They are the jobs most likely to need more than one page, so the live
-  // row and page counts here are the evidence for whether storing daily facts would save requests.
-  for (const template of ["ga4.bundle.landing", "ga4.bundle.device", "ga4.bundle.country"]) requests.push(await runMeasuredJob(ctx, template, win(end, 90)));
+  // Row volume of the landing, device and country bundles (device is 180 days, for the D56 previous windows). They are
+  // the jobs most likely to need more than one page, so the live row and page counts here are the evidence for whether
+  // storing daily facts would save requests.
+  for (const [template, days] of [["ga4.bundle.landing", 90], ["ga4.bundle.device", 180], ["ga4.bundle.country", 90]] as const) {
+    requests.push(await runMeasuredJob(ctx, template, win(end, days)));
+  }
   return { requests, comparisons, observations: { windows: { p7, p30 }, bundleDays: 180 } };
 }
 

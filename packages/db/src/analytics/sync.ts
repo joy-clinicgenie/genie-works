@@ -1739,6 +1739,9 @@ export type ProviderFailureCode = "reconnect_required" | "not_configured" | "rat
 export function providerFailureCode(error: unknown): ProviderFailureCode {
   if (error instanceof ReconnectError) return "reconnect_required";
   if (error instanceof ConfigurationError) return "not_configured";
+  // The provider refused our OAuth client or the token request (recovery C1). It may be a server credential or an app
+  // removed from the site, and the answer does not say which, so the check leaves the status as it is.
+  if (error instanceof ServerCredentialError) return "provider_rejected";
   if (error instanceof RetryableError) return error.code === "rate_limited" ? "rate_limited" : "provider_unavailable";
   // assertStatus throws this for a 4xx answer. Anything else means the request did not complete.
   if (error instanceof Error && error.message === "provider_rejected") return "provider_rejected";

@@ -46,7 +46,7 @@ export interface BundleSpec {
 export const BUNDLES: Record<string, BundleSpec> = {
   "ga4.bundle.channel": { provider: "ga4", derivesTemplate: "ga4.acquisition", dimension: "sessionDefaultChannelGroup", days: 180, withPrevious: true },
   "ga4.bundle.landing": { provider: "ga4", derivesTemplate: "ga4.landing", dimension: "landingPage", days: 90, withPrevious: false },
-  "ga4.bundle.device": { provider: "ga4", derivesTemplate: "ga4.device", dimension: "deviceCategory", days: 90, withPrevious: false },
+  "ga4.bundle.device": { provider: "ga4", derivesTemplate: "ga4.device", dimension: "deviceCategory", days: 180, withPrevious: true },
   "ga4.bundle.country": { provider: "ga4", derivesTemplate: "ga4.country", dimension: "country", days: 90, withPrevious: false },
   "gsc.bundle.daily": { provider: "gsc", derivesTemplate: "gsc.totals", dimension: null, days: 180, withPrevious: true },
 };
@@ -82,12 +82,16 @@ export function gscLatestDay(now: Date): string {
   return addDays(civilDateIn(GSC_TIME_ZONE, now), -3);
 }
 
-const GA4_RANGE_ONLY = ["ga4.engagement", "ga4.pages", "ga4.visitor_type"] as const;
+/**
+ * Reports that hold user counts, which cannot be added across days (D13), so they stay exact-range requests. Pages and
+ * visitor type are also compared with the previous window on the analytics pages (D56), so they ask for it too.
+ */
+const GA4_RANGE_ONLY: ReadonlyArray<readonly [string, boolean]> = [["ga4.engagement", false], ["ga4.pages", true], ["ga4.visitor_type", true]];
 
 /**
  * What a due run queues for one connection (version 2). Compare `dueJobs` in sync.ts, the
- * version 1 plan: it asked for 31 GA4, 18 Search Console and 1 Wix request. This plan asks for
- * 20, 13 and 1, and the derived reports cover the same exact windows.
+ * version 1 plan: with the D56 comparisons it asks for 40 GA4, 18 Search Console and 1 Wix request. This plan asks for
+ * 26, 13 and 1, and the derived reports cover the same exact windows.
  */
 export function planDueJobs(provider: AnalyticsProvider, now: Date, timezone: string | null): PlannedJob[] {
   if (provider === "wix") {
@@ -112,8 +116,8 @@ export function planDueJobs(provider: AnalyticsProvider, now: Date, timezone: st
     if (spec.provider !== "ga4") continue;
     jobs.push({ templateKey, start: addDays(yesterday, 1 - spec.days), end: yesterday, windowClass: `b${spec.days}`, priority: spec.days === 180 ? 30 : 40 });
   }
-  for (const templateKey of GA4_RANGE_ONLY) {
-    for (const window of presetWindows(yesterday, false)) jobs.push({ templateKey, ...window, priority: 50 });
+  for (const [templateKey, withPrevious] of GA4_RANGE_ONLY) {
+    for (const window of presetWindows(yesterday, withPrevious)) jobs.push({ templateKey, ...window, priority: 50 });
   }
   return jobs;
 }

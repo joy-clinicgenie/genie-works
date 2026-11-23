@@ -21,8 +21,10 @@ describe("analytics tab loading", () => {
     const loader = readFileSync(resolve(root, "apps/platform/src/lib/load-analytics-board.ts"), "utf8");
     expect(loader).not.toContain("export async function loadAnalyticsBoard");
     expect(loader).toContain("export async function loadAnalyticsOverviewForAccess");
-    // One staffTx for the view and the live bundle together.
-    expect(loader.match(/staffTx\(/g) ?? []).toHaveLength(1);
+    // One staffTx for the view and the live bundle together. Other loaders in the file (the breakdown source) open
+    // their own single transaction and are not part of the overview.
+    const overview = loader.slice(loader.indexOf("export async function loadAnalyticsOverviewForAccess")).split(/\nexport /)[0]!;
+    expect(overview.match(/staffTx\(/g) ?? []).toHaveLength(1);
   });
 
   it("serves the British spelling alias from the redirect configuration, not a rendered page", () => {

@@ -22,6 +22,9 @@ afterAll(async () => {
 
 const TOKEN = sealedToken({ accessToken: "fixture-token", expiresAt: "2100-01-01T00:00:00.000Z" });
 const NOW = new Date("2026-11-12T04:00:00.000Z"); // 12:00 on 12 Nov in Singapore.
+// Version 2 plan per connection: 26 GA4 jobs (with the D56 previous windows), 13 Search Console and 1 Wix.
+const GA4_JOBS = 26;
+const SITE_JOBS = GA4_JOBS + 13 + 1;
 const minutes = (n: number) => n * 60_000;
 const hours = (n: number) => n * 3_600_000;
 
@@ -81,10 +84,11 @@ describe("Phase 2.2 incremental planning", () => {
       await clearQueue(db);
       await standardClinic(db, admin.id);
       const h = harness(db, NOW, 100);
-      const first = await h.invoke(null);
-      expect(first).toMatchObject({ enqueued: 34, jobs: 34, succeeded: 34, failed: 0, stopped: "empty" });
+      // One site's plan is exactly the default 40-job limit, so give the run room to see the queue empty.
+      const first = await h.invoke(null, { jobLimit: 100 });
+      expect(first).toMatchObject({ enqueued: SITE_JOBS, jobs: SITE_JOBS, succeeded: SITE_JOBS, failed: 0, stopped: "empty" });
       const requestsAfterFirst = h.state.requests;
-      expect(requestsAfterFirst).toBe(34);
+      expect(requestsAfterFirst).toBe(SITE_JOBS);
       // NOW is 20:00 on 11 Nov in Los Angeles, so the Search Console day rolls over at +240 min; stay inside it.
       for (const offset of [30, 60, 120, 210]) {
         const later = await h.invoke(new Date(NOW.getTime() + minutes(offset)));
@@ -92,9 +96,9 @@ describe("Phase 2.2 incremental planning", () => {
       }
       expect(h.state.requests).toBe(requestsAfterFirst);
       // The next reporting day has new windows, so the work is due again, once.
-      const nextDay = await h.invoke(new Date(NOW.getTime() + hours(24)));
-      expect(nextDay).toMatchObject({ enqueued: 34, jobs: 34, succeeded: 34 });
-      expect(h.state.requests).toBe(68);
+      const nextDay = await h.invoke(new Date(NOW.getTime() + hours(24)), { jobLimit: 100 });
+      expect(nextDay).toMatchObject({ enqueued: SITE_JOBS, jobs: SITE_JOBS, succeeded: SITE_JOBS });
+      expect(h.state.requests).toBe(2 * SITE_JOBS);
     });
   });
 
@@ -165,7 +169,7 @@ describe("Phase 2.2 incremental planning", () => {
       await standardClinic(db, admin.id);
       const h = harness(db, NOW, 10);
       const first = await h.invoke(null);
-      expect(first.jobs).toBe(34);
+      expect(first.jobs).toBe(SITE_JOBS);
       const ga4Window = (call: { provider: string; body: Record<string, unknown> }, start: string, end: string) =>
         call.provider === "ga4" && JSON.stringify((call.body.dateRanges as unknown[])[0]) === JSON.stringify({ startDate: start, endDate: end });
       const gscWindow = (call: { provider: string; body: Record<string, unknown> }, start: string, end: string) =>
@@ -175,10 +179,11 @@ describe("Phase 2.2 incremental planning", () => {
       const gscBefore = h.provider.calls.filter((c) => gscWindow(c, "2026-11-02", "2026-11-08")).length;
       expect(gscBefore).toBe(2); // pages and queries
       const week = await h.invoke(new Date(NOW.getTime() + hours(24 * 7)));
-      // Search Console: the two reappearing windows are not fetched. GA4: its reappearing window is.
-      expect(week.jobs).toBe(34 - 2);
+      // Search Console: the two reappearing windows are not fetched. GA4: its reappearing windows are (traffic range,
+      // pages and visitor type, the reports compared with the previous window).
+      expect(week.jobs).toBe(SITE_JOBS - 2);
       expect(h.provider.calls.filter((c) => gscWindow(c, "2026-11-02", "2026-11-08")).length).toBe(gscBefore);
-      expect(h.provider.calls.filter((c) => ga4Window(c, "2026-11-05", "2026-11-11")).length).toBe(ga4Before + 1);
+      expect(h.provider.calls.filter((c) => ga4Window(c, "2026-11-05", "2026-11-11")).length).toBe(ga4Before + 3);
     });
   });
 
@@ -246,16 +251,16 @@ describe("Phase 2.2 worker invocation", () => {
       expect(first.jobs).toBeGreaterThanOrEqual(14);
       expect(first.jobs).toBeLessThanOrEqual(17);
       expect(first.durationMs).toBeLessThanOrEqual(90_000 - 25_000 + 4000);
-      expect(first.remaining.due).toBe(34 - first.jobs);
+      expect(first.remaining.due).toBe(SITE_JOBS - first.jobs);
       let guard = 0;
       let last = first;
       while (last.remaining.due > 0 && guard++ < 10) last = await h.invoke(new Date(h.state.now + minutes(30)), { budgetMs: 90_000 });
-      expect(h.state.requests).toBe(34);
-      expect(await states(db)).toEqual({ succeeded: 34 });
+      expect(h.state.requests).toBe(SITE_JOBS);
+      expect(await states(db)).toEqual({ succeeded: SITE_JOBS });
       const rows = await db.query<{ stop_reason: string; jobs: number; remaining_due: number; duration_ms: number; state: string }>(
         "select stop_reason, jobs, remaining_due, duration_ms, state from analytics_worker_invocations where owner = 'test' order by started_at");
       expect(rows.rows[0]).toMatchObject({ stop_reason: "deadline", jobs: first.jobs, remaining_due: first.remaining.due, state: "finished" });
-      expect(rows.rows.reduce((sum, row) => sum + row.jobs, 0)).toBe(34);
+      expect(rows.rows.reduce((sum, row) => sum + row.jobs, 0)).toBe(SITE_JOBS);
     });
   });
 
@@ -267,7 +272,7 @@ describe("Phase 2.2 worker invocation", () => {
       const h = harness(db, NOW, 10);
       const limited = await h.invoke(null, { jobLimit: 5 });
       expect(limited).toMatchObject({ stopped: "limit", jobs: 5 });
-      expect(limited.remaining.due).toBe(29);
+      expect(limited.remaining.due).toBe(SITE_JOBS - 5);
     });
   });
 
@@ -286,8 +291,8 @@ describe("Phase 2.2 worker invocation", () => {
       expect(h.state.requests).toBe(0);
       expect(await states(db)).toEqual({});
       // Two hours later the earlier two are older than a budget plus two minutes: they are abandoned and the run proceeds.
-      const proceeded = await h.invoke(new Date(NOW.getTime() + hours(2)), { maxConcurrent: 2 });
-      expect(proceeded).toMatchObject({ stopped: "empty", jobs: 34 });
+      const proceeded = await h.invoke(new Date(NOW.getTime() + hours(2)), { maxConcurrent: 2, jobLimit: 100 });
+      expect(proceeded).toMatchObject({ stopped: "empty", jobs: SITE_JOBS });
       const abandoned = await db.query("select 1 from analytics_worker_invocations where state = 'abandoned' and safe_error_code = 'worker_interrupted'");
       expect(abandoned.rowCount).toBe(2);
     });
@@ -332,7 +337,7 @@ describe("Phase 2.2 worker invocation", () => {
       // The lease runs out (150 s) and the next invocation takes the job again, without anyone touching it by hand.
       expect(await reapExpiredLeases(db, new Date(NOW.getTime() + minutes(10)))).toBe(1);
       const next = await h.invoke(new Date(NOW.getTime() + minutes(40)));
-      expect(next).toMatchObject({ jobs: 34, succeeded: 34 });
+      expect(next).toMatchObject({ jobs: SITE_JOBS, succeeded: SITE_JOBS });
     });
   });
 
@@ -347,13 +352,13 @@ describe("Phase 2.2 worker invocation", () => {
         const h = harness(db, NOW, 10);
         const report = await h.invoke(null);
         expect(h.state.requests).toBe(0);
-        expect(report.notConfigured).toBe(34);
+        expect(report.notConfigured).toBe(SITE_JOBS);
         expect(report.succeeded).toBe(0);
         const jobs = await db.query<{ attempts: number; state: string }>("select attempts, state from analytics_jobs where state not in ('cancelled')");
         expect(jobs.rows.every((row) => row.attempts === 0 && row.state === "queued")).toBe(true);
         // Waiting out a missing setting is not a backlog of due work.
         expect(report.remaining.due).toBe(0);
-        expect(report.remaining.waiting).toBe(34);
+        expect(report.remaining.waiting).toBe(SITE_JOBS);
       } finally {
         process.env.ANALYTICS_TOKEN_KEY = key;
       }
@@ -381,8 +386,8 @@ describe("Phase 2.2 failure isolation", () => {
       const first = await h.invoke(null);
       // Three Search Console properties were tried and failed; the other two were never asked.
       expect(attempted.size).toBe(3);
-      // GA4 and Wix finished everything, unaffected: 20 + 1 jobs, plus 3 failed attempts.
-      expect(first.succeeded).toBe(21);
+      // GA4 and Wix finished everything, unaffected: GA4_JOBS + 1 jobs, plus 3 failed attempts.
+      expect(first.succeeded).toBe(GA4_JOBS + 1);
       expect(first.failed).toBe(0);
       expect(first.retryScheduled).toBe(3);
       const gsc = await db.query<{ n: number }>(
@@ -393,7 +398,7 @@ describe("Phase 2.2 failure isolation", () => {
       let last = await h.invoke(new Date(NOW.getTime() + minutes(45)));
       for (let i = 0; i < 6 && last.remaining.due + last.remaining.waiting > 0; i += 1) last = await h.invoke(new Date(h.state.now + minutes(30)));
       expect(last.remaining).toMatchObject({ due: 0, waiting: 0 });
-      expect((await states(db)).succeeded).toBe(20 + 1 + 5 * 13);
+      expect((await states(db)).succeeded).toBe(GA4_JOBS + 1 + 5 * 13);
     });
   });
 
@@ -409,7 +414,7 @@ describe("Phase 2.2 failure isolation", () => {
       const status = await db.query<{ external_property_id: string; status: string }>(
         "select external_property_id, status from analytics_connections where status <> 'disconnected' order by external_property_id");
       expect(status.rows.filter((row) => row.status === "reconnect_required").map((row) => row.external_property_id)).toEqual(["sc-domain:s1.example.invalid"]);
-      expect(report.succeeded).toBe(20 + 1 + 2 * 13);
+      expect(report.succeeded).toBe(GA4_JOBS + 1 + 2 * 13);
     });
   });
 
@@ -436,7 +441,7 @@ describe("Phase 2.2 failure isolation", () => {
       mode = "ok";
       let last = limited;
       for (let i = 0; i < 6 && last.remaining.due + last.remaining.waiting > 0; i += 1) last = await h.invoke(new Date(h.state.now + minutes(30)));
-      expect((await states(db)).succeeded).toBe(34);
+      expect((await states(db)).succeeded).toBe(SITE_JOBS);
     });
   });
 
@@ -489,11 +494,12 @@ describe("Phase 2.2 queue recovery", () => {
       const report = await queueRecoveryReport(db, new Date(NOW.getTime() + hours(48)));
       await expect(db.query("update analytics_jobs set state = 'cancelled'")).rejects.toMatchObject({ code: "25006" });
       await db.query("rollback to savepoint dry");
-      expect(report.queuedLegacy).toBe(3 * 50);
+      // Version 1 queues 59 jobs a day for this site: 40 GA4 (with the D56 comparisons), 18 Search Console and 1 Wix.
+      expect(report.queuedLegacy).toBe(3 * 59);
       // Windows of the first two days each have a newer same-length sibling; the third day's are the current ones.
-      expect(report.obsolete.eligible).toBe(2 * 50);
-      expect(report.obsolete.needsReview).toBe(50);
-      expect(report.approvalToken).toMatch(/^recover:100:0:[0-9a-f]{12}$/);
+      expect(report.obsolete.eligible).toBe(2 * 59);
+      expect(report.obsolete.needsReview).toBe(59);
+      expect(report.approvalToken).toMatch(/^recover:118:0:[0-9a-f]{12}$/);
       expect(await states(db)).toEqual(before);
     });
   });
@@ -586,12 +592,12 @@ describe("Phase 2.2 queue recovery", () => {
 });
 
 describe("Phase 2.2 capacity simulation (21 sources)", () => {
-  it("clears each day's 160 jobs between scheduled invocations at 2 s a request, with a bounded queue", async () => {
+  it("clears each day's 166 jobs between scheduled invocations at 2 s a request, with a bounded queue", async () => {
     const admin = await staffByEmail("admin@example.invalid");
     await asContext(SERVICE, async (db) => {
       const result = await simulate(db, admin.id, { days: 3, latencyMs: 2000 });
       // Day one queues everything. After that GA4 and Wix replan at Singapore midnight and Search Console at Pacific midnight.
-      expect(result.jobsQueued).toBe(160 + 2 * 30 + 3 * 130);
+      expect(result.jobsQueued).toBe((GA4_JOBS + 10 * 13 + 10) + 2 * (GA4_JOBS + 10) + 3 * 130);
       expect(result.jobsProcessed).toBe(result.jobsQueued);
       expect(result.succeeded).toBe(result.jobsQueued);
       expect(result.failed + result.retried).toBe(0);
@@ -624,7 +630,7 @@ describe("Phase 2.2 capacity simulation (21 sources)", () => {
       expect(result.rejectedRequests.gsc).toBeGreaterThan(1);
       expect(result.rejectedRequests.gsc).toBeLessThan(60);
       // GA4 and Wix were never behind and never failed: exactly their planned requests (GA4 replans once, at midnight of day 2).
-      expect(result.requests.ga4).toBe(2 * 20);
+      expect(result.requests.ga4).toBe(2 * GA4_JOBS);
       expect(result.requests.wix).toBe(2 * 10);
       // A few jobs did run out of attempts during six hours of failures (their rows stay as history); none is left unfetched.
       expect(result.failed).toBeGreaterThan(0);
@@ -639,11 +645,11 @@ describe("Phase 2.2 environment safety", () => {
     expect(() => assertWorkerDatabase("postgresql://user:pass@prod-fixture.invalid/neondb", env)).toThrow(/Refusing/);
   });
 
-  it("leaves the repository schedule exactly as D55 set it: one daily schedule, no cron entry, nothing new registered", () => {
+  it("leaves the repository schedule as D55 and D59 set it: one hourly schedule, no cron entry, nothing new registered", () => {
     const config = JSON.parse(readFileSync(join(__dirname, "../../../vercel.json"), "utf8")) as { schedules?: Record<string, { schedule: string; path: string }>; crons?: unknown };
     expect(config.crons).toBeUndefined();
     expect(Object.keys(config.schedules ?? {})).toEqual(["analytics-worker"]);
-    expect(config.schedules!["analytics-worker"]).toMatchObject({ schedule: "0 2 * * *", path: "/api/internal/analytics/worker" });
+    expect(config.schedules!["analytics-worker"]).toMatchObject({ schedule: "0 * * * *", path: "/api/internal/analytics/worker" });
   });
 
   it("reports remaining work without writing", async () => {
