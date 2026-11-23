@@ -185,7 +185,8 @@ describe("analytics tenant isolation and sync", () => {
       const revoked = sealedToken({ accessToken: "old", refreshToken: "refresh", expiresAt: "2020-01-01T00:00:00.000Z" });
       await db.query("update analytics_secrets set ciphertext = $2, nonce = $3 where connection_id = $1", [connection.id, revoked.ciphertext, revoked.nonce]);
       await enqueueJob(db, { clientId, websiteId: site, connectionId: connection.id, templateKey: "ga4.traffic_range", start: "2026-10-01", end: "2026-10-07" });
-      const job = await leaseNext(db, "worker-c", now);
+      // A provider fault pauses the connection (Phase 2.1), so the next job waits out the cooldown.
+      const job = await leaseNext(db, "worker-c", new Date(now.getTime() + 3_600_000));
       const fetchRevoked: FetchLike = async () => jsonResponse(400, { error: "invalid_grant" });
       const result = await executeJob(db, job!, { fetch: fetchRevoked, now, googleClientId: "id", googleClientSecret: "secret" });
       const status = await db.query<{ status: string }>("select status from analytics_connections where id = $1", [connection.id]);

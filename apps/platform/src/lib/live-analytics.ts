@@ -1,8 +1,13 @@
 import {
+  assessReport,
   dailySessionSeriesWithPeriod,
   listConnections,
+  listConnectionSyncStatus,
   publishedReport,
+  summariseQuality,
   type PublishedReport,
+  type QualityFinding,
+  type QualityNote,
 } from "@clinic-genie/db";
 import type { Queryable } from "@clinic-genie/db";
 import type { SiteView } from "@/lib/site-view";
@@ -32,6 +37,8 @@ export interface LiveBundle {
   engagement: PublishedReport | null;
   pages: PublishedReport | null;
   visitorType: PublishedReport | null;
+  /** Plain statements about how far to trust what is shown: partial, out of date, truncated, withheld rows, provider problems (Phase 2.3A). */
+  quality: QualityNote[];
 }
 
 function empty(note: string, state: LiveValue["state"] = "unavailable"): LiveValue {
@@ -89,6 +96,7 @@ export async function loadLiveBundle(db: Queryable, view: SiteView): Promise<Liv
     engagement: null,
     pages: null,
     visitorType: null,
+    quality: [],
   };
   if (!view.websiteId || !start || !end || !chosen || chosen.status !== "connected") return blank;
   const dailyKey = chosen.provider === "ga4" ? "ga4.traffic_daily" : "wix.data_daily";
@@ -114,8 +122,25 @@ export async function loadLiveBundle(db: Queryable, view: SiteView): Promise<Liv
     ? await exact("ga4.traffic_range", previous.start, previous.end)
     : null;
   const priorUsersMetric = priorUsers?.rows[0]?.metrics.find((metric) => metric.key === "totalUsers" && metric.state === "available");
+  const source = chosen.provider === "ga4" ? "Google Analytics" : "Wix";
+  const sync = (await listConnectionSyncStatus(db, view.clientId)).find((row) => row.connectionId === chosen.id);
+  const reports: Array<[string, PublishedReport | null]> = chosen.provider === "ga4"
+    ? [["Users", range], ["Channels", await exact("ga4.acquisition")], ["Landing pages", await exact("ga4.landing")], ["Devices", await exact("ga4.device")],
+      ["Countries", await exact("ga4.country")], ["Engagement", await exact("ga4.engagement")], ["Pages", await exact("ga4.pages")], ["New and returning users", await exact("ga4.visitor_type")]]
+    : [];
+  const findings: QualityFinding[] = [
+    // The connection's health is stated once, against the daily sessions.
+    ...assessReport({
+      subject: "Sessions", report: null, now: new Date(), source,
+      coverage: { covered: currentDaily.period.covered, expected: currentDaily.period.expected },
+      figure: { value: currentDaily.period.value, state: currentDaily.period.state, noun: "sessions" },
+      sync: { status: chosen.status, lastSuccessAt: sync?.lastSuccessAt ?? null, safeError: sync?.safeError ?? null },
+    }),
+    ...reports.flatMap(([subject, report]) => assessReport({ subject, report, now: new Date(), source })),
+  ];
   return {
     ...blank,
+    quality: summariseQuality(findings),
     sessions,
     users,
     sessionsPrevious,

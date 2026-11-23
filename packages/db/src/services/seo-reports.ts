@@ -1,7 +1,8 @@
 import type { Queryable } from "../client";
 import { loadWebsiteConnections, type ConnectionState } from "../analytics/website-connections";
 import { latestPublishedReport, publishedReport, type PublishedReport } from "../analytics/read";
-import { enqueueJob, windowLength } from "../analytics/sync";
+import { enqueueJob, listConnectionSyncStatus, windowLength } from "../analytics/sync";
+import { assessReport, summariseQuality, type QualityNote } from "../analytics/quality";
 import { addDays } from "./dates";
 import { loadAiActivity, type AiActivity } from "./ai-visibility";
 import { pageSettingsSummary } from "./seo-overview";
@@ -44,6 +45,8 @@ export interface SearchReport {
   window: { start: string; end: string } | null;
   timezone: typeof SEARCH_TIMEZONE;
   totals: (SearchMetrics & { fetchedAt: Date }) | null;
+  /** How far to trust the totals: partial, out of date, no data, a provider problem (Phase 2.3A). */
+  quality: QualityNote[];
   /** The equal window before; null means the comparison is unavailable. */
   previous: { window: { start: string; end: string }; totals: SearchMetrics } | null;
   pages: SearchPart<SearchRow>;
@@ -74,11 +77,24 @@ async function part<T>(db: Queryable, ids: { clientId: string; websiteId: string
 
 const byClicks = (a: SearchRow, b: SearchRow) => (b.clicks ?? -1) - (a.clicks ?? -1) || (b.impressions ?? -1) - (a.impressions ?? -1) || a.key.localeCompare(b.key);
 
+/** Data notes for the Search Console totals, from the stored report and the connection's latest sync. */
+async function searchQuality(db: Queryable, ids: { clientId: string; websiteId: string }, report: PublishedReport | null, now: Date): Promise<QualityNote[]> {
+  const connection = (await db.query<{ id: string; status: string }>(
+    "select id, status from analytics_connections where website_id = $1 and client_id = $2 and provider = 'gsc' and disconnected_at is null limit 1",
+    [ids.websiteId, ids.clientId],
+  )).rows[0];
+  const sync = connection ? (await listConnectionSyncStatus(db, ids.clientId)).find((row) => row.connectionId === connection.id) : undefined;
+  return summariseQuality(assessReport({
+    subject: "Search totals", report, now, source: "Search Console",
+    sync: connection ? { status: connection.status, lastSuccessAt: sync?.lastSuccessAt ?? null, safeError: sync?.safeError ?? null } : null,
+  }));
+}
+
 /**
  * Totals, page and query breakdowns and dated rows for one website and Pacific window, each from a stored
  * Search Console report for that exact window. `preset` allows the D58 fallback for rolling ranges.
  */
-export async function loadSearchReport(db: Queryable, input: { clientId: string; websiteId: string; start: string; end: string; preset: boolean }): Promise<SearchReport> {
+export async function loadSearchReport(db: Queryable, input: { clientId: string; websiteId: string; start: string; end: string; preset: boolean; now?: Date }): Promise<SearchReport> {
   const ids = { clientId: input.clientId, websiteId: input.websiteId };
   const card = (await loadWebsiteConnections(db, input.websiteId))?.cards.search;
   const connection = { state: card?.state ?? ("not_connected" as ConnectionState), property: card?.property ?? null };
@@ -94,12 +110,14 @@ export async function loadSearchReport(db: Queryable, input: { clientId: string;
   const previousEnd = addDays(window.start, -1);
   const previousWindow = { start: addDays(previousEnd, 1 - windowLength(window.start, window.end)), end: previousEnd };
   const previousReport = totalsReport ? await publishedReport(db, { ...query, ...previousWindow }) : null;
+  const quality = await searchQuality(db, ids, totalsReport, input.now ?? new Date());
   const lastDay = daily.status === "available" ? daily.rows.filter((row) => (row.impressions ?? 0) > 0).at(-1)?.date ?? null : null;
   return {
     connection,
     requested: { start: input.start, end: input.end },
     window: totalsReport ? window : null,
     timezone: SEARCH_TIMEZONE,
+    quality,
     totals: totalsReport ? { ...metrics(totalsReport.rows.find((row) => row.dimensionKey === "property") ?? totalsReport.rows[0]), fetchedAt: totalsReport.fetchedAt } : null,
     previous: previousReport ? { window: previousWindow, totals: metrics(previousReport.rows.find((row) => row.dimensionKey === "property") ?? previousReport.rows[0]) } : null,
     pages,

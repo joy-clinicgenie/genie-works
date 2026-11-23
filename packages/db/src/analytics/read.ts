@@ -24,6 +24,8 @@ export interface PublishedReport {
   generation: number;
   fetchedAt: Date;
   measuredThrough: string | null;
+  /** Evidence recorded by the pull: truncation, rows withheld, provider warnings. Counts and labels only. */
+  quality: Record<string, unknown>;
   rows: ReportRow[];
 }
 
@@ -38,9 +40,10 @@ interface PartitionRow {
   generation: number;
   fetched_at: Date;
   measured_through: string | null;
+  quality: Record<string, unknown> | null;
 }
 
-const PARTITION_COLUMNS = "id, template_key, start_date::text, end_date::text, source_timezone, provenance, completeness, generation, fetched_at, measured_through::text";
+const PARTITION_COLUMNS = "id, template_key, start_date::text, end_date::text, source_timezone, provenance, completeness, generation, fetched_at, measured_through::text, quality";
 
 export async function publishedReport(db: Queryable, input: {
   clientId: string;
@@ -104,6 +107,7 @@ async function reportFromPartition(db: Queryable, partition: PartitionRow): Prom
     generation: partition.generation,
     fetchedAt: partition.fetched_at,
     measuredThrough: partition.measured_through,
+    quality: partition.quality ?? {},
     rows: [...grouped.values()],
   };
 }

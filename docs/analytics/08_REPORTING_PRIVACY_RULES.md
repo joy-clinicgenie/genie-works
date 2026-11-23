@@ -23,6 +23,23 @@ Keep names, email, phone numbers, symptoms, free-text messages, patient IDs and 
 
 Use existing consent implementation and approved policy. Test consent denied/granted/revoked, blockers and disabled tracking. Never bypass consent with Measurement Protocol or backend events. A tracking activation date applies to every feature; no retrospective success claim. Aggregate analytics views do not grant lead-detail access.
 
+### How these rules are implemented for provider data (Phase 2.3A, 13 Nov 2026)
+
+`packages/db/src/analytics/privacy.ts` applies the rules above to Search Console and GA4 data. It protects against **identifiers and credentials**, not against words.
+
+| Context | Rule |
+| --- | --- |
+| Search query | Withheld if it contains an email address, a phone number or other long number (not a date, year or price), a national ID, a card number, an access token or key, an opaque id, or a statement such as "my phone number is". Otherwise kept |
+| URL or page path | The query string and fragment are always removed. A path is withheld if a segment holds an identifier, credential or opaque id, or if the address is `tel:`, `mailto:`, `sms:`, `whatsapp:` or another non-web scheme. Words in a path are never a reason |
+| Query-string parameter | Classified by whole-word key (`email`, `phone`, `token`, `gclid`, ...) and by value shape. Only the category is counted. The value is never stored |
+| Dimension (channel, device, country) | Kept unless it looks like an identifier |
+
+What is recorded when something is withheld: a count, the clicks or sessions it held, and a fixed reason label per row. Never the text.
+
+**Interpretation to confirm.** "Symptoms" and "free-text messages" in the first rule are read as a **patient's own text** (a form message, an event payload). A public search keyword such as "symptoms of gum disease" is aggregate search demand and is kept, as are "patient reviews dentist" and "mobile dentist near me". Before 13 Nov 2026 any text containing those words was dropped, which also dropped ordinary clinic keywords and pages, while GA4 page paths and landing pages (which can carry an email address or token in the query string) were not checked at all. **The policy owner should confirm this reading.**
+
+**Residual risk, stated.** A person's name, an address in words, or health information typed as ordinary text ("i have hiv") has no identifier shape and is not detected, by this filter or by the one it replaced. Obfuscated identifiers ("john at gmail dot com") are not detected. Google already withholds rarely-used queries from Search Console.
+
 ## Retention proposal requiring owner decision before collection
 Keep sanitised aggregate report snapshots for a proposed 24 months, sync diagnostics 90 days, import source files 30 days, temporary exports 24 hours, pseudonymous raw journey events at most 30 days if separately enabled. These are proposed operational settings, not asserted legal requirements or existing approvals. Enquiry retention remains governed by its existing policy. Configure deletion and backup expiry with the selected provider and clinic owner. No new raw journey collection until its purpose/retention are approved.
 

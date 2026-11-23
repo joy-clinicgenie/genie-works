@@ -40,6 +40,21 @@ This is the complete scoped inventory for this build. Optional rows are explicit
 | M33 Realtime active users | Current activity diagnostic, optional | Separate GA4 Realtime report; rolling provider window. Not daily visitors or simultaneous exact headcount | GA4 Realtime, separate from historical KPIs |
 | M34 Funnel progression | Sequence drop-off, optional | Same eligible consented session completes defined ordered steps within 30 minutes, or documented provider funnel semantics. One session per step; dates based on session start | Not derivable from daily aggregate reports |
 
+### Which "users" figure is which (clarified 13 Nov 2026, Phase 2.3A)
+
+GA4 has several user measures. They are different, not interchangeable, and they are not expected to add up. Definitions are Google's, read from the Data API schema on 13 Nov 2026. This section changes **no number**: it fixes which words go with which figure.
+
+| Where it appears | Label on the page | GA4 metric | Request | What it counts |
+| --- | --- | --- | --- | --- |
+| Headline Users on Overview, Traffic and the conversion rate's denominator | **Total users** | `totalUsers` (M02) | `ga4.traffic_range`, one request for the exact period, never summed across days (D13) | Users who logged at least one event, whether or not the site was in use |
+| New and returning split on Traffic | **New active users**, **Returning active users** | `activeUsers` by `newVsReturning` (M03) | `ga4.visitor_type` | Distinct users who visited, classed new or returning by GA4 |
+| Per-page figures on Behaviour | **Avg. time per active user** (engagement time ÷ `activeUsers`) | `userEngagementDuration`, `activeUsers` by `pagePath` (M03) | `ga4.pages` | Engagement time divided by the page's active users |
+| Not used | n/a | `newUsers` (M04) | n/a | GA4's own "new users" count. The platform does **not** show this figure; "New active users" is `activeUsers` filtered to new, which is a different number |
+
+Consequences to state to staff: New active users plus Returning active users need not equal Total users; neither equals Sessions; none equals a Wix "unique visitors" figure (D13). Wix visitors are never added to, or compared with, GA4 users.
+
+Before 13 Nov 2026 the new and returning cards were labelled "New visitors" and "Returning visitors" with a meaning written for the recorded export. For a GA4 website that was misleading. Only the words changed. For a website on the recorded export the original wording is kept.
+
 ## Staff features
 | Function | Purpose | Rules |
 | --- | --- | --- |

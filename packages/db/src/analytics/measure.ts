@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { classifyPath, classifySearchQuery, sensitiveQueryKeys } from "./privacy";
 import { addDays, daysBetween } from "../services/dates";
 
 export const PROVIDERS = ["ga4", "wix", "gsc"] as const;
@@ -123,42 +124,20 @@ export function queryHash(templateKey: string, version: number, body: unknown): 
 const SENSITIVE_KEY = /email|e-mail|phone|tel|mobile|name|symptom|message|token|secret|password|patient|utm_|gclid|fbclid|msclkid/i;
 const SENSITIVE_VALUE = /[@]|^\+?\d[\d\s()-]{6,}$|bearer\s/i;
 
-/** Keep a path. Drop queries, fragments, contact schemes and sensitive segments. */
+/**
+ * Keep a path. Drops the query string and fragment, contact schemes, and any path with an identifier or credential in
+ * a segment. A word such as "patient" or "phone" in a path is not an identifier and is kept (Phase 2.3A, `privacy.ts`).
+ */
 export function safeAnalyticsPath(input: string): string | null {
-  const trimmed = input.trim();
-  if (!trimmed || /^(mailto:|tel:|sms:|whatsapp:)/i.test(trimmed)) return null;
-  let path = trimmed;
-  try {
-    if (/^https?:\/\//i.test(trimmed)) path = new URL(trimmed).pathname;
-  } catch {
-    return null;
-  }
-  path = path.split("#")[0]?.split("?")[0] ?? "";
-  if (!path.startsWith("/")) path = `/${path}`;
-  const segments = path.split("/").filter(Boolean);
-  if (segments.some((segment) => SENSITIVE_KEY.test(decodeURIComponentSafe(segment)) || SENSITIVE_VALUE.test(decodeURIComponentSafe(segment)))) return null;
-  const cleaned = `/${segments.map((segment) => decodeURIComponentSafe(segment)).join("/")}`.replace(/\/{2,}/g, "/");
-  return cleaned === "/" ? "/" : cleaned.replace(/\/$/, "");
+  return classifyPath(input).value;
 }
 
-function decodeURIComponentSafe(value: string): string {
-  try {
-    return decodeURIComponent(value);
-  } catch {
-    return value;
-  }
-}
-
+/** Keep a search query unless it holds an identifier, a credential or a statement of personal details (`privacy.ts`). */
 export function safeSearchQuery(value: string): string | null {
-  const trimmed = value.trim().slice(0, 200);
-  if (!trimmed || SENSITIVE_KEY.test(trimmed) || SENSITIVE_VALUE.test(trimmed)) return null;
-  return trimmed;
+  return classifySearchQuery(value).value;
 }
 
-export function sensitiveQueryKeys(search: string): string[] {
-  const params = new URLSearchParams(search.startsWith("?") ? search.slice(1) : search);
-  return [...params.keys()].filter((key) => SENSITIVE_KEY.test(key) || [...params.getAll(key)].some((value) => SENSITIVE_VALUE.test(value)));
-}
+export { sensitiveQueryKeys };
 
 export function csvCell(value: string): string {
   const guarded = /^[=+\-@]/.test(value) ? `'${value}` : value;

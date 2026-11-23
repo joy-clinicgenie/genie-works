@@ -22,18 +22,23 @@ export function gscQueryBody(input: { start: string; end: string; dimensions: st
   };
 }
 
-export function parseGscQuery(body: unknown): { rows: GscRow[]; responseAggregation?: string } {
+export function parseGscQuery(body: unknown): { rows: GscRow[]; responseAggregation?: string; invalidRows: number } {
   const record = body as { rows?: GscRow[]; responseAggregationType?: string };
-  return {
-    rows: (record.rows ?? []).map((row) => ({
+  let invalidRows = 0;
+  const rows: GscRow[] = [];
+  for (const row of record.rows ?? []) {
+    const parsed = {
       keys: row.keys ?? [],
       clicks: Number(row.clicks ?? 0),
       impressions: Number(row.impressions ?? 0),
       ctr: Number(row.ctr ?? 0),
       position: Number(row.position ?? 0),
-    })),
-    responseAggregation: record.responseAggregationType,
-  };
+    };
+    // A row with a value that is not a number is dropped and counted, never stored as NaN.
+    if ([parsed.clicks, parsed.impressions, parsed.ctr, parsed.position].every(Number.isFinite)) rows.push(parsed);
+    else invalidRows += 1;
+  }
+  return { rows, responseAggregation: record.responseAggregationType, invalidRows };
 }
 
 export function gscHasAnotherPage(rowCount: number): boolean {

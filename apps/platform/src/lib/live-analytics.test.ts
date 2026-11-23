@@ -38,6 +38,8 @@ describe("live analytics query planning", () => {
           rowCount: dates.length,
         };
       }
+      // Sync status for the quality notes (Phase 2.3A): one read, no rows for this fixture.
+      if (sql.includes("from analytics_connections c") && sql.includes("analytics_jobs")) return { rows: [], rowCount: 0 };
       throw new Error(`Unexpected query: ${sql}`);
     });
     const view = {
@@ -57,6 +59,7 @@ describe("live analytics query planning", () => {
       { date: "2026-11-01", value: 4 },
       { date: "2026-11-02", value: null },
     ]);
-    expect(query).toHaveBeenCalledTimes(3);
+    // Connections, current coverage, previous coverage, and (Phase 2.3A) one read of sync status for the quality notes.
+    expect(query).toHaveBeenCalledTimes(4);
   });
 });

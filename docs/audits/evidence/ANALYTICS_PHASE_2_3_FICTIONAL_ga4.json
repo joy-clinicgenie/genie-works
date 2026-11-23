@@ -1,0 +1,360 @@
+{
+  "generatedAt": "2026-11-13T03:08:45.304Z",
+  "mode": "fictional",
+  "provider": "ga4",
+  "propertyRef": "7353bad0",
+  "requests": [
+    {
+      "provider": "ga4",
+      "template": "ga4.traffic_daily",
+      "period": {
+        "start": "2026-10-11",
+        "end": "2026-11-09"
+      },
+      "jobMs": 5.6,
+      "requests": 1,
+      "slowestRequestMs": 0.1,
+      "status": 200,
+      "rowsReturned": 30,
+      "pages": 1,
+      "retryRequired": false,
+      "result": "succeeded",
+      "quality": {
+        "rowsReturned": 30
+      }
+    },
+    {
+      "provider": "ga4",
+      "template": "ga4.bundle.channel",
+      "period": {
+        "start": "2026-05-14",
+        "end": "2026-11-09"
+      },
+      "jobMs": 7.8,
+      "requests": 1,
+      "slowestRequestMs": 0.2,
+      "status": 200,
+      "rowsReturned": 360,
+      "pages": 1,
+      "retryRequired": false,
+      "result": "succeeded",
+      "quality": {
+        "rowsReturned": 360
+      }
+    },
+    {
+      "provider": "ga4",
+      "template": "ga4.traffic_range",
+      "period": {
+        "start": "2026-11-03",
+        "end": "2026-11-09"
+      },
+      "jobMs": 3,
+      "requests": 1,
+      "slowestRequestMs": 0,
+      "status": 200,
+      "rowsReturned": 1,
+      "pages": 1,
+      "retryRequired": false,
+      "result": "succeeded",
+      "quality": {
+        "rowsReturned": 1
+      }
+    },
+    {
+      "provider": "ga4",
+      "template": "ga4.acquisition",
+      "period": {
+        "start": "2026-11-03",
+        "end": "2026-11-09"
+      },
+      "jobMs": 2.7,
+      "requests": 1,
+      "slowestRequestMs": 0,
+      "status": 200,
+      "rowsReturned": 2,
+      "pages": 1,
+      "retryRequired": false,
+      "result": "succeeded",
+      "quality": {
+        "rowsReturned": 2
+      }
+    },
+    {
+      "provider": "ga4",
+      "template": "ga4.traffic_range",
+      "period": {
+        "start": "2026-10-11",
+        "end": "2026-11-09"
+      },
+      "jobMs": 2.6,
+      "requests": 1,
+      "slowestRequestMs": 0,
+      "status": 200,
+      "rowsReturned": 1,
+      "pages": 1,
+      "retryRequired": false,
+      "result": "succeeded",
+      "quality": {
+        "rowsReturned": 1
+      }
+    },
+    {
+      "provider": "ga4",
+      "template": "ga4.acquisition",
+      "period": {
+        "start": "2026-10-11",
+        "end": "2026-11-09"
+      },
+      "jobMs": 2.7,
+      "requests": 1,
+      "slowestRequestMs": 0,
+      "status": 200,
+      "rowsReturned": 2,
+      "pages": 1,
+      "retryRequired": false,
+      "result": "succeeded",
+      "quality": {
+        "rowsReturned": 2
+      }
+    },
+    {
+      "provider": "ga4",
+      "template": "ga4.engagement",
+      "period": {
+        "start": "2026-10-11",
+        "end": "2026-11-09"
+      },
+      "jobMs": 2.6,
+      "requests": 1,
+      "slowestRequestMs": 0,
+      "status": 200,
+      "rowsReturned": 1,
+      "pages": 1,
+      "retryRequired": false,
+      "result": "succeeded",
+      "quality": {
+        "rowsReturned": 1
+      }
+    },
+    {
+      "provider": "ga4",
+      "template": "ga4.bundle.landing",
+      "period": {
+        "start": "2026-08-12",
+        "end": "2026-11-09"
+      },
+      "jobMs": 4.4,
+      "requests": 1,
+      "slowestRequestMs": 0.1,
+      "status": 200,
+      "rowsReturned": 180,
+      "pages": 1,
+      "retryRequired": false,
+      "result": "succeeded",
+      "quality": {
+        "rowsReturned": 180
+      }
+    },
+    {
+      "provider": "ga4",
+      "template": "ga4.bundle.device",
+      "period": {
+        "start": "2026-08-12",
+        "end": "2026-11-09"
+      },
+      "jobMs": 4.2,
+      "requests": 1,
+      "slowestRequestMs": 0.1,
+      "status": 200,
+      "rowsReturned": 180,
+      "pages": 1,
+      "retryRequired": false,
+      "result": "succeeded",
+      "quality": {
+        "rowsReturned": 180
+      }
+    },
+    {
+      "provider": "ga4",
+      "template": "ga4.bundle.country",
+      "period": {
+        "start": "2026-08-12",
+        "end": "2026-11-09"
+      },
+      "jobMs": 4.3,
+      "requests": 1,
+      "slowestRequestMs": 0.1,
+      "status": 200,
+      "rowsReturned": 180,
+      "pages": 1,
+      "retryRequired": false,
+      "result": "succeeded",
+      "quality": {
+        "rowsReturned": 180
+      }
+    }
+  ],
+  "comparisons": [
+    {
+      "name": "sessions, 7 days: sum of daily rows against a direct range request",
+      "window": {
+        "start": "2026-11-03",
+        "end": "2026-11-09"
+      },
+      "direct": 21,
+      "derived": 21,
+      "abs": 0,
+      "pct": 0,
+      "verdict": "match"
+    },
+    {
+      "name": "sessions by channel, 7 days: bundle-derived against direct: total over 2 rows",
+      "window": {
+        "start": "2026-11-03",
+        "end": "2026-11-09"
+      },
+      "direct": 21,
+      "derived": 21,
+      "abs": 0,
+      "pct": 0,
+      "verdict": "match",
+      "note": "largest single-row difference 0"
+    },
+    {
+      "name": "sessions, 7 days: channels added up against the range total",
+      "window": {
+        "start": "2026-11-03",
+        "end": "2026-11-09"
+      },
+      "direct": 21,
+      "derived": 21,
+      "abs": 0,
+      "pct": 0,
+      "verdict": "match"
+    },
+    {
+      "name": "sessions, 30 days: sum of daily rows against a direct range request",
+      "window": {
+        "start": "2026-10-11",
+        "end": "2026-11-09"
+      },
+      "direct": 90,
+      "derived": 90,
+      "abs": 0,
+      "pct": 0,
+      "verdict": "match"
+    },
+    {
+      "name": "sessions by channel, 30 days: bundle-derived against direct: total over 2 rows",
+      "window": {
+        "start": "2026-10-11",
+        "end": "2026-11-09"
+      },
+      "direct": 90,
+      "derived": 90,
+      "abs": 0,
+      "pct": 0,
+      "verdict": "match",
+      "note": "largest single-row difference 0"
+    },
+    {
+      "name": "sessions, 30 days: channels added up against the range total",
+      "window": {
+        "start": "2026-10-11",
+        "end": "2026-11-09"
+      },
+      "direct": 90,
+      "derived": 90,
+      "abs": 0,
+      "pct": 0,
+      "verdict": "match"
+    },
+    {
+      "name": "engagement rate + bounce rate = 1 (30 days)",
+      "window": {
+        "start": "2026-10-11",
+        "end": "2026-11-09"
+      },
+      "direct": 1,
+      "derived": 1,
+      "abs": 0,
+      "pct": 0,
+      "verdict": "match",
+      "note": "A definitional check, not a comparison of sources."
+    }
+  ],
+  "observations": {
+    "windows": {
+      "p7": {
+        "start": "2026-11-03",
+        "end": "2026-11-09"
+      },
+      "p30": {
+        "start": "2026-10-11",
+        "end": "2026-11-09"
+      }
+    },
+    "bundleDays": 180
+  },
+  "latency": {
+    "ga4.traffic_daily": {
+      "jobs": 1,
+      "requests": 1,
+      "jobMsMean": 5.6,
+      "jobMsMax": 5.6,
+      "slowestRequestMs": 0.1
+    },
+    "ga4.bundle.channel": {
+      "jobs": 1,
+      "requests": 1,
+      "jobMsMean": 7.8,
+      "jobMsMax": 7.8,
+      "slowestRequestMs": 0.2
+    },
+    "ga4.traffic_range": {
+      "jobs": 2,
+      "requests": 2,
+      "jobMsMean": 2.8,
+      "jobMsMax": 3,
+      "slowestRequestMs": 0
+    },
+    "ga4.acquisition": {
+      "jobs": 2,
+      "requests": 2,
+      "jobMsMean": 2.7,
+      "jobMsMax": 2.7,
+      "slowestRequestMs": 0
+    },
+    "ga4.engagement": {
+      "jobs": 1,
+      "requests": 1,
+      "jobMsMean": 2.6,
+      "jobMsMax": 2.6,
+      "slowestRequestMs": 0
+    },
+    "ga4.bundle.landing": {
+      "jobs": 1,
+      "requests": 1,
+      "jobMsMean": 4.4,
+      "jobMsMax": 4.4,
+      "slowestRequestMs": 0.1
+    },
+    "ga4.bundle.device": {
+      "jobs": 1,
+      "requests": 1,
+      "jobMsMean": 4.2,
+      "jobMsMax": 4.2,
+      "slowestRequestMs": 0.1
+    },
+    "ga4.bundle.country": {
+      "jobs": 1,
+      "requests": 1,
+      "jobMsMean": 4.3,
+      "jobMsMax": 4.3,
+      "slowestRequestMs": 0.1
+    }
+  },
+  "providerRequestsMade": 10,
+  "requestCap": 14
+}

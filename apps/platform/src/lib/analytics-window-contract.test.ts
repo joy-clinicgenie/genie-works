@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { dueJobs } from "@clinic-genie/db";
+import { dueJobs, planDueJobs, plannedReportWindows } from "@clinic-genie/db";
 import { analyticsPeriod } from "./period-range";
 import { searchConsoleWindow } from "./seo-workspace";
 
@@ -60,5 +60,46 @@ describe("analytics window contract (D52)", () => {
   it("keeps Wix on its daily history window only", () => {
     const jobs = dueJobs("wix", NOW, "Asia/Singapore");
     expect(jobs.map((job) => job.templateKey)).toEqual(["wix.data_daily"]);
+  });
+});
+
+/**
+ * Phase 2.1 plan. It asks providers for fewer requests, but every window the pages read must still be
+ * stored, whether a job fetched it directly or a daily-grain job derived it.
+ */
+describe("analytics window contract, version 2 plan (Phase 2.1)", () => {
+  const stored = (provider: "ga4" | "gsc" | "wix", timezone: string | null, templateKey: string) =>
+    plannedReportWindows(planDueJobs(provider, NOW, timezone)).filter((w) => w.templateKey === templateKey).map((w) => `${w.start}..${w.end}`);
+
+  for (const timezone of ["Asia/Singapore", "America/Los_Angeles"]) {
+    it(`stores every GA4 range report the Last 7, 30 and 90 presets read (${timezone} property)`, () => {
+      for (const range of ["last7", "last30", "last90"]) {
+        const { windows } = analyticsPeriod({ range, live: true, today: TODAY });
+        for (const templateKey of GA4_RANGE_TEMPLATES) {
+          expect(stored("ga4", timezone, templateKey), `${range} ${templateKey}`).toContain(`${windows.current.start}..${windows.current.end}`);
+        }
+        for (const templateKey of GA4_COMPARED_TEMPLATES) {
+          expect(stored("ga4", timezone, templateKey), `${range} previous ${templateKey}`).toContain(`${windows.previous.start}..${windows.previous.end}`);
+        }
+      }
+    });
+  }
+
+  it("stores every Search Console window the SEO 7, 30 and 90 day views read", () => {
+    for (const range of ["7", "30", "90"] as const) {
+      const window = searchConsoleWindow({ range } as Parameters<typeof searchConsoleWindow>[0], NOW)!;
+      for (const templateKey of ["gsc.totals", "gsc.pages", "gsc.queries"]) {
+        expect(stored("gsc", null, templateKey), `${range} ${templateKey}`).toContain(`${window.start}..${window.end}`);
+      }
+    }
+  });
+
+  it("asks for fewer requests than version 1 and fits the daily Wix and GA4 history", () => {
+    expect(planDueJobs("ga4", NOW, "Asia/Singapore").length).toBeLessThan(dueJobs("ga4", NOW, "Asia/Singapore").length);
+    expect(planDueJobs("gsc", NOW, null).length).toBeLessThan(dueJobs("gsc", NOW, null).length);
+    expect(planDueJobs("wix", NOW, "Asia/Singapore").map((job) => job.templateKey)).toEqual(["wix.data_daily"]);
+    const daily = planDueJobs("ga4", NOW, "Asia/Singapore").filter((job) => job.templateKey === "ga4.traffic_daily");
+    const { windows } = analyticsPeriod({ range: "last90", live: true, today: TODAY });
+    expect(daily[0]!.start <= windows.previous.start && daily[0]!.end >= windows.current.end).toBe(true);
   });
 });

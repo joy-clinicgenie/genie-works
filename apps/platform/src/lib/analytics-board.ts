@@ -1,4 +1,4 @@
-import type { PublishedReport } from "@clinic-genie/db";
+import type { PublishedReport, QualityNote } from "@clinic-genie/db";
 import type { LiveBundle } from "@/lib/live-analytics";
 import { channelsFor, dimensionRows, pairMetric, type MetricPair } from "@/lib/site-metrics";
 import type { SiteView } from "@/lib/site-view";
@@ -79,6 +79,10 @@ export interface AnalyticsBoard {
   flows: Array<{ name: string; current: number }>;
   /** Live mode only: which Behaviour figures are from Google Analytics and which are from the recorded export (D53). */
   behaviourNote: string | null;
+  /** `ga4` when the audience figures are GA4's: Total users, and new and returning ACTIVE users (Phase 2.3A labels only). */
+  audienceMeasure?: "ga4";
+  /** How far to trust the figures: partial, out of date, truncated, withheld rows, provider problems, a recorded zero (Phase 2.3A). */
+  qualityNotes?: QualityNote[];
 }
 
 const SNAPSHOT_SOURCE = "Traffic is from the recorded website analytics export. Leads are stored clinic enquiries.";
@@ -303,6 +307,7 @@ export interface LiveTrafficFacts {
   dailyCurrent: Array<{ date: string; value: number | null }>;
   dailyPrevious: Array<{ date: string; value: number | null }>;
   behaviour: LiveBehaviourFacts | null;
+  quality?: QualityNote[];
 }
 
 function availableMetric(row: { metrics: Array<{ key: string; value: number | null; state: string }> }, keys: string[]): number | null {
@@ -396,6 +401,7 @@ export function liveFactsFromBundle(bundle: LiveBundle): LiveTrafficFacts {
     dailyCurrent: connected ? bundle.dailyCurrent : [],
     dailyPrevious: connected ? bundle.dailyPrevious : [],
     behaviour: connected && bundle.provider === "ga4" ? behaviourFromBundle(bundle) : null,
+    quality: connected ? bundle.quality : [],
   };
 }
 
@@ -404,7 +410,7 @@ function fractionToPercent(value: number | null): number | null {
   return value === null ? null : Number((value * 100).toFixed(1));
 }
 
-const GA4_BEHAVIOUR_NOTE = "Engagement, page views and new or returning visitors are from Google Analytics; time on page is its engagement time per active user. Form starts, submissions, contact clicks, exit rate and recorded paths are from the recorded export.";
+const GA4_BEHAVIOUR_NOTE = "Engagement, page views and new or returning active users are from Google Analytics; time on page is its engagement time per active user. Form starts, submissions, contact clicks, exit rate and recorded paths are from the recorded export.";
 const UNCONNECTED_BEHAVIOUR_NOTE = "Behaviour figures are from the recorded export.";
 const EXPORT_BEHAVIOUR_NOTE = "Behaviour figures are from the recorded export. Wix behaviour is not synced.";
 
@@ -422,6 +428,7 @@ function liveBehaviour(base: AnalyticsBoard, facts: LiveTrafficFacts): Partial<A
     .sort((a, b) => (b.visits ?? -1) - (a.visits ?? -1) || a.name.localeCompare(b.name));
   return {
     behaviourNote: base.behaviourNote ?? GA4_BEHAVIOUR_NOTE,
+    audienceMeasure: "ga4",
     engagementRate: figure(fractionToPercent(behaviour?.engagementRate ?? null), null, "percent"),
     bounceRate: figure(fractionToPercent(behaviour?.bounceRate ?? null), null, "percent"),
     duration: figure(behaviour?.averageSessionDuration ?? null, null, "duration"),
@@ -483,5 +490,6 @@ export function boardFromLive(base: AnalyticsBoard, facts: LiveTrafficFacts): An
     countries: [...(facts.countries ?? [])].sort((a, b) => b.sessions - a.sessions || a.name.localeCompare(b.name)),
     trend: trendFrom(facts.sessions, facts.sessionsPrevious, facts.dailyCurrent, facts.dailyPrevious),
     ...liveBehaviour(base, facts),
+    qualityNotes: facts.quality ?? [],
   };
 }

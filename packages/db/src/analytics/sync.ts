@@ -2,10 +2,12 @@ import type { Queryable } from "../client";
 import { addDays, daysBetween } from "../services/dates";
 import { recordAudit } from "../services/audit";
 import { decryptSecret, encryptSecret, tokenKeyConfigured } from "./crypto";
-import { queryHash, safeAnalyticsPath, safeSearchQuery, type AnalyticsProvider } from "./measure";
+import { queryHash, type AnalyticsProvider } from "./measure";
+import { ADDITIVE_METRICS, PrivacyTally, classifyDimension } from "./privacy";
 import { checkCompatibility, ga4PropertyPath, ga4ReportBody, ga4Template, isInvalidGrant, parseGa4Report } from "./providers/ga4";
 import { GSC_ROW_LIMIT, GSC_TIME_ZONE, encodeSiteUrl, gscHasAnotherPage, gscQueryBody, parseGscQuery } from "./providers/gsc";
 import { parseSemanticModel, parseWixData, wixDataUrl, wixDataWindow, wixDueWindow } from "./providers/wix";
+import { BUNDLES, bundleWindows, deriveGscTotals, deriveSessionsByDimension, isBundle, planDueJobs, type GscDailyRow } from "./scheduling";
 
 export interface FetchResponse {
   status: number;
@@ -20,6 +22,12 @@ export interface SyncDeps {
   fetch: FetchLike;
   now: Date;
   deadlineAt?: number;
+  /** Milliseconds clock for deadline checks. Defaults to Date.now. Tests and the simulation inject a virtual one. */
+  clock?: () => number;
+  /** Pilot only: lease, reap and run jobs of this one connection and no other. */
+  onlyConnectionId?: string;
+  /** Pilot only: lease only these jobs, so the connection's older backlog is not touched. */
+  onlyJobIds?: string[];
   pageSize?: number;
   failOnPage?: number;
   googleClientId?: string;
@@ -69,8 +77,8 @@ interface FactRow {
 
 class RetryableError extends Error {
   seconds: number;
-  code: "rate_limited" | "provider_unavailable" | "worker_deadline";
-  constructor(seconds: number, code: "rate_limited" | "provider_unavailable" | "worker_deadline") {
+  code: "rate_limited" | "provider_unavailable" | "worker_deadline" | "invalid_response";
+  constructor(seconds: number, code: "rate_limited" | "provider_unavailable" | "worker_deadline" | "invalid_response") {
     super("retry");
     this.seconds = seconds;
     this.code = code;
@@ -88,6 +96,48 @@ class ConfigurationError extends Error {
 /** How long a job waits after a missing server setting before it is tried again. */
 const NOT_CONFIGURED_WAIT_SECONDS = 6 * 60 * 60;
 
+/**
+ * The SERVER'S credentials do not match what the stored token or the provider expects: a token key that cannot open
+ * the sealed token, an OAuth client the provider rejects, or an API the OAuth project has not enabled. The connection
+ * is not at fault and reconnecting cannot fix it, so the connection keeps its status and its stored token. The job waits
+ * and the fault is recorded under a safe code (connection recovery, C1). Only an explicit `invalid_grant` means the
+ * grant itself was revoked or expired, and only that marks a connection `reconnect_required`.
+ */
+export type ServerCredentialCode = "token_unreadable" | "oauth_client_rejected" | "provider_api_disabled";
+
+class ServerCredentialError extends Error {
+  code: ServerCredentialCode;
+  constructor(code: ServerCredentialCode) {
+    super(code);
+    this.name = "ServerCredentialError";
+    this.code = code;
+  }
+}
+
+/** Long enough that a run does not hammer a provider with a rejected client, short enough that a fixed setting is picked up the same day. */
+const SERVER_CREDENTIAL_WAIT_SECONDS = 2 * 60 * 60;
+
+/** The `error` code in an OAuth token-endpoint answer, lower-cased, or null. */
+function oauthErrorCode(body: unknown): string | null {
+  if (!body || typeof body !== "object") return null;
+  const error = (body as { error?: unknown }).error;
+  return typeof error === "string" ? error.toLowerCase() : null;
+}
+
+/** An answer that says the API is switched off for the OAuth project (a server setting), as opposed to access being withdrawn. */
+function apiDisabledBody(body: unknown): boolean {
+  if (!body || typeof body !== "object") return false;
+  const error = (body as { error?: unknown }).error;
+  if (!error || typeof error !== "object") return false;
+  const record = error as { message?: unknown; details?: unknown; errors?: unknown };
+  const reasons = [
+    ...(Array.isArray(record.details) ? record.details : []).map((d) => (d as { reason?: unknown })?.reason),
+    ...(Array.isArray(record.errors) ? record.errors : []).map((d) => (d as { reason?: unknown })?.reason),
+  ];
+  if (reasons.some((r) => r === "SERVICE_DISABLED" || r === "accessNotConfigured" || r === "ACCESS_NOT_CONFIGURED")) return true;
+  return typeof record.message === "string" && /has not been used in project|api has not been enabled|is disabled/i.test(record.message);
+}
+
 class ReconnectError extends Error {
   constructor() {
     super("reconnect");
@@ -100,6 +150,9 @@ const TEMPLATES: Record<AnalyticsProvider, string[]> = {
   wix: ["wix.data_daily"],
   gsc: ["gsc.totals", "gsc.pages", "gsc.queries"],
 };
+
+/** Pages one job may read from a provider. A job that stops here with more to read is marked truncated. */
+export const MAX_PROVIDER_PAGES = 20;
 
 const MAX_ATTEMPTS = 5;
 const LEASE_SECONDS = 150;
@@ -126,8 +179,18 @@ export interface ClaimedAnalyticsJob {
   owner: string;
 }
 
+interface DerivedPartition {
+  templateKey: string;
+  start: string;
+  end: string;
+  rows: FactRow[];
+}
+
 interface PulledJob {
-  facts?: { rows: FactRow[]; timezone: string; pages: number; quota?: Record<string, unknown> };
+  facts?: { rows: FactRow[]; timezone: string; pages: number; quota?: Record<string, unknown>; quality?: Record<string, unknown> };
+  /** A bundle job (Phase 2.1) writes ordinary partitions for the exact windows it can derive. */
+  derived?: DerivedPartition[];
+  stats?: { rows: number; pages: number; timezone: string; quota?: Record<string, unknown>; quality?: Record<string, unknown> };
   capabilities?: Array<{ templateKey: string; metrics: string[]; dimensions: string[]; dependencies: string[]; status: "supported" | "unsupported" }>;
 }
 
@@ -197,6 +260,43 @@ export function dateChunks(start: string, end: string, size: number): Array<{ st
   return chunks;
 }
 
+/**
+ * A newer window of the same class makes an older queued one obsolete: its dates will never be
+ * read again. Only queued jobs are retired. A leased job is running and is left alone, and so is
+ * any finished job and every stored report. Retired jobs keep their row as `cancelled`.
+ */
+async function retireSupersededJobs(db: Queryable, input: { connectionId: string; templateKey: string; end: string; windowClass?: string }): Promise<number> {
+  if (!input.windowClass) return 0;
+  const { rowCount } = await db.query(
+    `update analytics_jobs
+     set state = 'cancelled', safe_error_code = 'superseded', lease_owner = null, lease_until = null,
+         heartbeat_at = null, updated_at = now()
+     where connection_id = $1 and template_key = $2 and window_class = $3
+       and state = 'queued' and end_date < $4`,
+    [input.connectionId, input.templateKey, input.windowClass, input.end],
+  );
+  return rowCount ?? 0;
+}
+
+/** Whether a window that already succeeded should be fetched again (see `refreshAfterSeconds`). */
+export function succeededWindowIsStale(succeededAt: Date, refreshAfterSeconds: number | null | undefined, now: Date | undefined): boolean {
+  if (refreshAfterSeconds === undefined) return true;
+  if (refreshAfterSeconds === null) return false;
+  return (now ?? new Date()).getTime() - new Date(succeededAt).getTime() >= refreshAfterSeconds * 1000;
+}
+
+/**
+ * Seconds before a window that already succeeded is fetched again. A window that ends before the
+ * provider's current day is final for that day: the next day's window replaces it, so it is never
+ * fetched twice. A window that includes the current day (the GA4 daily series and the Wix 62-day
+ * window) is partial; `ANALYTICS_PARTIAL_REFRESH_MINUTES` (15 to 1440) opts in to refreshing it
+ * within the day. Unset means once per window.
+ */
+export function partialRefreshSeconds(env: Record<string, string | undefined> = process.env): number | null {
+  const minutes = Number(env.ANALYTICS_PARTIAL_REFRESH_MINUTES);
+  return Number.isInteger(minutes) && minutes >= 15 && minutes <= 1440 ? minutes * 60 : null;
+}
+
 export async function enqueueJob(db: Queryable, input: {
   clientId: string;
   websiteId: string;
@@ -205,37 +305,58 @@ export async function enqueueJob(db: Queryable, input: {
   start: string;
   end: string;
   version?: number;
+  /** Phase 2.1: jobs of one class on one connection replace each other. Omitted for ad hoc jobs. */
+  windowClass?: string;
+  priority?: number;
+  /** The worker's clock. A new job is due from this moment. Defaults to the database clock. */
+  now?: Date;
+  /**
+   * What to do when the same window already succeeded. Omitted: queue it again (manual refresh, the
+   * behaviour before Phase 2.2). `null`: never, its data is final. A number: only once the success is
+   * at least that many seconds old.
+   */
+  refreshAfterSeconds?: number | null;
+  /**
+   * A window whose latest job failed gets a fresh job row (the failed one stays as history) once the
+   * failure is this many seconds old. Omitted: a failed window is not queued again here.
+   */
+  retryFailedAfterSeconds?: number;
 }): Promise<{ id: string; reused: boolean }> {
   const hash = queryHash(input.templateKey, input.version ?? 1, { start: input.start, end: input.end });
-  const existing = await db.query<{ id: string; state: string }>(
-    `select id, state from analytics_jobs
+  const existing = await db.query<{ id: string; state: string; updated_at: Date }>(
+    `select id, state, updated_at from analytics_jobs
      where connection_id = $1 and template_key = $2 and query_hash = $3 and start_date = $4 and end_date = $5 and state <> 'cancelled'
+       and ($6::int is null or state <> 'failed' or coalesce(updated_at, now()) > $7::timestamptz - ($6::int * interval '1 second'))
      order by created_at desc
      limit 1`,
-    [input.connectionId, input.templateKey, hash, input.start, input.end],
+    [input.connectionId, input.templateKey, hash, input.start, input.end, input.retryFailedAfterSeconds ?? null, (input.now ?? new Date()).toISOString()],
   );
   if (existing.rows[0]) {
-    if (existing.rows[0].state === "succeeded") {
+    if (existing.rows[0].state === "succeeded" && succeededWindowIsStale(existing.rows[0].updated_at, input.refreshAfterSeconds, input.now)) {
       await db.query(
         `update analytics_jobs
-         set state = 'queued', attempts = 0, next_attempt_at = now(), safe_error_code = null,
-             last_error_at = null, failed_at = null, updated_at = now()
+         set state = 'queued', attempts = 0, next_attempt_at = coalesce($2::timestamptz, now()), safe_error_code = null,
+             last_error_at = null, failed_at = null, updated_at = coalesce($2::timestamptz, now())
          where id = $1 and state = 'succeeded'`,
-        [existing.rows[0].id],
+        [existing.rows[0].id, input.now ? input.now.toISOString() : null],
       );
     }
+    await retireSupersededJobs(db, input);
     return { id: existing.rows[0].id, reused: true };
   }
   const { rows } = await db.query<{ id: string }>(
-    `insert into analytics_jobs (client_id, website_id, connection_id, template_key, query_hash, start_date, end_date)
-     values ($1, $2, $3, $4, $5, $6, $7)
+    `insert into analytics_jobs (client_id, website_id, connection_id, template_key, query_hash, start_date, end_date, window_class, priority, next_attempt_at)
+     values ($1, $2, $3, $4, $5, $6, $7, $8, $9, coalesce($10::timestamptz, now()))
      on conflict (connection_id, template_key, query_hash, start_date, end_date)
        where state in ('queued', 'leased')
      do nothing
      returning id`,
-    [input.clientId, input.websiteId, input.connectionId, input.templateKey, hash, input.start, input.end],
+    [input.clientId, input.websiteId, input.connectionId, input.templateKey, hash, input.start, input.end, input.windowClass ?? null, input.priority ?? 50, input.now ? input.now.toISOString() : null],
   );
-  if (rows[0]) return { id: rows[0].id, reused: false };
+  if (rows[0]) {
+    await retireSupersededJobs(db, input);
+    return { id: rows[0].id, reused: false };
+  }
   const raced = await db.query<{ id: string }>(
     `select id from analytics_jobs
      where connection_id = $1 and template_key = $2 and query_hash = $3
@@ -247,16 +368,80 @@ export async function enqueueJob(db: Queryable, input: {
   return { id: raced.rows[0].id, reused: true };
 }
 
-export async function enqueueDue(db: Queryable, now: Date, websiteId?: string): Promise<number> {
+export type PlannerVersion = "v1" | "v2";
+
+/** Version 2 (Phase 2.1) is the default. `ANALYTICS_PLANNER=v1` restores the D52 plan. */
+export function plannerVersion(env: Record<string, string | undefined> = process.env): PlannerVersion {
+  return env.ANALYTICS_PLANNER?.trim().toLowerCase() === "v1" ? "v1" : "v2";
+}
+
+export async function enqueueDue(db: Queryable, now: Date, websiteId?: string, options: { planner?: PlannerVersion; partialRefreshSeconds?: number | null } = {}): Promise<number> {
+  const planner = options.planner ?? plannerVersion();
+  const partialRefresh = options.partialRefreshSeconds === undefined ? partialRefreshSeconds() : options.partialRefreshSeconds;
   const { rows } = await db.query<ConnectionRow>(
     `select id, client_id, website_id, provider, external_property_id, stream_or_site_ref, secret_ref, provider_timezone, status
      from analytics_connections where status = 'connected' and disconnected_at is null
-       and ($1::uuid is null or website_id = $1)`,
+       and ($1::uuid is null or website_id = $1)
+     order by id`,
     [websiteId ?? null],
   );
+  if (rows.length === 0) return 0;
+  const plans = rows.map((connection) => ({
+    connection,
+    plan: planner === "v1"
+      ? dueJobs(connection.provider, now, connection.provider_timezone).map((due) => ({ ...due, windowClass: undefined, priority: undefined }))
+      : planDueJobs(connection.provider, now, connection.provider_timezone),
+  }));
+  // One read of what already exists, instead of one per planned job: a run with nothing to add costs two queries.
+  const earliest = plans.flatMap(({ plan }) => plan.map((job) => job.start)).sort()[0] ?? now.toISOString().slice(0, 10);
+  const known = await db.query<{ connection_id: string; template_key: string; start_date: string; end_date: string; state: string; updated_at: Date; safe_error_code: string | null }>(
+    `select connection_id, template_key, start_date::text, end_date::text, state, updated_at, safe_error_code
+     from analytics_jobs
+     where connection_id = any($1::uuid[]) and state in ('queued', 'leased', 'succeeded', 'failed') and start_date >= $2::date`,
+    [rows.map((row) => row.id), earliest],
+  );
+  const seen = new Map<string, { active: boolean; succeededAt: Date | null; failedAt: Date | null; failedTransient: boolean }>();
+  for (const row of known.rows) {
+    const key = `${row.connection_id}|${row.template_key}|${row.start_date}|${row.end_date}`;
+    const entry = seen.get(key) ?? { active: false, succeededAt: null, failedAt: null, failedTransient: false };
+    if (row.state === "succeeded") {
+      if (!entry.succeededAt || row.updated_at > entry.succeededAt) entry.succeededAt = row.updated_at;
+    } else if (row.state === "failed") {
+      if (!entry.failedAt || row.updated_at > entry.failedAt) {
+        entry.failedAt = row.updated_at;
+        entry.failedTransient = row.safe_error_code !== null && TRANSIENT_FAILURE_CODES.has(row.safe_error_code);
+      }
+    } else {
+      entry.active = true;
+    }
+    seen.set(key, entry);
+  }
   let created = 0;
-  for (const connection of rows) {
-    for (const due of dueJobs(connection.provider, now, connection.provider_timezone)) {
+  for (const { connection, plan } of plans) {
+    const zone = connection.provider_timezone || (connection.provider === "gsc" ? GSC_TIME_ZONE : "Asia/Singapore");
+    const today = civilDate(zone, now);
+    for (const due of plan) {
+      const entry = seen.get(`${connection.id}|${due.templateKey}|${due.start}|${due.end}`);
+      if (entry?.active) continue;
+      let retryFailed = false;
+      if (entry?.failedAt && !entry.succeededAt) {
+        // The window's jobs ran out of attempts. A transient cause (the provider was down) earns one fresh set of
+        // attempts after a pause; a rejected request does not, because asking again cannot change the answer.
+        if (!entry.failedTransient || now.getTime() - new Date(entry.failedAt).getTime() < FAILED_RETRY_SECONDS * 1000) continue;
+        retryFailed = true;
+      }
+      const partialDay = due.end >= today;
+      if (entry?.succeededAt) {
+        // Already fetched. A window that includes the provider's current day is partial: once per window unless opted in.
+        if (partialDay) {
+          if (!succeededWindowIsStale(entry.succeededAt, partialRefresh, now)) continue;
+        } else if (civilDate(zone, entry.succeededAt) === today || windowWasSettledWhenFetched(connection.provider, due.end, entry.succeededAt)) {
+          // Fetched earlier today, or fetched after the provider had finished the window: the data cannot have changed.
+          continue;
+        }
+        // Otherwise a window that came back (for example a previous-period window that equals an earlier current one)
+        // was fetched before its last days had settled. Fetch it again.
+      }
       const job = await enqueueJob(db, {
         clientId: connection.client_id,
         websiteId: connection.website_id,
@@ -264,11 +449,36 @@ export async function enqueueDue(db: Queryable, now: Date, websiteId?: string): 
         templateKey: due.templateKey,
         start: due.start,
         end: due.end,
+        windowClass: due.windowClass,
+        priority: due.priority,
+        now,
+        refreshAfterSeconds: partialDay ? partialRefresh : undefined,
+        retryFailedAfterSeconds: retryFailed ? FAILED_RETRY_SECONDS : undefined,
       });
       if (!job.reused) created += 1;
     }
   }
   return created;
+}
+
+/** Failure codes that mean the provider or the network was unavailable, not that our request was wrong. */
+export const TRANSIENT_FAILURE_CODES = new Set(["provider_unavailable", "rate_limited", "invalid_response", "lease_expired"]);
+/** How long a window whose jobs all ran out of attempts waits before it earns a fresh set of attempts. */
+export const FAILED_RETRY_SECONDS = 6 * 60 * 60;
+
+/**
+ * Hours after a window's last day ends before its numbers stop changing, by provider. Search Console
+ * needs none: its windows end three Pacific days back and are requested with `dataState: final`. GA4
+ * and Wix report a day's data for up to about two days after it ends, so a window fetched sooner is
+ * not final and must be fetched again if it is ever needed again.
+ */
+export const SETTLE_HOURS: Record<AnalyticsProvider, number> = { gsc: 0, ga4: 48, wix: 48 };
+
+/** True when the window had settled at the moment it was fetched. Conservative by up to 14 hours of time zone offset. */
+export function windowWasSettledWhenFetched(provider: AnalyticsProvider, windowEnd: string, fetchedAt: Date): boolean {
+  if (provider === "gsc") return true;
+  const settledAt = Date.parse(`${windowEnd}T00:00:00Z`) + (24 + 14 + SETTLE_HOURS[provider]) * 3_600_000;
+  return new Date(fetchedAt).getTime() >= settledAt;
 }
 
 export type RangeJobStatus = "ready" | "preparing" | "not_prepared" | "not_connected";
@@ -462,7 +672,7 @@ export function retryBackoffSeconds(attempt: number, providerSeconds = 0): numbe
   return Math.max(exponential, Math.min(MAX_BACKOFF_SECONDS, Math.max(0, providerSeconds)));
 }
 
-export async function reapExpiredLeases(db: Queryable, now: Date): Promise<number> {
+export async function reapExpiredLeases(db: Queryable, now: Date, connectionId?: string): Promise<number> {
   const at = now.toISOString();
   const { rows } = await db.query<{ id: string; terminal: boolean }>(
     `update analytics_jobs
@@ -479,8 +689,9 @@ export async function reapExpiredLeases(db: Queryable, now: Date): Promise<numbe
          heartbeat_at = null,
          updated_at = $1
      where state = 'leased' and lease_until is not null and lease_until < $1::timestamptz
+       and ($4::uuid is null or connection_id = $4)
      returning id, attempts >= $2 as terminal`,
-    [at, MAX_ATTEMPTS, MAX_BACKOFF_SECONDS],
+    [at, MAX_ATTEMPTS, MAX_BACKOFF_SECONDS, connectionId ?? null],
   );
   if (rows.length > 0) {
     await db.query(
@@ -493,39 +704,94 @@ export async function reapExpiredLeases(db: Queryable, now: Date): Promise<numbe
   return rows.length;
 }
 
-export async function leaseNext(db: Queryable, owner: string, now: Date): Promise<JobRow | null> {
-  await reapExpiredLeases(db, now);
-  const { rows } = await db.query<JobRow>(
-    `with next as (
-       select candidate.id from analytics_jobs candidate
-       where candidate.state = 'queued' and candidate.next_attempt_at <= $2
-         and not exists (
-           select 1 from analytics_jobs active
-           where active.connection_id = candidate.connection_id and active.state = 'leased'
-         )
-       -- Newest reporting windows first, so an older backlog cannot hold back current figures (D52).
-       order by candidate.end_date desc, candidate.next_attempt_at, candidate.created_at, candidate.id
-       for update skip locked
-       limit 1
-     )
-     update analytics_jobs j
-     set state = 'leased',
-         lease_owner = $1,
-         lease_until = $2::timestamptz + ($3 * interval '1 second'),
-         heartbeat_at = $2,
-         attempts = attempts + 1,
-         failed_at = null,
-         updated_at = $2
-     from next where j.id = next.id
-     returning j.id, j.client_id, j.website_id, j.connection_id, j.template_key, j.query_hash,
-       j.start_date::text, j.end_date::text, j.attempts, j.lease_owner`,
-    [owner, now.toISOString(), LEASE_SECONDS],
-  );
-  return rows[0] ?? null;
+/**
+ * Provider breaker (Phase 2.2). When this many connections of one provider are failing at once, the
+ * fault is the provider's, not one property's. Connections that are still healthy are held back; the
+ * failing ones keep retrying on their own backoff and act as probes. The first success clears its
+ * failure count, the failing set drops below the threshold and everything resumes. A failure older
+ * than two hours past its cooldown no longer counts, so a stale record cannot hold a provider.
+ */
+export const PROVIDER_BREAKER_THRESHOLD = 3;
+
+/** Which fault a connection's next attempt waits out. The job's own retry time is separate. */
+const CONNECTION_COOLDOWN_MAX_SECONDS = MAX_BACKOFF_SECONDS;
+
+/**
+ * Takes the next due job fairly. Order: priority first, so every connection's essential reports
+ * run before anyone's extras; then the connection served longest ago, so no provider or client
+ * can keep the worker to itself; then the newest reporting window (D52). A connection waiting
+ * out a provider fault is skipped, so it cannot spend the run on retries. The database allows
+ * one leased job per connection, so two workers can never process the same connection together.
+ */
+export interface LeaseScope {
+  /** Lease only jobs of this connection. */
+  connectionId?: string;
+  /** Lease only these jobs. */
+  jobIds?: string[];
 }
 
-export async function claimNextJob(db: Queryable, owner: string, now: Date): Promise<ClaimedAnalyticsJob | null> {
-  const job = await leaseNext(db, owner, now);
+export async function leaseNext(db: Queryable, owner: string, now: Date, scope: LeaseScope = {}): Promise<JobRow | null> {
+  await reapExpiredLeases(db, now, scope.connectionId);
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    await db.query("savepoint analytics_lease");
+    try {
+      const { rows } = await db.query<JobRow>(
+        `with tripped as (
+           select provider from analytics_connections
+           where status = 'connected' and disconnected_at is null and consecutive_failures >= 1
+             and cooldown_until > $2::timestamptz - interval '2 hours'
+           group by provider having count(*) >= $4
+         ), next as (
+           select candidate.id, candidate.connection_id from analytics_jobs candidate
+           join analytics_connections conn on conn.id = candidate.connection_id
+           where candidate.state = 'queued' and candidate.next_attempt_at <= $2
+             and conn.status = 'connected' and conn.disconnected_at is null
+             and (conn.cooldown_until is null or conn.cooldown_until <= $2)
+             and not (conn.consecutive_failures = 0 and conn.provider in (select provider from tripped))
+             and ($5::uuid is null or candidate.connection_id = $5)
+             and ($6::uuid[] is null or candidate.id = any($6::uuid[]))
+             and not exists (
+               select 1 from analytics_jobs active
+               where active.connection_id = candidate.connection_id and active.state = 'leased'
+             )
+           order by candidate.priority, conn.last_served_at asc nulls first,
+             candidate.end_date desc, candidate.next_attempt_at, candidate.created_at, candidate.id
+           for update of candidate skip locked
+           limit 1
+         ), leased as (
+           update analytics_jobs j
+           set state = 'leased',
+               lease_owner = $1,
+               lease_until = $2::timestamptz + ($3 * interval '1 second'),
+               heartbeat_at = $2,
+               attempts = attempts + 1,
+               failed_at = null,
+               updated_at = $2
+           from next where j.id = next.id
+           returning j.id, j.client_id, j.website_id, j.connection_id, j.template_key, j.query_hash,
+             j.start_date::text, j.end_date::text, j.attempts, j.lease_owner
+         ), served as (
+           update analytics_connections c set last_served_at = $2
+           from leased where c.id = leased.connection_id
+           returning c.id
+         )
+         select * from leased`,
+        [owner, now.toISOString(), LEASE_SECONDS, PROVIDER_BREAKER_THRESHOLD, scope.connectionId ?? null, scope.jobIds ?? null],
+      );
+      await db.query("release savepoint analytics_lease");
+      return rows[0] ?? null;
+    } catch (error) {
+      await db.query("rollback to savepoint analytics_lease");
+      // Another worker leased a job of the same connection first. Try the next connection.
+      if ((error as { code?: string }).code === "23505") continue;
+      throw error;
+    }
+  }
+  return null;
+}
+
+export async function claimNextJob(db: Queryable, owner: string, now: Date, scope: LeaseScope = {}): Promise<ClaimedAnalyticsJob | null> {
+  const job = await leaseNext(db, owner, now, scope);
   if (!job) return null;
   const connection = await loadConnection(db, job.connection_id, job.client_id);
   const sealedToken = await loadSealedToken(db, connection);
@@ -537,11 +803,73 @@ export async function claimNextJob(db: Queryable, owner: string, now: Date): Pro
   return { job, connection, sealedToken, capability, runId: run.rows[0]!.id, owner };
 }
 
+/** A network fault or timeout the provider may recover from. Anything else is our own error and is not retried. */
+export function isTransientFetchError(error: unknown): boolean {
+  if (!error || typeof error !== "object") return false;
+  const { name, code, message } = error as { name?: string; code?: string; message?: string };
+  if (name === "TimeoutError" || name === "AbortError") return true;
+  if (typeof code === "string" && /^(ECONNRESET|ETIMEDOUT|ECONNREFUSED|EAI_AGAIN|ENOTFOUND|EPIPE|UND_ERR_[A-Z_]+)$/.test(code)) return true;
+  return name === "TypeError" && message === "fetch failed";
+}
+
+/**
+ * Maps what a provider call can throw onto the worker's retry rules (Phase 2.1). A timeout or
+ * dropped connection is retried with backoff instead of failing the job for good. A body that is
+ * not valid JSON is a bad response, retried and never stored.
+ */
+export function resilientFetch(inner: FetchLike): FetchLike {
+  return async (url, init) => {
+    let response: FetchResponse;
+    try {
+      response = await inner(url, init);
+    } catch (error) {
+      if (isTransientFetchError(error)) throw new RetryableError(30, "provider_unavailable");
+      throw error;
+    }
+    return {
+      status: response.status,
+      headers: response.headers,
+      json: async () => {
+        try {
+          return await response.json();
+        } catch (error) {
+          if (isTransientFetchError(error)) throw new RetryableError(30, "provider_unavailable");
+          throw new RetryableError(60, "invalid_response");
+        }
+      },
+      text: () => response.text(),
+    };
+  };
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+/** A GA4 report carries a rows array or names its metrics, even for a day with no rows. A body with neither is not a report. */
+function validGa4Body(body: unknown): unknown {
+  if (!isRecord(body) || (!Array.isArray(body.rows) && !Array.isArray(body.metricHeaders)) || (body.rows !== undefined && !Array.isArray(body.rows))) {
+    throw new RetryableError(60, "invalid_response");
+  }
+  return body;
+}
+
+function validGscBody(body: unknown): unknown {
+  if (!isRecord(body) || (body.rows !== undefined && !Array.isArray(body.rows))) throw new RetryableError(60, "invalid_response");
+  return body;
+}
+
+function validWixBody(body: unknown): unknown {
+  if (!isRecord(body) || (body.data !== undefined && !Array.isArray(body.data))) throw new RetryableError(60, "invalid_response");
+  return body;
+}
+
 export async function executeClaimedJob(
   run: <T>(fn: (db: Queryable) => Promise<T>) => Promise<T>,
   claimed: ClaimedAnalyticsJob,
-  deps: SyncDeps,
+  rawDeps: SyncDeps,
 ): Promise<{ result: WorkerJobResult }> {
+  const deps: SyncDeps = { ...rawDeps, fetch: resilientFetch(rawDeps.fetch) };
   let original: TokenBundle | undefined;
   let current: TokenBundle | undefined;
   let pulled: PulledJob;
@@ -552,7 +880,7 @@ export async function executeClaimedJob(
   } catch (error) {
     return run((db) => failClaimedJob(db, claimed, error, original, current, deps.now));
   }
-  return run((db) => finalizeClaimedJob(db, claimed, pulled, original, current));
+  return run((db) => finalizeClaimedJob(db, claimed, pulled, original, current, deps.now));
 }
 
 export async function runWorkerOnce(
@@ -560,7 +888,7 @@ export async function runWorkerOnce(
   owner: string,
   deps: SyncDeps,
 ): Promise<{ worked: boolean; result?: WorkerJobResult }> {
-  const claimed = await run((db) => claimNextJob(db, owner, deps.now));
+  const claimed = await run((db) => claimNextJob(db, owner, deps.now, { connectionId: deps.onlyConnectionId, jobIds: deps.onlyJobIds }));
   if (!claimed) return { worked: false };
   const outcome = await executeClaimedJob(run, claimed, deps);
   return { worked: true, result: outcome.result };
@@ -609,16 +937,24 @@ async function saveRefreshedToken(
   );
 }
 
+/** GA4 and Wix report the current day while it is still changing; Search Console only returns final days. */
+function partialFromDate(connection: ConnectionRow, now: Date): string | undefined {
+  if (connection.provider === "gsc") return undefined;
+  return civilDate(connection.provider_timezone || "Asia/Singapore", now);
+}
+
 async function finalizeClaimedJob(
   db: Queryable,
   claimed: ClaimedAnalyticsJob,
   pulled: PulledJob,
   original: TokenBundle,
   token: TokenBundle,
+  now: Date,
 ): Promise<{ result: WorkerJobResult }> {
   if (!await lockOwnedClaim(db, claimed)) return { result: "stale" };
   await saveRefreshedToken(db, claimed, original, token);
   if (pulled.capabilities) await storeCapabilities(db, claimed.connection, pulled.capabilities);
+  const partialFrom = partialFromDate(claimed.connection, now);
   if (pulled.facts) {
     await promote(db, {
       connection: claimed.connection,
@@ -628,6 +964,27 @@ async function finalizeClaimedJob(
       timezone: pulled.facts.timezone,
       pages: pulled.facts.pages,
       quota: pulled.facts.quota ?? {},
+      quality: pulled.facts.quality,
+      partialFrom,
+    });
+  }
+  for (const part of pulled.derived ?? []) {
+    await promote(db, {
+      connection: claimed.connection,
+      job: {
+        ...claimed.job,
+        template_key: part.templateKey,
+        query_hash: queryHash(part.templateKey, 1, { start: part.start, end: part.end }),
+        start_date: part.start,
+        end_date: part.end,
+      },
+      facts: part.rows,
+      completeness: part.rows.length === 0 ? "empty" : "complete",
+      timezone: pulled.stats?.timezone ?? "UTC",
+      pages: pulled.stats?.pages ?? 0,
+      quota: { ...(pulled.stats?.quota ?? {}), derivedFrom: claimed.job.template_key },
+      quality: pulled.stats?.quality,
+      partialFrom,
     });
   }
   await finish(
@@ -635,10 +992,16 @@ async function finalizeClaimedJob(
     claimed.job.id,
     claimed.runId,
     "succeeded",
-    pulled.facts?.pages ?? pulled.capabilities?.length ?? 0,
-    pulled.facts?.rows.length ?? 0,
+    pulled.facts?.pages ?? pulled.stats?.pages ?? pulled.capabilities?.length ?? 0,
+    pulled.facts?.rows.length ?? pulled.stats?.rows ?? 0,
     null,
-    pulled.facts?.quota ?? {},
+    pulled.facts?.quota ?? pulled.stats?.quota ?? {},
+    now,
+  );
+  await db.query(
+    `update analytics_connections set consecutive_failures = 0, cooldown_until = null
+     where id = $1 and (consecutive_failures <> 0 or cooldown_until is not null)`,
+    [claimed.connection.id],
   );
   return { result: "succeeded" };
 }
@@ -672,6 +1035,17 @@ async function failClaimedJob(
       [claimed.job.id, exhausted ? "failed" : "queued", new Date(now.getTime() + delay * 1000).toISOString(), error.code, at],
     );
     await finish(db, claimed.job.id, claimed.runId, "failed", 0, 0, error.code);
+    // A provider fault pauses the whole connection, so its other jobs do not each spend a
+    // lease and an attempt. Running out of worker time is our limit, not the provider's.
+    if (error.code !== "worker_deadline") {
+      await db.query(
+        `update analytics_connections
+         set cooldown_until = $2::timestamptz + least($3, greatest($4, 30 * power(2, least(consecutive_failures, 6)))) * interval '1 second',
+             consecutive_failures = consecutive_failures + 1
+         where id = $1`,
+        [claimed.connection.id, at, CONNECTION_COOLDOWN_MAX_SECONDS, Math.max(0, error.seconds)],
+      );
+    }
     return { result: exhausted ? "failed" : "retry" };
   }
   if (error instanceof ConfigurationError) {
@@ -687,6 +1061,25 @@ async function failClaimedJob(
     await finish(db, claimed.job.id, claimed.runId, "failed", 0, 0, "not_configured");
     return { result: "not_configured" };
   }
+  if (error instanceof ServerCredentialError) {
+    // The connection and its stored token are left exactly as they are. The job waits without using an attempt, and the
+    // connection is paused for the same time, so one run makes one rejected request per connection, not one per job.
+    const wait = new Date(now.getTime() + SERVER_CREDENTIAL_WAIT_SECONDS * 1000).toISOString();
+    await db.query(
+      `update analytics_jobs
+       set state = 'queued', attempts = greatest(attempts - 1, 0), next_attempt_at = $2,
+           safe_error_code = $4, last_error_at = $3, failed_at = null,
+           lease_owner = null, lease_until = null, heartbeat_at = null, updated_at = $3
+       where id = $1`,
+      [claimed.job.id, wait, at, error.code],
+    );
+    await db.query(
+      "update analytics_connections set cooldown_until = $2, consecutive_failures = consecutive_failures + 1 where id = $1",
+      [claimed.connection.id, wait],
+    );
+    await finish(db, claimed.job.id, claimed.runId, "failed", 0, 0, error.code);
+    return { result: "not_configured" };
+  }
   if (error instanceof ReconnectError) {
     await db.query("update analytics_connections set status = 'reconnect_required', updated_at = $2 where id = $1", [claimed.connection.id, at]);
     await db.query(
@@ -695,6 +1088,15 @@ async function failClaimedJob(
            failed_at = $2, lease_owner = null, lease_until = null, heartbeat_at = null, updated_at = $2
        where id = $1`,
       [claimed.job.id, at],
+    );
+    // The connection's other waiting jobs cannot succeed either. They end the same way, now and without a rejected provider
+    // request each, instead of being worked one by one (and the worker no longer leases jobs of a connection that is not connected).
+    await db.query(
+      `update analytics_jobs
+       set state = 'reconnect_required', safe_error_code = 'reconnect_required', last_error_at = $2, failed_at = $2,
+           lease_owner = null, lease_until = null, heartbeat_at = null, updated_at = $2
+       where connection_id = $1 and state = 'queued' and id <> $3`,
+      [claimed.connection.id, at, claimed.job.id],
     );
     await finish(db, claimed.job.id, claimed.runId, "reconnect_required", 0, 0, "reconnect_required");
     return { result: "reconnect" };
@@ -722,14 +1124,16 @@ async function finish(
   rows: number,
   code: string | null,
   quota: Record<string, unknown> = {},
+  at?: Date,
 ): Promise<void> {
   if (result === "succeeded") {
+    // The success time comes from the worker's clock, so the refresh policy and the simulation agree about it.
     await db.query(
       `update analytics_jobs
        set state = 'succeeded', lease_owner = null, lease_until = null, heartbeat_at = null,
-           safe_error_code = null, last_error_at = null, failed_at = null, updated_at = now()
+           safe_error_code = null, last_error_at = null, failed_at = null, updated_at = coalesce($2::timestamptz, now())
        where id = $1`,
-      [jobId],
+      [jobId, at ? at.toISOString() : null],
     );
   }
   await db.query(
@@ -741,6 +1145,9 @@ async function finish(
   );
 }
 
+/** Rows stored per statement. */
+const PROMOTE_BATCH = 500;
+
 async function promote(db: Queryable, input: {
   connection: ConnectionRow;
   job: JobRow;
@@ -749,6 +1156,10 @@ async function promote(db: Queryable, input: {
   timezone: string;
   pages: number;
   quota: Record<string, unknown>;
+  /** Evidence about the pull itself (truncation, rows withheld, provider warnings). Stored beside the quota; changes no number. */
+  quality?: Record<string, unknown>;
+  /** First provider date that may still change. From this date coverage is `partial`, never `complete`. */
+  partialFrom?: string;
 }): Promise<void> {
   const generationRow = await db.query<{ generation: number }>(
     `select coalesce(max(generation), 0)::int as generation from analytics_report_partitions where connection_id = $1 and query_hash = $2`,
@@ -759,28 +1170,50 @@ async function promote(db: Queryable, input: {
     `insert into analytics_report_partitions
       (client_id, website_id, connection_id, template_key, query_hash, start_date, end_date, source_timezone, provenance, completeness, generation, published, quality)
      values ($1, $2, $3, $4, $5, $6, $7, $8, 'api', $9, $10, false, $11) returning id`,
-    [input.connection.client_id, input.connection.website_id, input.connection.id, input.job.template_key, input.job.query_hash, input.job.start_date, input.job.end_date, input.timezone, input.completeness, generation, JSON.stringify({ pages: input.pages, quota: input.quota })],
+    [input.connection.client_id, input.connection.website_id, input.connection.id, input.job.template_key, input.job.query_hash, input.job.start_date, input.job.end_date, input.timezone, input.completeness, generation, JSON.stringify({ pages: input.pages, quota: input.quota, ...(input.quality ?? {}) })],
   );
   const partitionId = inserted.rows[0]!.id;
-  for (const fact of input.facts) {
-    const row = await db.query<{ id: string }>(
-      `insert into analytics_report_rows (partition_id, client_id, website_id, dimension_key, dimensions) values ($1, $2, $3, $4, $5) returning id`,
-      [partitionId, input.connection.client_id, input.connection.website_id, fact.dimensionKey, JSON.stringify(fact.dimensions)],
+  // Rows and values go in batches: one statement per few hundred rows instead of one per row and
+  // per metric. A 5,000-row report took 25,016 statements before; the stored result is the same.
+  for (let offset = 0; offset < input.facts.length; offset += PROMOTE_BATCH) {
+    const batch = input.facts.slice(offset, offset + PROMOTE_BATCH);
+    const stored = await db.query<{ id: string; dimension_key: string }>(
+      `insert into analytics_report_rows (partition_id, client_id, website_id, dimension_key, dimensions)
+       select $1, $2, $3, t.key, t.dims::jsonb from unnest($4::text[], $5::text[]) as t(key, dims)
+       returning id, dimension_key`,
+      [partitionId, input.connection.client_id, input.connection.website_id, batch.map((fact) => fact.dimensionKey), batch.map((fact) => JSON.stringify(fact.dimensions))],
     );
-    for (const metric of fact.metrics) {
+    const idByKey = new Map(stored.rows.map((row) => [row.dimension_key, row.id]));
+    const rowIds: string[] = [];
+    const keys: string[] = [];
+    const values: Array<number | null> = [];
+    const states: string[] = [];
+    for (const fact of batch) {
+      for (const metric of fact.metrics) {
+        rowIds.push(idByKey.get(fact.dimensionKey)!);
+        keys.push(metric.key);
+        values.push(metric.value);
+        states.push(metric.state);
+      }
+    }
+    if (rowIds.length > 0) {
       await db.query(
-        `insert into analytics_metric_values (report_row_id, client_id, website_id, metric_key, value_numeric, value_state) values ($1, $2, $3, $4, $5, $6)`,
-        [row.rows[0]!.id, input.connection.client_id, input.connection.website_id, metric.key, metric.value, metric.state],
+        `insert into analytics_metric_values (report_row_id, client_id, website_id, metric_key, value_numeric, value_state)
+         select t.row_id, $1, $2, t.key, t.value, t.state from unnest($3::uuid[], $4::text[], $5::numeric[], $6::text[]) as t(row_id, key, value, state)`,
+        [input.connection.client_id, input.connection.website_id, rowIds, keys, values, states],
       );
     }
-    if (fact.sourceDate) {
-      await db.query(
-        `insert into analytics_coverage (client_id, website_id, connection_id, template_key, source_date, state, tracking_active, measured_through)
-         values ($1, $2, $3, $4, $5, 'complete', true, $5)
-         on conflict (connection_id, template_key, source_date) do update set state = 'complete', fetched_at = now(), measured_through = excluded.measured_through`,
-        [input.connection.client_id, input.connection.website_id, input.connection.id, input.job.template_key, fact.sourceDate],
-      );
-    }
+  }
+  const dated = [...new Set(input.facts.flatMap((fact) => (fact.sourceDate ? [fact.sourceDate] : [])))];
+  for (let offset = 0; offset < dated.length; offset += PROMOTE_BATCH) {
+    const days = dated.slice(offset, offset + PROMOTE_BATCH);
+    await db.query(
+      `insert into analytics_coverage (client_id, website_id, connection_id, template_key, source_date, state, tracking_active, measured_through)
+       select $1, $2, $3, $4, d.day, case when $5::date is not null and d.day >= $5::date then 'partial' else 'complete' end, true, d.day
+       from unnest($6::date[]) as d(day)
+       on conflict (connection_id, template_key, source_date) do update set state = excluded.state, fetched_at = now(), measured_through = excluded.measured_through`,
+      [input.connection.client_id, input.connection.website_id, input.connection.id, input.job.template_key, input.partialFrom ?? null, days],
+    );
   }
   await db.query(
     `update analytics_report_partitions set published = false where connection_id = $1 and query_hash = $2 and published and id <> $3`,
@@ -804,17 +1237,97 @@ async function pullTemplate(
       status: known.status,
     } : null);
     if (decision === "unsupported") throw new Error("unsupported");
+    const facts = await pullGa4(connection, job, token, deps);
     return {
-      facts: await pullGa4(connection, job, token, deps),
+      ...(isBundle(job.template_key) ? deriveBundle(job, facts) : { facts }),
       capabilities: [{ templateKey: job.template_key, metrics: spec.metrics, dimensions: spec.dimensions, dependencies: [], status: "supported" }],
     };
   }
   if (connection.provider === "wix" && job.template_key === "wix.semantic_discover") return { capabilities: await discoverWix(token, deps) };
   if (connection.provider === "wix") return { facts: await pullWix(connection, job, token, deps) };
-  return { facts: await pullGsc(connection, job, token, deps) };
+  const gsc = await pullGsc(connection, job, token, deps);
+  return isBundle(job.template_key) ? deriveBundle(job, gsc) : { facts: gsc };
 }
 
-async function pullGa4(connection: ConnectionRow, job: JobRow, token: TokenBundle, deps: SyncDeps): Promise<{ rows: FactRow[]; timezone: string; pages: number; quota?: Record<string, unknown> }> {
+/**
+ * Turns one daily-grain pull into the exact-window reports readers ask for. Only windows the
+ * pull fully covers are produced. A window the provider returned nothing for is stored as an
+ * empty report, the same as a direct request would have been.
+ */
+function deriveBundle(job: JobRow, pulled: { rows: FactRow[]; timezone: string; pages: number; quota?: Record<string, unknown>; quality?: Record<string, unknown> }): PulledJob {
+  const spec = BUNDLES[job.template_key]!;
+  const derived = bundleWindows(job.template_key, job.start_date, job.end_date).map((window) => {
+    const rows = spec.provider === "gsc"
+      ? deriveGscTotals(pulled.rows.flatMap(toGscDaily), window)
+      : deriveSessionsByDimension(pulled.rows.flatMap((row) => toDailyDimension(row, spec.dimension!)), spec.dimension!, window);
+    return { templateKey: spec.derivesTemplate, start: window.start, end: window.end, rows: rows as FactRow[] };
+  });
+  return { derived, stats: { rows: pulled.rows.length, pages: pulled.pages, timezone: pulled.timezone, quota: pulled.quota, quality: pulled.quality } };
+}
+
+function toDailyDimension(row: FactRow, dimension: string): Array<{ date: string; value: string; sessions: number | null }> {
+  const date = row.dimensions.date;
+  const metric = row.metrics.find((item) => item.key === "sessions");
+  if (!date || !metric) return [];
+  return [{ date, value: row.dimensions[dimension] ?? "", sessions: metric.state === "available" ? metric.value : null }];
+}
+
+function toGscDaily(row: FactRow): GscDailyRow[] {
+  const date = row.dimensions.date;
+  const value = (key: string) => row.metrics.find((item) => item.key === key)?.value ?? 0;
+  return date ? [{ date, clicks: value("clicks"), impressions: value("impressions"), ctr: value("ctr"), position: value("position") }] : [];
+}
+
+type WithheldReasonLabel = Parameters<PrivacyTally["withhold"]>[0];
+
+/**
+ * Rows that end up with the same key (two page URLs that differ only by a removed query string) would violate the
+ * report's one-row-per-key rule and fail the whole job. They are combined: counts add, CTR is clicks over impressions,
+ * position is weighted by impressions, and anything else that cannot be added (users, rates) becomes unavailable.
+ */
+export function mergeDuplicateRows(input: FactRow[]): { rows: FactRow[]; merged: number } {
+  const byKey = new Map<string, FactRow>();
+  let merged = 0;
+  const value = (list: FactRow["metrics"], key: string) => {
+    const m = list.find((item) => item.key === key);
+    return m && m.state === "available" ? m.value : null;
+  };
+  for (const row of input) {
+    const existing = byKey.get(row.dimensionKey);
+    if (!existing) {
+      byKey.set(row.dimensionKey, { ...row, metrics: row.metrics.map((m) => ({ ...m })) });
+      continue;
+    }
+    merged += 1;
+    const a = existing.metrics;
+    const b = row.metrics;
+    const impA = value(a, "impressions");
+    const impB = value(b, "impressions");
+    const posA = value(a, "position");
+    const posB = value(b, "position");
+    existing.metrics = a.map((m): FactRow["metrics"][number] => {
+      const other = b.find((item) => item.key === m.key);
+      if (ADDITIVE_METRICS.has(m.key) && other && m.state === "available" && other.state === "available") {
+        return { key: m.key, value: (m.value ?? 0) + (other.value ?? 0), state: "available" };
+      }
+      if (m.key === "ctr" || m.key === "position") return m;
+      return { key: m.key, value: null, state: "unavailable" };
+    });
+    const clicks = value(existing.metrics, "clicks");
+    const impressions = value(existing.metrics, "impressions");
+    existing.metrics = existing.metrics.map((m): FactRow["metrics"][number] => {
+      if (m.key === "ctr") return clicks !== null && impressions ? { key: "ctr", value: clicks / impressions, state: "available" } : { key: "ctr", value: null, state: "unavailable" };
+      if (m.key === "position") {
+        const ok = posA !== null && posB !== null && impA !== null && impB !== null && impA + impB > 0;
+        return ok ? { key: "position", value: (posA * impA + posB * impB) / (impA + impB), state: "available" } : { key: "position", value: null, state: "unavailable" };
+      }
+      return m;
+    });
+  }
+  return { rows: [...byKey.values()], merged };
+}
+
+async function pullGa4(connection: ConnectionRow, job: JobRow, token: TokenBundle, deps: SyncDeps): Promise<{ rows: FactRow[]; timezone: string; pages: number; quota?: Record<string, unknown>; quality: Record<string, unknown> }> {
   const property = ga4PropertyPath(connection.external_property_id);
   const spec = ga4Template(job.template_key);
   const limit = deps.pageSize ?? 10000;
@@ -822,7 +1335,12 @@ async function pullGa4(connection: ConnectionRow, job: JobRow, token: TokenBundl
   let offset = 0;
   let pages = 0;
   let quota: Record<string, unknown> | undefined;
-  while (pages < 20) {
+  let finished = false;
+  let providerRowCount: number | undefined;
+  let invalidValues = 0;
+  const privacy = new PrivacyTally();
+  const warnings: { timeZone?: string; dataLossFromOtherRow?: boolean; subjectToThresholding?: boolean; sampledShare?: number; emptyReason?: string } = {};
+  while (pages < MAX_PROVIDER_PAGES) {
     assertWorkerTime(deps);
     pages += 1;
     if (deps.failOnPage === pages) throw new Error("page_failed");
@@ -834,33 +1352,83 @@ async function pullGa4(connection: ConnectionRow, job: JobRow, token: TokenBundl
       limit,
       offset,
     }));
-    const report = parseGa4Report(await response.json());
-    quota = report.quota;
+    const report = parseGa4Report(validGa4Body(await response.json()));
+    quota = report.quota ?? quota;
+    providerRowCount = report.rowCount ?? providerRowCount;
+    invalidValues += report.invalidValues;
+    warnings.timeZone = report.meta.timeZone ?? warnings.timeZone;
+    warnings.dataLossFromOtherRow = report.meta.dataLossFromOtherRow || warnings.dataLossFromOtherRow;
+    warnings.subjectToThresholding = report.meta.subjectToThresholding || warnings.subjectToThresholding;
+    warnings.emptyReason = report.meta.emptyReason ?? warnings.emptyReason;
+    if (report.meta.sampledShare !== undefined) warnings.sampledShare = Math.min(report.meta.sampledShare, warnings.sampledShare ?? 1);
     for (const row of report.rows) {
       const date = row.dimensions.date ? `${row.dimensions.date.slice(0, 4)}-${row.dimensions.date.slice(4, 6)}-${row.dimensions.date.slice(6, 8)}` : undefined;
-      const dimensions = date ? { ...row.dimensions, date } : row.dimensions;
+      const dimensions: Record<string, string> = date ? { ...row.dimensions, date } : { ...row.dimensions };
+      const metrics: FactRow["metrics"] = spec.metrics.map((key) => ({ key, value: row.metrics[key] ?? null, state: row.metrics[key] === undefined ? "unavailable" : "available" }));
+      // Every non-date dimension is checked for identifiers. A page path loses its query string; a row that carries an
+      // identifier or credential is withheld and counted (Phase 2.3A). GA4 dimensions were stored unchecked before.
+      let withheld: WithheldReasonLabel | null = null;
+      for (const name of spec.dimensions) {
+        if (name === "date" || dimensions[name] === undefined) continue;
+        const decision = classifyDimension(name, dimensions[name]!);
+        privacy.note(decision);
+        if (decision.value === null) {
+          withheld = decision.reason ?? "opaque_identifier";
+          break;
+        }
+        dimensions[name] = decision.value;
+      }
+      if (withheld) {
+        privacy.withhold(withheld, Object.fromEntries(metrics.map((m) => [m.key, m.value])));
+        continue;
+      }
       const dimensionKey = spec.dimensions.length === 0 ? "range" : spec.dimensions.map((name) => dimensions[name] ?? "").join("|");
-      rows.push({
-        dimensionKey: dimensionKey || "range",
-        dimensions,
-        sourceDate: date,
-        metrics: spec.metrics.map((key) => ({ key, value: row.metrics[key] ?? null, state: row.metrics[key] === undefined ? "unavailable" : "available" })),
-      });
+      rows.push({ dimensionKey: dimensionKey || "range", dimensions, sourceDate: date, metrics });
     }
-    if (report.rows.length < limit) break;
+    // GA4 says how many rows the whole result has. A short page is the end only if that agrees.
+    const moreByCount = providerRowCount !== undefined && offset + report.rows.length < providerRowCount && report.rows.length > 0;
+    if (report.rows.length < limit && !moreByCount) {
+      finished = true;
+      break;
+    }
+    if (report.rows.length === 0) {
+      finished = true;
+      break;
+    }
     offset += report.rows.length;
   }
-  return { rows, timezone: connection.provider_timezone || "UTC", pages, quota };
+  // Every row GA4 returned is either kept, withheld by the privacy filter, or merged into another with the same key.
+  const returned = rows.length + privacy.withheldRows;
+  const combined = mergeDuplicateRows(rows);
+  const quality: Record<string, unknown> = { rowsReturned: combined.rows.length, ...privacy.toQuality() };
+  if (combined.merged > 0) quality.duplicateRowsMerged = combined.merged;
+  if (providerRowCount !== undefined) quality.providerRowCount = providerRowCount;
+  // Stopped at the page cap with more to read: the report is incomplete and says so.
+  if (!finished) quality.truncated = true;
+  if (providerRowCount !== undefined && finished && returned !== providerRowCount) quality.rowCountMismatch = { returned, providerRowCount };
+  if (invalidValues > 0) quality.invalidValues = invalidValues;
+  if (warnings.dataLossFromOtherRow) quality.otherRowRolledUp = true;
+  if (warnings.subjectToThresholding) quality.subjectToThresholding = true;
+  if (warnings.sampledShare !== undefined && warnings.sampledShare < 1) quality.sampledShare = warnings.sampledShare;
+  if (warnings.emptyReason) quality.emptyReason = warnings.emptyReason;
+  if (warnings.timeZone) {
+    quality.providerTimeZone = warnings.timeZone;
+    // Dates in the report follow the property's time zone. If our setting differs, a "day" is not the day we think.
+    if (connection.provider_timezone && connection.provider_timezone !== warnings.timeZone) {
+      quality.timezoneMismatch = { property: warnings.timeZone, configured: connection.provider_timezone };
+    }
+  }
+  return { rows: combined.rows, timezone: connection.provider_timezone || "UTC", pages, quota, quality };
 }
 
-async function pullWix(connection: ConnectionRow, job: JobRow, token: TokenBundle, deps: SyncDeps): Promise<{ rows: FactRow[]; timezone: string; pages: number }> {
+async function pullWix(connection: ConnectionRow, job: JobRow, token: TokenBundle, deps: SyncDeps): Promise<{ rows: FactRow[]; timezone: string; pages: number; quality?: Record<string, unknown> }> {
   assertWorkerTime(deps);
   const today = civilDate(connection.provider_timezone || "Asia/Singapore", deps.now);
   const window = wixDataWindow(today, job.start_date, job.end_date);
   if ("error" in window) throw new Error("provider_rejected");
   const response = await deps.fetch(wixDataUrl(window.start, window.end), { headers: { Authorization: token.accessToken } });
   assertStatus(response.status, response.headers.get("retry-after"));
-  const points = parseWixData(await response.json());
+  const points = parseWixData(validWixBody(await response.json()));
   const byDate = new Map<string, FactRow>();
   for (const point of points) {
     const current = byDate.get(point.date) ?? { dimensionKey: point.date, dimensions: { date: point.date }, sourceDate: point.date, metrics: [] };
@@ -894,13 +1462,16 @@ async function discoverWix(token: TokenBundle, deps: SyncDeps): Promise<Array<{ 
   return found;
 }
 
-async function pullGsc(connection: ConnectionRow, job: JobRow, token: TokenBundle, deps: SyncDeps): Promise<{ rows: FactRow[]; timezone: string; pages: number }> {
+async function pullGsc(connection: ConnectionRow, job: JobRow, token: TokenBundle, deps: SyncDeps): Promise<{ rows: FactRow[]; timezone: string; pages: number; quality: Record<string, unknown> }> {
   const dimensions = job.template_key === "gsc.pages" ? ["page"] : job.template_key === "gsc.queries" ? ["query"] : job.template_key === "gsc.totals" ? [] : ["date"];
   const pageSize = deps.pageSize ?? GSC_ROW_LIMIT;
   const rows: FactRow[] = [];
   let startRow = 0;
   let pages = 0;
-  while (pages < 20) {
+  let finished = false;
+  let invalidRows = 0;
+  const privacy = new PrivacyTally();
+  while (pages < MAX_PROVIDER_PAGES) {
     assertWorkerTime(deps);
     pages += 1;
     if (deps.failOnPage === pages) throw new Error("page_failed");
@@ -910,14 +1481,20 @@ async function pullGsc(connection: ConnectionRow, job: JobRow, token: TokenBundl
       token.accessToken,
       { ...gscQueryBody({ start: job.start_date, end: job.end_date, dimensions, startRow }) as Record<string, unknown>, rowLimit: pageSize },
     );
-    const parsed = parseGscQuery(await response.json());
+    const parsed = parseGscQuery(validGscBody(await response.json()));
+    invalidRows += parsed.invalidRows;
     for (const row of parsed.rows) {
-      const rawKey = row.keys[0] ?? "";
-      const page = dimensions[0] === "page" ? safeAnalyticsPath(rawKey) : null;
-      const query = dimensions[0] === "query" ? safeSearchQuery(rawKey) : null;
-      if (dimensions[0] === "page" && !page) continue;
-      if (dimensions[0] === "query" && !query) continue;
-      const keys = dimensions[0] === "page" ? [page!] : dimensions[0] === "query" ? [query!] : row.keys;
+      let keys = row.keys;
+      if (dimensions[0] === "page" || dimensions[0] === "query") {
+        const decision = classifyDimension(dimensions[0], row.keys[0] ?? "");
+        privacy.note(decision);
+        if (decision.value === null) {
+          // Withheld for carrying an identifier or credential. Counted, with the clicks and impressions it held.
+          privacy.withhold(decision.reason ?? "opaque_identifier", { clicks: row.clicks, impressions: row.impressions });
+          continue;
+        }
+        keys = [decision.value];
+      }
       const key = keys.join("|") || "property";
       rows.push({
         dimensionKey: key.slice(0, 400),
@@ -931,11 +1508,24 @@ async function pullGsc(connection: ConnectionRow, job: JobRow, token: TokenBundl
         ],
       });
     }
-    if (!gscHasAnotherPage(parsed.rows.length) && parsed.rows.length < pageSize) break;
-    if (parsed.rows.length < pageSize) break;
+    if (!gscHasAnotherPage(parsed.rows.length) && parsed.rows.length < pageSize) {
+      finished = true;
+      break;
+    }
+    if (parsed.rows.length < pageSize) {
+      finished = true;
+      break;
+    }
     startRow += parsed.rows.length;
   }
-  return { rows, timezone: GSC_TIME_ZONE, pages };
+  const combined = mergeDuplicateRows(rows);
+  const quality: Record<string, unknown> = { rowsReturned: combined.rows.length, ...privacy.toQuality() };
+  if (combined.merged > 0) quality.duplicateRowsMerged = combined.merged;
+  // Google "does not guarantee to return all data rows but rather top ones", and exposes at most 50,000 rows a day per
+  // search type. Stopping at our own page cap with a full last page is a further, visible truncation.
+  if (!finished) quality.truncated = true;
+  if (invalidRows > 0) quality.invalidRows = invalidRows;
+  return { rows: combined.rows, timezone: GSC_TIME_ZONE, pages, quality };
 }
 
 async function storeCapabilities(db: Queryable, connection: ConnectionRow, capabilities: Array<{ templateKey: string; metrics: string[]; dimensions: string[]; dependencies: string[]; status: "supported" | "unsupported" }>): Promise<void> {
@@ -966,10 +1556,13 @@ async function refreshWix(connection: ConnectionRow, token: TokenBundle, deps: S
     body: JSON.stringify({ grant_type: "client_credentials", client_id: deps.wixAppId, client_secret: deps.wixAppSecret, instance_id: connection.stream_or_site_ref }),
   });
   const body = await response.json();
-  if (response.status === 401 || isInvalidGrant(body)) throw new ReconnectError();
+  if (isInvalidGrant(body)) throw new ReconnectError();
+  // Wix answers 400, 401 or 403 both for wrong app credentials and for an app that was removed from the site, and the
+  // body does not say which. Neither is allowed to disconnect a site automatically; the credential probe tells them apart.
+  if (response.status === 400 || response.status === 401 || response.status === 403) throw new ServerCredentialError("oauth_client_rejected");
   assertStatus(response.status, response.headers.get("retry-after"));
   const record = body as { access_token?: string; expires_in?: number };
-  if (!record.access_token) throw new ReconnectError();
+  if (!record.access_token) throw new RetryableError(60, "invalid_response");
   return { ...token, accessToken: record.access_token, expiresAt: new Date(deps.now.getTime() + (record.expires_in ?? 3600) * 1000).toISOString() };
 }
 
@@ -982,10 +1575,13 @@ async function refreshGoogle(token: TokenBundle, deps: SyncDeps): Promise<TokenB
     body: new URLSearchParams({ grant_type: "refresh_token", refresh_token: token.refreshToken, client_id: deps.googleClientId, client_secret: deps.googleClientSecret }).toString(),
   });
   const body = await response.json();
-  if (response.status === 400 || isInvalidGrant(body)) throw new ReconnectError();
+  // Only an explicit invalid_grant means the grant was revoked or has expired. Everything else the token endpoint
+  // refuses (invalid_client, unauthorized_client, invalid_request, a 401) is about the server's OAuth client.
+  if (oauthErrorCode(body) === "invalid_grant") throw new ReconnectError();
+  if (response.status === 400 || response.status === 401 || response.status === 403) throw new ServerCredentialError("oauth_client_rejected");
   assertStatus(response.status, response.headers.get("retry-after"));
   const record = body as { access_token?: string; expires_in?: number };
-  if (!record.access_token) throw new ReconnectError();
+  if (!record.access_token) throw new RetryableError(60, "invalid_response");
   return { ...token, accessToken: record.access_token, expiresAt: new Date(deps.now.getTime() + (record.expires_in ?? 3600) * 1000).toISOString() };
 }
 
@@ -997,6 +1593,8 @@ async function authorized(deps: SyncDeps, url: string, accessToken: string, body
   });
   const payload = response.status >= 400 ? await response.json().catch(() => ({})) : null;
   if (payload && isInvalidGrant(payload)) throw new ReconnectError();
+  // "API not enabled for this project" is the server's OAuth project, not the clinic's access.
+  if (payload && (response.status === 403 || response.status === 400) && apiDisabledBody(payload)) throw new ServerCredentialError("provider_api_disabled");
   assertStatus(response.status, response.headers.get("retry-after"));
   if (payload) {
     return { status: response.status, headers: response.headers, json: async () => payload, text: async () => JSON.stringify(payload) };
@@ -1012,7 +1610,7 @@ function assertStatus(status: number, retryAfter: string | null): void {
 }
 
 function assertWorkerTime(deps: SyncDeps): void {
-  if (deps.deadlineAt !== undefined && Date.now() >= deps.deadlineAt) {
+  if (deps.deadlineAt !== undefined && (deps.clock ?? Date.now)() >= deps.deadlineAt) {
     throw new RetryableError(30, "worker_deadline");
   }
 }
@@ -1103,12 +1701,16 @@ async function loadSealedToken(db: Queryable, connection: ConnectionRow): Promis
 
 function decodeClaimedToken(claimed: ClaimedAnalyticsJob): TokenBundle {
   const secret = claimed.sealedToken;
-  if (!secret || secret.client_id !== claimed.connection.client_id) throw new ReconnectError();
+  // Nothing stored for this connection: it genuinely has to be connected.
+  if (!secret) throw new ReconnectError();
+  // A token that belongs to another client is never used. That is a data fault, not a reason to disconnect.
+  if (secret.client_id !== claimed.connection.client_id) throw new ServerCredentialError("token_unreadable");
   if (!tokenKeyConfigured()) throw new ConfigurationError();
   try {
     return JSON.parse(decryptSecret(secret.ciphertext, secret.nonce)) as TokenBundle;
   } catch {
-    throw new ReconnectError();
+    // The server's key cannot open it. The key is the more likely thing to be wrong, and the token is untouched.
+    throw new ServerCredentialError("token_unreadable");
   }
 }
 
@@ -1141,4 +1743,87 @@ export function providerFailureCode(error: unknown): ProviderFailureCode {
   // assertStatus throws this for a 4xx answer. Anything else means the request did not complete.
   if (error instanceof Error && error.message === "provider_rejected") return "provider_rejected";
   return "provider_unavailable";
+}
+
+// ---------------------------------------------------------------------------------------------
+// Credential probe (connection recovery, C2). Answers "would the worker be able to authenticate this connection?"
+// without doing any of the worker's work.
+
+export type ProbeRefresh =
+  | "ok"
+  | "invalid_grant"
+  | "oauth_client_rejected"
+  | "config_missing"
+  | "rate_limited"
+  | "provider_unavailable"
+  | "invalid_response"
+  | "unexpected"
+  | "skipped";
+
+export interface CredentialProbe {
+  decrypt: "ok" | "unreadable" | "key_missing" | "no_secret" | "wrong_client";
+  hasRefreshToken: boolean;
+  hasSiteReference: boolean;
+  /** Minutes until the stored access token expires; negative when it already has. Null when unknown. */
+  accessTokenMinutes: number | null;
+  oauthClientConfigured: boolean;
+  /** What the provider's token endpoint said to a refresh made with the server's credentials. */
+  refresh: ProbeRefresh;
+}
+
+/**
+ * Opens the stored token with the server's key and, if that works, asks the provider's TOKEN endpoint (and only that) for a
+ * fresh access token with the server's OAuth client. It reads the connection and its sealed token and nothing else. It
+ * writes nothing, saves nothing, and returns the outcome as a category: the refreshed token is discarded, and no token,
+ * key or secret is ever part of the result. The caller should run it in a read-only transaction.
+ *
+ * A failure here is exactly the failure the worker would meet. Since C1 the worker no longer disconnects a connection for
+ * the server-side ones, but the probe is the way to find out before any job is queued.
+ */
+export async function probeConnectionCredentials(db: Queryable, connectionId: string, deps: SyncDeps): Promise<CredentialProbe> {
+  const { rows } = await db.query<ConnectionRow>(
+    `select id, client_id, website_id, provider, external_property_id, stream_or_site_ref, secret_ref, provider_timezone, status
+     from analytics_connections where id = $1`,
+    [connectionId],
+  );
+  const connection = rows[0];
+  if (!connection) throw new Error("connection_missing");
+  const configured = connection.provider === "wix"
+    ? Boolean(deps.wixAppId && deps.wixAppSecret)
+    : Boolean(deps.googleClientId && deps.googleClientSecret);
+  const base = { hasRefreshToken: false, hasSiteReference: Boolean(connection.stream_or_site_ref), accessTokenMinutes: null as number | null, oauthClientConfigured: configured };
+  const sealed = await loadSealedToken(db, connection);
+  if (!sealed) return { ...base, decrypt: "no_secret", refresh: "skipped" };
+  if (sealed.client_id !== connection.client_id) return { ...base, decrypt: "wrong_client", refresh: "skipped" };
+  if (!tokenKeyConfigured()) return { ...base, decrypt: "key_missing", refresh: "skipped" };
+  let token: TokenBundle;
+  try {
+    token = JSON.parse(decryptSecret(sealed.ciphertext, sealed.nonce)) as TokenBundle;
+  } catch {
+    return { ...base, decrypt: "unreadable", refresh: "skipped" };
+  }
+  const expires = token.expiresAt ? Date.parse(token.expiresAt) : NaN;
+  const known = {
+    ...base,
+    decrypt: "ok" as const,
+    hasRefreshToken: Boolean(token.refreshToken),
+    accessTokenMinutes: Number.isFinite(expires) ? Math.round((expires - deps.now.getTime()) / 60_000) : null,
+  };
+  if (!configured) return { ...known, refresh: "config_missing" };
+  // Nothing to refresh with: the probe cannot test the OAuth client, and says so rather than guessing.
+  if (connection.provider === "wix" ? !connection.stream_or_site_ref : !token.refreshToken) return { ...known, refresh: "skipped" };
+  const probeDeps: SyncDeps = { ...deps, fetch: resilientFetch(deps.fetch) };
+  try {
+    if (connection.provider === "wix") await refreshWix(connection, token, probeDeps);
+    else await refreshGoogle(token, probeDeps);
+    return { ...known, refresh: "ok" };
+  } catch (error) {
+    if (error instanceof ReconnectError) return { ...known, refresh: "invalid_grant" };
+    if (error instanceof ServerCredentialError) return { ...known, refresh: "oauth_client_rejected" };
+    if (error instanceof ConfigurationError) return { ...known, refresh: "config_missing" };
+    if (error instanceof RetryableError) {
+      return { ...known, refresh: error.code === "rate_limited" ? "rate_limited" : error.code === "invalid_response" ? "invalid_response" : "provider_unavailable" };
+    }
+    return { ...known, refresh: "unexpected" };
+  }
 }

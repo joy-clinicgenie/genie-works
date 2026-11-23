@@ -5,6 +5,8 @@ import { formatCount, formatDuration, formatMove, formatPercentPoint } from "@/l
 import type { AnalyticsBoard, AnalyticsFigure, AnalyticsTrend, ChannelRow, LandingRow, PageRow } from "@/lib/analytics-board";
 import type { BreakdownLinks } from "@/lib/report-link";
 import { NavigationFlows } from "@/components/modules/NavigationFlows";
+import { audienceLabels } from "@/lib/audience-labels";
+import { QualityNotices } from "@/components/modules/QualityNotices";
 
 const OVERVIEW_CARDS = [
   { key: "sessions", label: "Sessions", meaning: "A visit to the site. One person can have more than one session." },
@@ -304,11 +306,11 @@ function LandingTable({ rows }: { rows: LandingRow[] }) {
   );
 }
 
-function PageTable({ rows }: { rows: PageRow[] }) {
+function PageTable({ rows, timeColumn }: { rows: PageRow[]; timeColumn: string }) {
   return (
     <ReportTable
       caption="Page performance"
-      columns={["Page", "Visits", "Avg. time", "Exit rate"]}
+      columns={["Page", "Visits", timeColumn, "Exit rate"]}
       rows={rows.map((row) => ({
         key: row.name,
         cells: [row.name, formatCount(row.visits), formatDuration(row.time), formatPercentPoint(row.exitRate)],
@@ -323,7 +325,15 @@ export function AnalyticsOverview({ board, links, leadsHref, seoHref }: { board:
   return (
     <div className="min-w-0 space-y-4">
       <SourceLine board={board} leadsHref={leadsHref} seoHref={seoHref} />
-      <MetricStrip label="Key figures" cells={OVERVIEW_CARDS.map((card) => ({ ...card, figure: board[card.key] }))} />
+      <QualityNotices notes={board.qualityNotes} />
+      <MetricStrip
+        label="Key figures"
+        cells={OVERVIEW_CARDS.map((card) => {
+          const audience = audienceLabels(board.audienceMeasure);
+          const meaning = card.key === "users" ? audience.users.meaning : card.key === "conversionRate" ? audience.conversionMeaning : card.meaning;
+          return { ...card, meaning, figure: board[card.key] };
+        })}
+      />
       <div className="grid min-w-0 items-stretch gap-4 md:grid-cols-[minmax(0,1.7fr)_minmax(14rem,0.85fr)]">
         <Panel
           title="Traffic trend"
@@ -351,16 +361,18 @@ export function AnalyticsTraffic({ board, links, leadsHref, seoHref }: { board: 
   const paired = board.trend.mode === "daily" && board.trend.points.some((point) => point.previous !== null);
   const mobile = board.devices.find((row) => row.name === "Mobile");
   const deviceTotal = board.devices.reduce((sum, row) => sum + (row.current ?? 0), 0);
+  const audience = audienceLabels(board.audienceMeasure);
   return (
     <div className="min-w-0 space-y-4">
       <SourceLine board={board} leadsHref={leadsHref} seoHref={seoHref} />
+      <QualityNotices notes={board.qualityNotes} />
       <MetricStrip
         label="Traffic totals"
         cells={[
           { key: "sessions", label: "Sessions", figure: board.sessions, meaning: "A visit to the site. One person can have more than one session." },
-          { key: "users", label: "Total users", figure: board.users, meaning: "People who visited. This is not the same measure as a session." },
-          { key: "new", label: "New visitors", figure: board.newVisitors, meaning: "Visitors the export marks as new." },
-          { key: "returning", label: "Returning visitors", figure: board.returningVisitors, meaning: "Visitors the export marks as returning." },
+          { key: "users", label: audience.users.label, figure: board.users, meaning: audience.users.meaning },
+          { key: "new", label: audience.newUsers.label, figure: board.newVisitors, meaning: audience.newUsers.meaning },
+          { key: "returning", label: audience.returningUsers.label, figure: board.returningVisitors, meaning: audience.returningUsers.meaning },
         ]}
         href={links.visitors}
       />
@@ -416,12 +428,13 @@ export function AnalyticsBehaviour({ board, links, leadsHref, seoHref }: { board
   return (
     <div className="min-w-0 space-y-4">
       <SourceLine board={board} leadsHref={leadsHref} seoHref={seoHref} />
+      <QualityNotices notes={board.qualityNotes} />
       {board.behaviourNote && <p className="text-sm text-muted">{board.behaviourNote}</p>}
       <MetricStrip
         label="Leads"
         cells={[
           { key: "leads", label: "Total leads", figure: board.leads, meaning: "Stored enquiries. Contact clicks are counted separately." },
-          { key: "conversion", label: "Visitor-to-lead conversion rate", figure: board.conversionRate, meaning: "Stored enquiries divided by visitors." },
+          { key: "conversion", label: "Visitor-to-lead conversion rate", figure: board.conversionRate, meaning: audienceLabels(board.audienceMeasure).conversionMeaning },
           { key: "starts", label: "Form starts", figure: board.formStarts, meaning: "Recorded starts of the enquiry form." },
           { key: "submissions", label: "Successful submissions", figure: board.formSubmissions, meaning: "Stored form submissions. WhatsApp and phone can bypass the form." },
         ]}
@@ -449,7 +462,7 @@ export function AnalyticsBehaviour({ board, links, leadsHref, seoHref }: { board
         </Panel>
       </div>
       <Panel title="All pages" note="Visits, time on page and exit rate." aside={<PanelLink href={links.pages} />}>
-        {board.pages.length === 0 ? <p className="px-5 pb-5 text-sm text-muted">Not recorded. Page performance is not in this export.</p> : <PageTable rows={board.pages} />}
+        {board.pages.length === 0 ? <p className="px-5 pb-5 text-sm text-muted">Not recorded. Page performance is not in this export.</p> : <PageTable rows={board.pages} timeColumn={audienceLabels(board.audienceMeasure).pageTimeColumn} />}
       </Panel>
       <div className="space-y-2">
         <div className="flex items-end justify-between gap-3 px-1">

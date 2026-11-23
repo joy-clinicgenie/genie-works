@@ -1,16 +1,14 @@
 import { NextResponse } from "next/server";
-import { SERVICE, assertWorkerDatabase, drainMaintenance, withContext } from "@clinic-genie/db";
+import { SERVICE, assertWorkerDatabase, budgetFromEnv, drainMaintenance, jobLimitFromEnv, maxConcurrentFromEnv, recordingFromEnv, withContext } from "@clinic-genie/db";
 import { providerFetch } from "@/lib/provider-fetch";
 import { workerAuthorized } from "@/lib/analytics-worker";
 
 export const dynamic = "force-dynamic";
-export const maxDuration = 120;
-const WORKER_BUDGET_MS = 90_000;
-
-function jobLimit(): number {
-  const parsed = Number(process.env.ANALYTICS_WORKER_JOB_LIMIT ?? "40");
-  return Number.isInteger(parsed) && parsed >= 1 && parsed <= 100 ? parsed : 40;
-}
+// Hobby allows up to 300 s with fluid compute (Vercel documentation, checked 13 Nov 2026). The working
+// budget (ANALYTICS_WORKER_BUDGET_MS, default 90 s, at most 240 s) always ends well inside this ceiling,
+// and the worker stops starting jobs 25 s before the budget ends, so the platform never cuts a run off
+// mid-store.
+export const maxDuration = 300;
 
 async function handle(request: Request) {
   const header = request.headers.get("authorization");
@@ -31,10 +29,19 @@ async function handle(request: Request) {
     wixAppId: process.env.ANALYTICS_WIX_APP_ID,
     wixAppSecret: process.env.ANALYTICS_WIX_APP_SECRET,
     pageSpeedKey: process.env.PAGESPEED_API_KEY,
-  }, { owner: "http", jobLimit: jobLimit(), budgetMs: WORKER_BUDGET_MS });
+  }, {
+    owner: "http",
+    // Vercel Schedules sends `vercel-cron/1.0`. Anything else is a manual bearer call.
+    trigger: (request.headers.get("user-agent") ?? "").startsWith("vercel-cron") ? "schedule" : "manual",
+    jobLimit: jobLimitFromEnv(),
+    budgetMs: budgetFromEnv(),
+    maxConcurrent: maxConcurrentFromEnv(),
+    record: recordingFromEnv(),
+  });
   const worked = outcome.jobs > 0 || outcome.inspected > 0 || outcome.measured > 0;
   return NextResponse.json({
     worked,
+    stopped: outcome.stopped ?? null,
     enqueued: outcome.enqueued,
     jobs: outcome.jobs,
     succeeded: outcome.succeeded,
@@ -46,6 +53,9 @@ async function handle(request: Request) {
     inspected: outcome.inspected,
     measured: outcome.measured,
     result: outcome.result ?? null,
+    remainingDue: outcome.remaining?.due ?? null,
+    remainingWaiting: outcome.remaining?.waiting ?? null,
+    durationMs: outcome.durationMs ?? null,
   });
 }
 

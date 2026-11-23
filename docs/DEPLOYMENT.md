@@ -9,7 +9,7 @@ No staging project was created. DEP-04 stays open.
 | Item | What the file says |
 | --- | --- |
 | `vercel.json` (repository root) | The only Vercel configuration file. The Vercel project Root Directory must be the repository root (blank), or this file is ignored (D51). Next.js framework. `npm install`. The build runs `npm run build -w @clinic-genie/platform` and, when `AUTH_SECRET` is unset, substitutes `preview-build-only` for that build command only. The platform build output then replaces `.next` at the repository root on every build, so a restored build cache cannot leave a stale `.next` without `routes-manifest.json`. |
-| Schedule | In the repository-root `vercel.json` under `schedules` (D55; this replaced the `crons` entry of D51). One entry, `analytics-worker`: path `/api/internal/analytics/worker`, `requestMethod` `GET`, schedule `0 * * * *` in UTC, every hour (D59). On the Hobby plan the jitter window is 15 minutes, so each run starts within the first 15 minutes of the hour. Vercel sends `Authorization: Bearer $CRON_SECRET`. After a production deployment, the project's **Schedules** tab must list `analytics-worker`. |
+| Schedule | In the repository-root `vercel.json` under `schedules` (D55; this replaced the `crons` entry of D51). One entry, `analytics-worker`: path `/api/internal/analytics/worker`, `requestMethod` `GET`, schedule `0 * * * *` in UTC, every hour (D71). On the Hobby plan the jitter window is 15 minutes, so each run starts within the first 15 minutes of the hour. Vercel sends `Authorization: Bearer $CRON_SECRET`. After a production deployment, the project's **Schedules** tab must list `analytics-worker`. |
 | Worker route | `GET` and `POST` use the same handler. A missing or wrong bearer returns 401 before a job runs. The bearer is `ANALYTICS_WORKER_SECRET` or `CRON_SECRET`. An empty value never matches. |
 | Retries | An expired lease with fewer than five attempts is queued again. At five attempts it is marked failed with the safe code `lease_expired`. That behaviour is in `packages/db/src/analytics/sync.ts`. It is not a hosted execution. |
 | Placeholder secrets | `preview-build-only` and `replace-with-a-long-random-string` are rejected at runtime by `assertRuntimeAuthSecret`, except while `NEXT_PHASE` is `phase-production-build`. |
@@ -48,6 +48,18 @@ These may exist outside the repository. This pack did not inspect a hosting acco
 | Prepared configuration | The `vercel.json` schedule `analytics-worker` targets the worker route with GET, and that route accepts GET. |
 | Manual execution | A person or a script can call GET or POST with a bearer. This batch did not make that call. Batch 04 recorded an unauthenticated 401 on a local rehearsal app. |
 | Hosted scheduled execution | Not observed. DEP-01 and DEP-04 remain open. |
+
+## Analytics worker schedule and queue (Phase 2.2, D69), not applied
+
+Prepared in the repository, not deployed. Nothing in this section has been observed on a hosted deployment.
+
+| Item | State |
+| --- | --- |
+| Proposed schedule | `*/30 * * * *`, same name `analytics-worker`, same path and `GET`. Not in `vercel.json`; the file still holds the D55 daily schedule |
+| Limits relied on (Vercel documentation, 13 Nov 2026) | Hobby: every 15 minutes at most, 15-minute jitter, 5,000 runs per billing period, 300 s function maximum. Runs can overlap. A path target is not retried |
+| Migrations | `0053` (needed by the code) then `0054` (can be deferred with `ANALYTICS_RECORD_INVOCATIONS=off`). Procedure below applies; rollback files are in `packages/db/rollback/` |
+| Existing queue | Inspect with `npm run analytics:recover -w @clinic-genie/db` against a restore point, then decide. Cancelling needs the printed approval token |
+| Before any schedule can fire | The project Root Directory must read the repository-root `vercel.json` (see the first table; Phase 2.1 found `apps/platform`) |
 
 ## Rollback
 

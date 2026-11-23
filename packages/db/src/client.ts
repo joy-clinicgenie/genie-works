@@ -75,6 +75,18 @@ export class DbUnavailableError extends Error {
  * Commits on success, rolls back on any error. Row-level security sees the context for every statement.
  */
 export async function withContext<T>(ctx: DbContext, fn: (client: pg.PoolClient) => Promise<T>, pool = getPool()): Promise<T> {
+  return inContext(ctx, fn, pool, false);
+}
+
+/**
+ * Like `withContext`, but the database refuses every write for the whole transaction (`set transaction read only`).
+ * For checks that must be incapable of changing anything, whatever the code inside does.
+ */
+export async function withReadOnlyContext<T>(ctx: DbContext, fn: (client: pg.PoolClient) => Promise<T>, pool = getPool()): Promise<T> {
+  return inContext(ctx, fn, pool, true);
+}
+
+async function inContext<T>(ctx: DbContext, fn: (client: pg.PoolClient) => Promise<T>, pool: pg.Pool, readOnly: boolean): Promise<T> {
   let client: pg.PoolClient;
   try {
     client = await pool.connect();
@@ -83,6 +95,7 @@ export async function withContext<T>(ctx: DbContext, fn: (client: pg.PoolClient)
   }
   try {
     await beginWithContext(client, ctx);
+    if (readOnly) await client.query("set transaction read only");
     const result = await fn(client);
     await client.query("commit");
     return result;

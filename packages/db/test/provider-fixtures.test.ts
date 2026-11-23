@@ -82,14 +82,14 @@ describe("provider fixtures (not live APIs)", () => {
 
       const limited: FetchLike = async () => jsonResponse(429, {}, { "retry-after": "15" });
       await enqueueJob(db, { clientId: harbour, websiteId: harbourSite, connectionId: emptyConnection.id, templateKey: "ga4.traffic_daily", start: "2026-10-05", end: "2026-10-05" });
-      const limitedJob = await leaseNext(db, "fixture-limit", now);
+      const limitedJob = await leaseNext(db, "fixture-limit", new Date(now.getTime() + 3_600_000));
       expect((await executeJob(db, limitedJob!, { fetch: limited, now })).result).toBe("retry");
 
       const expired = sealedToken({ accessToken: "old", refreshToken: "refresh", expiresAt: "2020-01-01T00:00:00.000Z" });
       await db.query("update analytics_secrets set ciphertext = $2, nonce = $3 where connection_id = $1", [emptyConnection.id, expired.ciphertext, expired.nonce]);
       const revoked: FetchLike = async () => jsonResponse(400, { error: "invalid_grant" });
       await enqueueJob(db, { clientId: harbour, websiteId: harbourSite, connectionId: emptyConnection.id, templateKey: "ga4.traffic_range", start: "2026-10-01", end: "2026-10-07" });
-      const revokedJob = await leaseNext(db, "fixture-revoked", now);
+      const revokedJob = await leaseNext(db, "fixture-revoked", new Date(now.getTime() + 7_200_000));
       const reconnect = await executeJob(db, revokedJob!, { fetch: revoked, now, googleClientId: "fixture-client", googleClientSecret: "fixture-secret" });
       expect(reconnect.result).toBe("reconnect");
     });

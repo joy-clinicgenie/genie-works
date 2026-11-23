@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { SnapshotRow } from "@clinic-genie/db";
+import { audienceLabels } from "@/lib/audience-labels";
 import { boardFromLive, boardFromSnapshots, organicFromChannels, trendFrom, visitorToLeadRate, type LiveTrafficFacts } from "@/lib/analytics-board";
 
 const current = { start: "2026-10-01", end: "2026-10-30", len: 30 };
@@ -196,5 +197,55 @@ describe("live Behaviour figures (D53)", () => {
 
   it("adds no note in export mode", () => {
     expect(exported.behaviourNote).toBeNull();
+  });
+});
+
+describe("audience labels (Phase 2.3A): words change, numbers do not", () => {
+  const facts = (overrides: Partial<LiveTrafficFacts>): LiveTrafficFacts => ({
+    connected: true, provider: "ga4", sourceNote: "", updatedAt: null, sessions: 500, sessionsPrevious: null, users: 300, usersPrevious: null,
+    channels: [], landing: [], devices: [], countries: [], dailyCurrent: [], dailyPrevious: [], behaviour: null, ...overrides,
+  });
+  const exported = boardFromSnapshots({ snapshots: [], current, previous, updatedAt: null });
+  const behaviour = {
+    engagementRate: 0.6, averageSessionDuration: 90, pagesPerSession: 2, bounceRate: 0.4,
+    pages: [{ name: "/", views: 100, engagementSeconds: 600, activeUsers: 20 }], newVisitors: 70, returningVisitors: 30,
+  };
+
+  it("keeps Total users as the headline and carries the exact totalUsers figure unchanged", () => {
+    const board = boardFromLive(exported, facts({ behaviour }));
+    expect(board.users.current).toBe(300);
+    expect(audienceLabels(board.audienceMeasure).users.label).toBe("Total users");
+  });
+
+  it("names the new and returning figures as ACTIVE users, and does not force them to add up to Total users", () => {
+    const board = boardFromLive(exported, facts({ behaviour }));
+    expect(board.audienceMeasure).toBe("ga4");
+    const labels = audienceLabels(board.audienceMeasure);
+    expect(labels.newUsers.label).toBe("New active users");
+    expect(labels.returningUsers.label).toBe("Returning active users");
+    expect(labels.newUsers.meaning).toMatch(/different measure from Total users/);
+    expect(labels.pageTimeColumn).toBe("Avg. time per active user");
+    // 70 + 30 is not 300, and nothing here makes it so. The numbers are the activeUsers figures as stored.
+    expect(board.newVisitors.current).toBe(70);
+    expect(board.returningVisitors.current).toBe(30);
+    expect(board.users.current).toBe(300);
+    expect(board.behaviourNote).toMatch(/new or returning active users/);
+  });
+
+  it("leaves the recorded-export wording alone", () => {
+    expect(exported.audienceMeasure).toBeUndefined();
+    const labels = audienceLabels(exported.audienceMeasure);
+    expect(labels.newUsers.label).toBe("New visitors");
+    expect(labels.returningUsers.meaning).toBe("Visitors the export marks as returning.");
+    expect(labels.pageTimeColumn).toBe("Avg. time");
+    const wix = boardFromLive(exported, facts({ provider: "wix", behaviour: null }));
+    expect(wix.audienceMeasure).toBeUndefined();
+  });
+
+  it("calls the conversion denominator Total users when the figures are GA4's", () => {
+    expect(audienceLabels("ga4").conversionMeaning).toBe("Stored enquiries divided by Total users.");
+    const board = boardFromLive(exported, facts({ behaviour }));
+    // The rate itself is unchanged: enquiries over totalUsers.
+    expect(board.conversionRate.current).toBe(visitorToLeadRate(board.leads.current, 300));
   });
 });

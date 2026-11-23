@@ -7,6 +7,7 @@ import { LinkButton } from "@/components/ui/Button";
 import { Table, Td, Th } from "@/components/ui/Table";
 import { seoHref, type GoogleControls, type SeoContext } from "@/lib/seo-workspace";
 import { Unavailable } from "@/components/modules/seo/SeoFrame";
+import { QualityNotices } from "@/components/modules/QualityNotices";
 
 /* SEO Overview cards (D67). Every figure comes from the loader its destination uses, and every link keeps the
    selected website and environment, plus the period where the destination has one. */
@@ -144,6 +145,7 @@ export function GooglePanel({ ctx, controls, report }: { ctx: SeoContext; contro
               </Link>
             ))}
           </div>
+          {report.quality.length > 0 && <div className="px-5 pb-3"><QualityNotices notes={report.quality} /></div>}
           {report.daily.status === "available" && report.daily.rows.length > 0
             ? <SearchTrend days={report.daily.rows} metric={controls.metric} />
             : <p className="px-5 pb-4 text-sm text-muted" data-trend-unavailable>Trend unavailable: daily observations are not stored for this period. The totals above are Search Console&apos;s own period totals.</p>}

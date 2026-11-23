@@ -39,7 +39,10 @@ export function parseWixData(body: unknown): WixDailyPoint[] {
   for (const item of data) {
     const row = item as { type?: string; values?: Array<{ date?: string; value?: number }> };
     for (const value of row.values ?? []) {
-      if (row.type && value.date) points.push({ measure: row.type, date: value.date, value: Number(value.value ?? 0) });
+      // A missing value has always been read as 0 here. Whether Wix omits zeros is not verified against a live site.
+      // A value that is present but not a number is not a zero: the point is dropped, not stored as NaN.
+      const parsed = Number(value.value ?? 0);
+      if (row.type && value.date && Number.isFinite(parsed)) points.push({ measure: row.type, date: value.date, value: parsed });
     }
   }
   return points;

@@ -14,6 +14,14 @@ export class AnalyticsRuleError extends Error {
   }
 }
 
+/**
+ * How a provider property is compared for "is this the same property". Case and a trailing slash do not make a
+ * different Search Console site, and a GA4 property id or Wix site id is compared as written.
+ */
+export function normalisePropertyId(id: string): string {
+  return id.trim().toLowerCase().replace(/\/+$/, "");
+}
+
 export interface PublicConnection {
   id: string;
   client_id: string;
@@ -100,6 +108,33 @@ export async function bindConnectionFromState(db: Queryable, input: {
   return connection;
 }
 
+/**
+ * Refuses to connect a provider property that another client already has connected, so one clinic's analytics cannot
+ * appear under another. The lookup is serialised per property, so two simultaneous binds cannot both pass it.
+ * The message does not say which client holds the property. Returns the acknowledged reason when the caller overrides.
+ */
+async function assertPropertyNotOnAnotherClient(db: Queryable, input: {
+  clientId: string;
+  provider: AnalyticsProvider;
+  externalPropertyId: string;
+  allowCrossClient?: { reason: string };
+}): Promise<string | null> {
+  const key = normalisePropertyId(input.externalPropertyId);
+  await db.query("select pg_advisory_xact_lock(hashtext($1))", [`analytics_property:${input.provider}:${key}`]);
+  const { rows } = await db.query<{ clients: number }>(
+    `select count(distinct client_id)::int as clients from analytics_connections
+     where provider = $1 and lower(rtrim(external_property_id, '/')) = $2 and client_id <> $3
+       and disconnected_at is null and status <> 'disconnected'`,
+    [input.provider, key, input.clientId],
+  );
+  if ((rows[0]?.clients ?? 0) === 0) return null;
+  const reason = input.allowCrossClient?.reason.trim() ?? "";
+  if (reason.length < 10) {
+    throw new AnalyticsRuleError("This property is already connected to another client. Connect the property that belongs to this client, or ask an administrator.", "externalPropertyId");
+  }
+  return reason.slice(0, 300);
+}
+
 export async function saveConnection(db: Queryable, input: {
   clientId: string;
   websiteId: string;
@@ -110,9 +145,15 @@ export async function saveConnection(db: Queryable, input: {
   tokenCiphertext: string;
   tokenNonce: string;
   actorUserId: string;
+  /**
+   * The same provider property may be connected to a second CLIENT only on purpose. Without this the bind is refused.
+   * The reason is recorded in the audit log. Existing connections are never touched by this check.
+   */
+  allowCrossClient?: { reason: string };
 }): Promise<PublicConnection> {
   await assertConnectionSecretAdmin(db, input.actorUserId);
   await assertWebsite(db, input.clientId, input.websiteId);
+  const crossClient = await assertPropertyNotOnAnotherClient(db, input);
   const { rows } = await db.query<PublicConnection>(
     `insert into analytics_connections
       (client_id, website_id, provider, external_property_id, stream_or_site_ref, status, provider_timezone, verified_at, created_by)
@@ -134,7 +175,7 @@ export async function saveConnection(db: Queryable, input: {
     targetId: connection.id,
     clientId: input.clientId,
     outcome: "success",
-    metadata: { provider: input.provider, websiteId: input.websiteId },
+    metadata: { provider: input.provider, websiteId: input.websiteId, ...(crossClient ? { crossClientAcknowledged: true, crossClientReason: crossClient } : {}) },
   });
   return connection;
 }

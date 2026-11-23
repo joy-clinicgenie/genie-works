@@ -1,0 +1,300 @@
+{
+  "generatedAt": "2026-11-13T03:08:45.504Z",
+  "mode": "fictional",
+  "provider": "gsc",
+  "propertyRef": "44fb27f3",
+  "requests": [
+    {
+      "provider": "gsc",
+      "template": "gsc.bundle.daily",
+      "period": {
+        "start": "2026-05-14",
+        "end": "2026-11-09"
+      },
+      "jobMs": 9.6,
+      "requests": 1,
+      "slowestRequestMs": 0.2,
+      "status": 200,
+      "rowsReturned": 180,
+      "pages": 1,
+      "retryRequired": false,
+      "result": "succeeded",
+      "quality": {
+        "rowsReturned": 180
+      }
+    },
+    {
+      "provider": "gsc",
+      "template": "gsc.totals",
+      "period": {
+        "start": "2026-11-03",
+        "end": "2026-11-09"
+      },
+      "jobMs": 2.7,
+      "requests": 1,
+      "slowestRequestMs": 0,
+      "status": 200,
+      "rowsReturned": 1,
+      "pages": 1,
+      "retryRequired": false,
+      "result": "succeeded",
+      "quality": {
+        "rowsReturned": 1
+      }
+    },
+    {
+      "provider": "gsc",
+      "template": "gsc.totals",
+      "period": {
+        "start": "2026-10-11",
+        "end": "2026-11-09"
+      },
+      "jobMs": 2.6,
+      "requests": 1,
+      "slowestRequestMs": 0,
+      "status": 200,
+      "rowsReturned": 1,
+      "pages": 1,
+      "retryRequired": false,
+      "result": "succeeded",
+      "quality": {
+        "rowsReturned": 1
+      }
+    },
+    {
+      "provider": "gsc",
+      "template": "gsc.pages",
+      "period": {
+        "start": "2026-11-03",
+        "end": "2026-11-09"
+      },
+      "jobMs": 2.6,
+      "requests": 1,
+      "slowestRequestMs": 0,
+      "status": 200,
+      "rowsReturned": 1,
+      "pages": 1,
+      "retryRequired": false,
+      "result": "succeeded",
+      "quality": {
+        "rowsReturned": 1
+      }
+    },
+    {
+      "provider": "gsc",
+      "template": "gsc.queries",
+      "period": {
+        "start": "2026-11-03",
+        "end": "2026-11-09"
+      },
+      "jobMs": 2.4,
+      "requests": 1,
+      "slowestRequestMs": 0,
+      "status": 200,
+      "rowsReturned": 1,
+      "pages": 1,
+      "retryRequired": false,
+      "result": "succeeded",
+      "quality": {
+        "rowsReturned": 1
+      }
+    }
+  ],
+  "comparisons": [
+    {
+      "name": "clicks, 7 days: derived from daily rows against the property total",
+      "window": {
+        "start": "2026-11-03",
+        "end": "2026-11-09"
+      },
+      "direct": 14,
+      "derived": 14,
+      "abs": 0,
+      "pct": 0,
+      "verdict": "match"
+    },
+    {
+      "name": "impressions, 7 days: derived from daily rows against the property total",
+      "window": {
+        "start": "2026-11-03",
+        "end": "2026-11-09"
+      },
+      "direct": 100,
+      "derived": 100,
+      "abs": 0,
+      "pct": 0,
+      "verdict": "match"
+    },
+    {
+      "name": "ctr, 7 days: derived from daily rows against the property total",
+      "window": {
+        "start": "2026-11-03",
+        "end": "2026-11-09"
+      },
+      "direct": 0.14,
+      "derived": 0.14,
+      "abs": 0,
+      "pct": 0,
+      "verdict": "match"
+    },
+    {
+      "name": "position, 7 days: derived from daily rows against the property total",
+      "window": {
+        "start": "2026-11-03",
+        "end": "2026-11-09"
+      },
+      "direct": 4.9,
+      "derived": 4.9,
+      "abs": 0,
+      "pct": 0,
+      "verdict": "match",
+      "note": "Position is recomputed as an impression-weighted average of daily positions."
+    },
+    {
+      "name": "clicks, 30 days: derived from daily rows against the property total",
+      "window": {
+        "start": "2026-10-11",
+        "end": "2026-11-09"
+      },
+      "direct": 60,
+      "derived": 60,
+      "abs": 0,
+      "pct": 0,
+      "verdict": "match"
+    },
+    {
+      "name": "impressions, 30 days: derived from daily rows against the property total",
+      "window": {
+        "start": "2026-10-11",
+        "end": "2026-11-09"
+      },
+      "direct": 450,
+      "derived": 450,
+      "abs": 0,
+      "pct": 0,
+      "verdict": "match"
+    },
+    {
+      "name": "ctr, 30 days: derived from daily rows against the property total",
+      "window": {
+        "start": "2026-10-11",
+        "end": "2026-11-09"
+      },
+      "direct": 0.13333333333333333,
+      "derived": 0.13333333333333333,
+      "abs": 0,
+      "pct": 0,
+      "verdict": "match"
+    },
+    {
+      "name": "position, 30 days: derived from daily rows against the property total",
+      "window": {
+        "start": "2026-10-11",
+        "end": "2026-11-09"
+      },
+      "direct": 5,
+      "derived": 5,
+      "abs": 0,
+      "pct": 0,
+      "verdict": "match",
+      "note": "Position is recomputed as an impression-weighted average of daily positions."
+    },
+    {
+      "name": "clicks, 7 days: sum of pages rows against the property total",
+      "window": {
+        "start": "2026-11-03",
+        "end": "2026-11-09"
+      },
+      "direct": 14,
+      "derived": 3,
+      "abs": -11,
+      "pct": -78.5714,
+      "verdict": "expected_difference",
+      "note": "A shortfall is expected: rows are limited to the top results, and rows withheld by the privacy filter are left out (see the partition's quality record)."
+    },
+    {
+      "name": "impressions, 7 days: sum of pages rows against the property total",
+      "window": {
+        "start": "2026-11-03",
+        "end": "2026-11-09"
+      },
+      "direct": 100,
+      "derived": 30,
+      "abs": -70,
+      "pct": -70,
+      "verdict": "expected_difference",
+      "note": "A shortfall is expected: rows are limited to the top results, and rows withheld by the privacy filter are left out (see the partition's quality record)."
+    },
+    {
+      "name": "clicks, 7 days: sum of queries rows against the property total",
+      "window": {
+        "start": "2026-11-03",
+        "end": "2026-11-09"
+      },
+      "direct": 14,
+      "derived": 1,
+      "abs": -13,
+      "pct": -92.8571,
+      "verdict": "expected_difference",
+      "note": "A shortfall is expected: anonymised queries are not listed, rows are limited to the top results, and rows withheld by the privacy filter are left out (see the partition's quality record)."
+    },
+    {
+      "name": "impressions, 7 days: sum of queries rows against the property total",
+      "window": {
+        "start": "2026-11-03",
+        "end": "2026-11-09"
+      },
+      "direct": 100,
+      "derived": 9,
+      "abs": -91,
+      "pct": -91,
+      "verdict": "expected_difference",
+      "note": "A shortfall is expected: anonymised queries are not listed, rows are limited to the top results, and rows withheld by the privacy filter are left out (see the partition's quality record)."
+    }
+  ],
+  "observations": {
+    "windows": {
+      "p7": {
+        "start": "2026-11-03",
+        "end": "2026-11-09"
+      },
+      "p30": {
+        "start": "2026-10-11",
+        "end": "2026-11-09"
+      }
+    },
+    "bundleDays": 180
+  },
+  "latency": {
+    "gsc.bundle.daily": {
+      "jobs": 1,
+      "requests": 1,
+      "jobMsMean": 9.6,
+      "jobMsMax": 9.6,
+      "slowestRequestMs": 0.2
+    },
+    "gsc.totals": {
+      "jobs": 2,
+      "requests": 2,
+      "jobMsMean": 2.7,
+      "jobMsMax": 2.7,
+      "slowestRequestMs": 0
+    },
+    "gsc.pages": {
+      "jobs": 1,
+      "requests": 1,
+      "jobMsMean": 2.6,
+      "jobMsMax": 2.6,
+      "slowestRequestMs": 0
+    },
+    "gsc.queries": {
+      "jobs": 1,
+      "requests": 1,
+      "jobMsMean": 2.4,
+      "jobMsMax": 2.4,
+      "slowestRequestMs": 0
+    }
+  },
+  "providerRequestsMade": 5,
+  "requestCap": 8
+}

@@ -1,0 +1,1314 @@
+[
+  {
+    "name": "latency 1 s, no faults",
+    "result": {
+      "options": {
+        "latencySeconds": 1,
+        "overheadMs": 250,
+        "budgetSeconds": 90,
+        "jobLimit": 40,
+        "planner": "v2",
+        "tickMinutes": 30,
+        "days": 7,
+        "faults": false
+      },
+      "invocations": 336,
+      "idleInvocations": 299,
+      "stopReasons": {
+        "limit": 24,
+        "idle": 299,
+        "empty": 13
+      },
+      "jobsQueued": 1230,
+      "jobsProcessed": 1230,
+      "succeeded": 1230,
+      "failed": 0,
+      "retried": 0,
+      "reconnectRequired": 0,
+      "unrecoveredFailedWindows": 0,
+      "requests": {
+        "ga4": 140,
+        "gsc": 1020,
+        "wix": 70
+      },
+      "rejectedRequests": {
+        "ga4": 0,
+        "gsc": 0,
+        "wix": 0
+      },
+      "maxQueueDepth": 160,
+      "remainingAtEnd": {
+        "due": 0,
+        "waiting": 0,
+        "leased": 0
+      },
+      "jobsPerBusyInvocation": {
+        "mean": 33.24,
+        "max": 40
+      },
+      "invocationSeconds": {
+        "mean": 41.55,
+        "max": 50
+      },
+      "clearHours": {
+        "episodes": 14,
+        "mean": 0.89,
+        "max": 1.6
+      },
+      "clearDueHours": {
+        "episodes": 14,
+        "mean": 0.89,
+        "max": 1.6
+      },
+      "busyInvocationsPerDay": 5.3,
+      "daily": [
+        {
+          "day": 1,
+          "invocations": 48,
+          "jobs": 290,
+          "succeeded": 290,
+          "failed": 0,
+          "retried": 0,
+          "enqueued": 290,
+          "requests": {
+            "ga4": 20,
+            "gsc": 260,
+            "wix": 10
+          }
+        },
+        {
+          "day": 2,
+          "invocations": 48,
+          "jobs": 160,
+          "succeeded": 160,
+          "failed": 0,
+          "retried": 0,
+          "enqueued": 160,
+          "requests": {
+            "ga4": 20,
+            "gsc": 130,
+            "wix": 10
+          }
+        },
+        {
+          "day": 3,
+          "invocations": 48,
+          "jobs": 160,
+          "succeeded": 160,
+          "failed": 0,
+          "retried": 0,
+          "enqueued": 160,
+          "requests": {
+            "ga4": 20,
+            "gsc": 130,
+            "wix": 10
+          }
+        },
+        {
+          "day": 4,
+          "invocations": 48,
+          "jobs": 160,
+          "succeeded": 160,
+          "failed": 0,
+          "retried": 0,
+          "enqueued": 160,
+          "requests": {
+            "ga4": 20,
+            "gsc": 130,
+            "wix": 10
+          }
+        },
+        {
+          "day": 5,
+          "invocations": 48,
+          "jobs": 160,
+          "succeeded": 160,
+          "failed": 0,
+          "retried": 0,
+          "enqueued": 160,
+          "requests": {
+            "ga4": 20,
+            "gsc": 130,
+            "wix": 10
+          }
+        },
+        {
+          "day": 6,
+          "invocations": 48,
+          "jobs": 160,
+          "succeeded": 160,
+          "failed": 0,
+          "retried": 0,
+          "enqueued": 160,
+          "requests": {
+            "ga4": 20,
+            "gsc": 130,
+            "wix": 10
+          }
+        },
+        {
+          "day": 7,
+          "invocations": 48,
+          "jobs": 140,
+          "succeeded": 140,
+          "failed": 0,
+          "retried": 0,
+          "enqueued": 140,
+          "requests": {
+            "ga4": 20,
+            "gsc": 110,
+            "wix": 10
+          }
+        }
+      ]
+    }
+  },
+  {
+    "name": "latency 2 s, no faults",
+    "result": {
+      "options": {
+        "latencySeconds": 2,
+        "overheadMs": 250,
+        "budgetSeconds": 90,
+        "jobLimit": 40,
+        "planner": "v2",
+        "tickMinutes": 30,
+        "days": 7,
+        "faults": false
+      },
+      "invocations": 336,
+      "idleInvocations": 284,
+      "stopReasons": {
+        "deadline": 38,
+        "empty": 14,
+        "idle": 284
+      },
+      "jobsQueued": 1230,
+      "jobsProcessed": 1230,
+      "succeeded": 1230,
+      "failed": 0,
+      "retried": 0,
+      "reconnectRequired": 0,
+      "unrecoveredFailedWindows": 0,
+      "requests": {
+        "ga4": 140,
+        "gsc": 1020,
+        "wix": 70
+      },
+      "rejectedRequests": {
+        "ga4": 0,
+        "gsc": 0,
+        "wix": 0
+      },
+      "maxQueueDepth": 160,
+      "remainingAtEnd": {
+        "due": 0,
+        "waiting": 0,
+        "leased": 0
+      },
+      "jobsPerBusyInvocation": {
+        "mean": 23.65,
+        "max": 28
+      },
+      "invocationSeconds": {
+        "mean": 53.22,
+        "max": 63
+      },
+      "clearHours": {
+        "episodes": 14,
+        "mean": 1.51,
+        "max": 2.56
+      },
+      "clearDueHours": {
+        "episodes": 14,
+        "mean": 1.51,
+        "max": 2.56
+      },
+      "busyInvocationsPerDay": 7.4,
+      "daily": [
+        {
+          "day": 1,
+          "invocations": 48,
+          "jobs": 290,
+          "succeeded": 290,
+          "failed": 0,
+          "retried": 0,
+          "enqueued": 290,
+          "requests": {
+            "ga4": 20,
+            "gsc": 260,
+            "wix": 10
+          }
+        },
+        {
+          "day": 2,
+          "invocations": 48,
+          "jobs": 160,
+          "succeeded": 160,
+          "failed": 0,
+          "retried": 0,
+          "enqueued": 160,
+          "requests": {
+            "ga4": 20,
+            "gsc": 130,
+            "wix": 10
+          }
+        },
+        {
+          "day": 3,
+          "invocations": 48,
+          "jobs": 160,
+          "succeeded": 160,
+          "failed": 0,
+          "retried": 0,
+          "enqueued": 160,
+          "requests": {
+            "ga4": 20,
+            "gsc": 130,
+            "wix": 10
+          }
+        },
+        {
+          "day": 4,
+          "invocations": 48,
+          "jobs": 160,
+          "succeeded": 160,
+          "failed": 0,
+          "retried": 0,
+          "enqueued": 160,
+          "requests": {
+            "ga4": 20,
+            "gsc": 130,
+            "wix": 10
+          }
+        },
+        {
+          "day": 5,
+          "invocations": 48,
+          "jobs": 160,
+          "succeeded": 160,
+          "failed": 0,
+          "retried": 0,
+          "enqueued": 160,
+          "requests": {
+            "ga4": 20,
+            "gsc": 130,
+            "wix": 10
+          }
+        },
+        {
+          "day": 6,
+          "invocations": 48,
+          "jobs": 160,
+          "succeeded": 160,
+          "failed": 0,
+          "retried": 0,
+          "enqueued": 160,
+          "requests": {
+            "ga4": 20,
+            "gsc": 130,
+            "wix": 10
+          }
+        },
+        {
+          "day": 7,
+          "invocations": 48,
+          "jobs": 140,
+          "succeeded": 140,
+          "failed": 0,
+          "retried": 0,
+          "enqueued": 140,
+          "requests": {
+            "ga4": 20,
+            "gsc": 110,
+            "wix": 10
+          }
+        }
+      ]
+    }
+  },
+  {
+    "name": "latency 4 s, no faults",
+    "result": {
+      "options": {
+        "latencySeconds": 4,
+        "overheadMs": 250,
+        "budgetSeconds": 90,
+        "jobLimit": 40,
+        "planner": "v2",
+        "tickMinutes": 30,
+        "days": 7,
+        "faults": false
+      },
+      "invocations": 336,
+      "idleInvocations": 251,
+      "stopReasons": {
+        "deadline": 77,
+        "empty": 8,
+        "idle": 251
+      },
+      "jobsQueued": 1230,
+      "jobsProcessed": 1230,
+      "succeeded": 1230,
+      "failed": 0,
+      "retried": 0,
+      "reconnectRequired": 0,
+      "unrecoveredFailedWindows": 0,
+      "requests": {
+        "ga4": 140,
+        "gsc": 1020,
+        "wix": 70
+      },
+      "rejectedRequests": {
+        "ga4": 0,
+        "gsc": 0,
+        "wix": 0
+      },
+      "maxQueueDepth": 160,
+      "remainingAtEnd": {
+        "due": 0,
+        "waiting": 0,
+        "leased": 0
+      },
+      "jobsPerBusyInvocation": {
+        "mean": 14.47,
+        "max": 15
+      },
+      "invocationSeconds": {
+        "mean": 61.5,
+        "max": 63.75
+      },
+      "clearHours": {
+        "episodes": 14,
+        "mean": 2.67,
+        "max": 5.11
+      },
+      "clearDueHours": {
+        "episodes": 14,
+        "mean": 2.67,
+        "max": 5.11
+      },
+      "busyInvocationsPerDay": 12.1,
+      "daily": [
+        {
+          "day": 1,
+          "invocations": 48,
+          "jobs": 290,
+          "succeeded": 290,
+          "failed": 0,
+          "retried": 0,
+          "enqueued": 290,
+          "requests": {
+            "ga4": 20,
+            "gsc": 260,
+            "wix": 10
+          }
+        },
+        {
+          "day": 2,
+          "invocations": 48,
+          "jobs": 160,
+          "succeeded": 160,
+          "failed": 0,
+          "retried": 0,
+          "enqueued": 160,
+          "requests": {
+            "ga4": 20,
+            "gsc": 130,
+            "wix": 10
+          }
+        },
+        {
+          "day": 3,
+          "invocations": 48,
+          "jobs": 160,
+          "succeeded": 160,
+          "failed": 0,
+          "retried": 0,
+          "enqueued": 160,
+          "requests": {
+            "ga4": 20,
+            "gsc": 130,
+            "wix": 10
+          }
+        },
+        {
+          "day": 4,
+          "invocations": 48,
+          "jobs": 160,
+          "succeeded": 160,
+          "failed": 0,
+          "retried": 0,
+          "enqueued": 160,
+          "requests": {
+            "ga4": 20,
+            "gsc": 130,
+            "wix": 10
+          }
+        },
+        {
+          "day": 5,
+          "invocations": 48,
+          "jobs": 160,
+          "succeeded": 160,
+          "failed": 0,
+          "retried": 0,
+          "enqueued": 160,
+          "requests": {
+            "ga4": 20,
+            "gsc": 130,
+            "wix": 10
+          }
+        },
+        {
+          "day": 6,
+          "invocations": 48,
+          "jobs": 160,
+          "succeeded": 160,
+          "failed": 0,
+          "retried": 0,
+          "enqueued": 160,
+          "requests": {
+            "ga4": 20,
+            "gsc": 130,
+            "wix": 10
+          }
+        },
+        {
+          "day": 7,
+          "invocations": 48,
+          "jobs": 140,
+          "succeeded": 140,
+          "failed": 0,
+          "retried": 0,
+          "enqueued": 140,
+          "requests": {
+            "ga4": 20,
+            "gsc": 110,
+            "wix": 10
+          }
+        }
+      ]
+    }
+  },
+  {
+    "name": "latency 4 s, no faults, cadence 60 min",
+    "result": {
+      "options": {
+        "latencySeconds": 4,
+        "overheadMs": 250,
+        "budgetSeconds": 90,
+        "jobLimit": 40,
+        "planner": "v2",
+        "tickMinutes": 60,
+        "days": 7,
+        "faults": false
+      },
+      "invocations": 168,
+      "idleInvocations": 83,
+      "stopReasons": {
+        "deadline": 77,
+        "empty": 8,
+        "idle": 83
+      },
+      "jobsQueued": 1230,
+      "jobsProcessed": 1230,
+      "succeeded": 1230,
+      "failed": 0,
+      "retried": 0,
+      "reconnectRequired": 0,
+      "unrecoveredFailedWindows": 0,
+      "requests": {
+        "ga4": 140,
+        "gsc": 1020,
+        "wix": 70
+      },
+      "rejectedRequests": {
+        "ga4": 0,
+        "gsc": 0,
+        "wix": 0
+      },
+      "maxQueueDepth": 160,
+      "remainingAtEnd": {
+        "due": 0,
+        "waiting": 0,
+        "leased": 0
+      },
+      "jobsPerBusyInvocation": {
+        "mean": 14.47,
+        "max": 15
+      },
+      "invocationSeconds": {
+        "mean": 61.5,
+        "max": 63.75
+      },
+      "clearHours": {
+        "episodes": 8,
+        "mean": 9.73,
+        "max": 10.11
+      },
+      "clearDueHours": {
+        "episodes": 8,
+        "mean": 9.73,
+        "max": 10.11
+      },
+      "busyInvocationsPerDay": 12.1,
+      "daily": [
+        {
+          "day": 1,
+          "invocations": 24,
+          "jobs": 280,
+          "succeeded": 280,
+          "failed": 0,
+          "retried": 0,
+          "enqueued": 290,
+          "requests": {
+            "ga4": 20,
+            "gsc": 250,
+            "wix": 10
+          }
+        },
+        {
+          "day": 2,
+          "invocations": 24,
+          "jobs": 160,
+          "succeeded": 160,
+          "failed": 0,
+          "retried": 0,
+          "enqueued": 160,
+          "requests": {
+            "ga4": 20,
+            "gsc": 130,
+            "wix": 10
+          }
+        },
+        {
+          "day": 3,
+          "invocations": 24,
+          "jobs": 160,
+          "succeeded": 160,
+          "failed": 0,
+          "retried": 0,
+          "enqueued": 160,
+          "requests": {
+            "ga4": 20,
+            "gsc": 130,
+            "wix": 10
+          }
+        },
+        {
+          "day": 4,
+          "invocations": 24,
+          "jobs": 160,
+          "succeeded": 160,
+          "failed": 0,
+          "retried": 0,
+          "enqueued": 160,
+          "requests": {
+            "ga4": 20,
+            "gsc": 130,
+            "wix": 10
+          }
+        },
+        {
+          "day": 5,
+          "invocations": 24,
+          "jobs": 160,
+          "succeeded": 160,
+          "failed": 0,
+          "retried": 0,
+          "enqueued": 160,
+          "requests": {
+            "ga4": 20,
+            "gsc": 130,
+            "wix": 10
+          }
+        },
+        {
+          "day": 6,
+          "invocations": 24,
+          "jobs": 160,
+          "succeeded": 160,
+          "failed": 0,
+          "retried": 0,
+          "enqueued": 160,
+          "requests": {
+            "ga4": 20,
+            "gsc": 130,
+            "wix": 10
+          }
+        },
+        {
+          "day": 7,
+          "invocations": 24,
+          "jobs": 150,
+          "succeeded": 150,
+          "failed": 0,
+          "retried": 0,
+          "enqueued": 140,
+          "requests": {
+            "ga4": 20,
+            "gsc": 120,
+            "wix": 10
+          }
+        }
+      ]
+    }
+  },
+  {
+    "name": "latency 4 s, no faults, budget 240 s, limit 100",
+    "result": {
+      "options": {
+        "latencySeconds": 4,
+        "overheadMs": 250,
+        "budgetSeconds": 240,
+        "jobLimit": 100,
+        "planner": "v2",
+        "tickMinutes": 30,
+        "days": 7,
+        "faults": false
+      },
+      "invocations": 336,
+      "idleInvocations": 305,
+      "stopReasons": {
+        "deadline": 17,
+        "empty": 14,
+        "idle": 305
+      },
+      "jobsQueued": 1230,
+      "jobsProcessed": 1230,
+      "succeeded": 1230,
+      "failed": 0,
+      "retried": 0,
+      "reconnectRequired": 0,
+      "unrecoveredFailedWindows": 0,
+      "requests": {
+        "ga4": 140,
+        "gsc": 1020,
+        "wix": 70
+      },
+      "rejectedRequests": {
+        "ga4": 0,
+        "gsc": 0,
+        "wix": 0
+      },
+      "maxQueueDepth": 160,
+      "remainingAtEnd": {
+        "due": 0,
+        "waiting": 0,
+        "leased": 0
+      },
+      "jobsPerBusyInvocation": {
+        "mean": 39.68,
+        "max": 50
+      },
+      "invocationSeconds": {
+        "mean": 168.63,
+        "max": 212.5
+      },
+      "clearHours": {
+        "episodes": 14,
+        "mean": 0.76,
+        "max": 1.6
+      },
+      "clearDueHours": {
+        "episodes": 14,
+        "mean": 0.76,
+        "max": 1.6
+      },
+      "busyInvocationsPerDay": 4.4,
+      "daily": [
+        {
+          "day": 1,
+          "invocations": 48,
+          "jobs": 290,
+          "succeeded": 290,
+          "failed": 0,
+          "retried": 0,
+          "enqueued": 290,
+          "requests": {
+            "ga4": 20,
+            "gsc": 260,
+            "wix": 10
+          }
+        },
+        {
+          "day": 2,
+          "invocations": 48,
+          "jobs": 160,
+          "succeeded": 160,
+          "failed": 0,
+          "retried": 0,
+          "enqueued": 160,
+          "requests": {
+            "ga4": 20,
+            "gsc": 130,
+            "wix": 10
+          }
+        },
+        {
+          "day": 3,
+          "invocations": 48,
+          "jobs": 160,
+          "succeeded": 160,
+          "failed": 0,
+          "retried": 0,
+          "enqueued": 160,
+          "requests": {
+            "ga4": 20,
+            "gsc": 130,
+            "wix": 10
+          }
+        },
+        {
+          "day": 4,
+          "invocations": 48,
+          "jobs": 160,
+          "succeeded": 160,
+          "failed": 0,
+          "retried": 0,
+          "enqueued": 160,
+          "requests": {
+            "ga4": 20,
+            "gsc": 130,
+            "wix": 10
+          }
+        },
+        {
+          "day": 5,
+          "invocations": 48,
+          "jobs": 160,
+          "succeeded": 160,
+          "failed": 0,
+          "retried": 0,
+          "enqueued": 160,
+          "requests": {
+            "ga4": 20,
+            "gsc": 130,
+            "wix": 10
+          }
+        },
+        {
+          "day": 6,
+          "invocations": 48,
+          "jobs": 160,
+          "succeeded": 160,
+          "failed": 0,
+          "retried": 0,
+          "enqueued": 160,
+          "requests": {
+            "ga4": 20,
+            "gsc": 130,
+            "wix": 10
+          }
+        },
+        {
+          "day": 7,
+          "invocations": 48,
+          "jobs": 140,
+          "succeeded": 140,
+          "failed": 0,
+          "retried": 0,
+          "enqueued": 140,
+          "requests": {
+            "ga4": 20,
+            "gsc": 110,
+            "wix": 10
+          }
+        }
+      ]
+    }
+  },
+  {
+    "name": "latency 2 s, partial failures",
+    "result": {
+      "options": {
+        "latencySeconds": 2,
+        "overheadMs": 250,
+        "budgetSeconds": 90,
+        "jobLimit": 40,
+        "planner": "v2",
+        "tickMinutes": 30,
+        "days": 7,
+        "faults": true
+      },
+      "invocations": 336,
+      "idleInvocations": 269,
+      "stopReasons": {
+        "deadline": 37,
+        "empty": 30,
+        "idle": 269
+      },
+      "jobsQueued": 1170,
+      "jobsProcessed": 1211,
+      "succeeded": 1154,
+      "failed": 3,
+      "retried": 41,
+      "reconnectRequired": 1,
+      "unrecoveredFailedWindows": 0,
+      "requests": {
+        "ga4": 142,
+        "gsc": 987,
+        "wix": 82
+      },
+      "rejectedRequests": {
+        "ga4": 0,
+        "gsc": 43,
+        "wix": 12
+      },
+      "maxQueueDepth": 160,
+      "remainingAtEnd": {
+        "due": 0,
+        "waiting": 0,
+        "leased": 0
+      },
+      "jobsPerBusyInvocation": {
+        "mean": 18.92,
+        "max": 28
+      },
+      "invocationSeconds": {
+        "mean": 42.57,
+        "max": 63
+      },
+      "clearHours": {
+        "episodes": 13,
+        "mean": 2.24,
+        "max": 10.2
+      },
+      "clearDueHours": {
+        "episodes": 27,
+        "mean": 0.75,
+        "max": 2.56
+      },
+      "busyInvocationsPerDay": 9.1,
+      "daily": [
+        {
+          "day": 1,
+          "invocations": 48,
+          "jobs": 290,
+          "succeeded": 290,
+          "failed": 0,
+          "retried": 0,
+          "enqueued": 290,
+          "requests": {
+            "ga4": 20,
+            "gsc": 260,
+            "wix": 10
+          }
+        },
+        {
+          "day": 2,
+          "invocations": 48,
+          "jobs": 160,
+          "succeeded": 147,
+          "failed": 0,
+          "retried": 0,
+          "enqueued": 160,
+          "requests": {
+            "ga4": 20,
+            "gsc": 130,
+            "wix": 10
+          }
+        },
+        {
+          "day": 3,
+          "invocations": 48,
+          "jobs": 144,
+          "succeeded": 114,
+          "failed": 3,
+          "retried": 27,
+          "enqueued": 147,
+          "requests": {
+            "ga4": 20,
+            "gsc": 114,
+            "wix": 10
+          }
+        },
+        {
+          "day": 4,
+          "invocations": 48,
+          "jobs": 192,
+          "succeeded": 180,
+          "failed": 0,
+          "retried": 12,
+          "enqueued": 150,
+          "requests": {
+            "ga4": 20,
+            "gsc": 150,
+            "wix": 22
+          }
+        },
+        {
+          "day": 5,
+          "invocations": 48,
+          "jobs": 149,
+          "succeeded": 147,
+          "failed": 0,
+          "retried": 2,
+          "enqueued": 147,
+          "requests": {
+            "ga4": 22,
+            "gsc": 117,
+            "wix": 10
+          }
+        },
+        {
+          "day": 6,
+          "invocations": 48,
+          "jobs": 147,
+          "succeeded": 147,
+          "failed": 0,
+          "retried": 0,
+          "enqueued": 147,
+          "requests": {
+            "ga4": 20,
+            "gsc": 117,
+            "wix": 10
+          }
+        },
+        {
+          "day": 7,
+          "invocations": 48,
+          "jobs": 129,
+          "succeeded": 129,
+          "failed": 0,
+          "retried": 0,
+          "enqueued": 129,
+          "requests": {
+            "ga4": 20,
+            "gsc": 99,
+            "wix": 10
+          }
+        }
+      ]
+    }
+  },
+  {
+    "name": "latency 4 s, partial failures",
+    "result": {
+      "options": {
+        "latencySeconds": 4,
+        "overheadMs": 250,
+        "budgetSeconds": 90,
+        "jobLimit": 40,
+        "planner": "v2",
+        "tickMinutes": 30,
+        "days": 7,
+        "faults": true
+      },
+      "invocations": 336,
+      "idleInvocations": 240,
+      "stopReasons": {
+        "deadline": 72,
+        "empty": 24,
+        "idle": 240
+      },
+      "jobsQueued": 1170,
+      "jobsProcessed": 1211,
+      "succeeded": 1154,
+      "failed": 3,
+      "retried": 41,
+      "reconnectRequired": 1,
+      "unrecoveredFailedWindows": 0,
+      "requests": {
+        "ga4": 142,
+        "gsc": 987,
+        "wix": 82
+      },
+      "rejectedRequests": {
+        "ga4": 0,
+        "gsc": 43,
+        "wix": 12
+      },
+      "maxQueueDepth": 160,
+      "remainingAtEnd": {
+        "due": 0,
+        "waiting": 0,
+        "leased": 0
+      },
+      "jobsPerBusyInvocation": {
+        "mean": 13.02,
+        "max": 15
+      },
+      "invocationSeconds": {
+        "mean": 55.34,
+        "max": 63.75
+      },
+      "clearHours": {
+        "episodes": 13,
+        "mean": 3.29,
+        "max": 11.53
+      },
+      "clearDueHours": {
+        "episodes": 25,
+        "mean": 1.4,
+        "max": 5.11
+      },
+      "busyInvocationsPerDay": 13.3,
+      "daily": [
+        {
+          "day": 1,
+          "invocations": 48,
+          "jobs": 290,
+          "succeeded": 290,
+          "failed": 0,
+          "retried": 0,
+          "enqueued": 290,
+          "requests": {
+            "ga4": 20,
+            "gsc": 260,
+            "wix": 10
+          }
+        },
+        {
+          "day": 2,
+          "invocations": 48,
+          "jobs": 160,
+          "succeeded": 147,
+          "failed": 0,
+          "retried": 0,
+          "enqueued": 160,
+          "requests": {
+            "ga4": 20,
+            "gsc": 130,
+            "wix": 10
+          }
+        },
+        {
+          "day": 3,
+          "invocations": 48,
+          "jobs": 105,
+          "succeeded": 75,
+          "failed": 3,
+          "retried": 27,
+          "enqueued": 147,
+          "requests": {
+            "ga4": 20,
+            "gsc": 75,
+            "wix": 10
+          }
+        },
+        {
+          "day": 4,
+          "invocations": 48,
+          "jobs": 231,
+          "succeeded": 219,
+          "failed": 0,
+          "retried": 12,
+          "enqueued": 150,
+          "requests": {
+            "ga4": 20,
+            "gsc": 189,
+            "wix": 22
+          }
+        },
+        {
+          "day": 5,
+          "invocations": 48,
+          "jobs": 149,
+          "succeeded": 147,
+          "failed": 0,
+          "retried": 2,
+          "enqueued": 147,
+          "requests": {
+            "ga4": 22,
+            "gsc": 117,
+            "wix": 10
+          }
+        },
+        {
+          "day": 6,
+          "invocations": 48,
+          "jobs": 147,
+          "succeeded": 147,
+          "failed": 0,
+          "retried": 0,
+          "enqueued": 147,
+          "requests": {
+            "ga4": 20,
+            "gsc": 117,
+            "wix": 10
+          }
+        },
+        {
+          "day": 7,
+          "invocations": 48,
+          "jobs": 129,
+          "succeeded": 129,
+          "failed": 0,
+          "retried": 0,
+          "enqueued": 129,
+          "requests": {
+            "ga4": 20,
+            "gsc": 99,
+            "wix": 10
+          }
+        }
+      ]
+    }
+  },
+  {
+    "name": "latency 2 s, version 1 plan (221 jobs a day)",
+    "result": {
+      "options": {
+        "latencySeconds": 2,
+        "overheadMs": 250,
+        "budgetSeconds": 90,
+        "jobLimit": 40,
+        "planner": "v1",
+        "tickMinutes": 30,
+        "days": 7,
+        "faults": false
+      },
+      "invocations": 336,
+      "idleInvocations": 268,
+      "stopReasons": {
+        "deadline": 54,
+        "empty": 14,
+        "idle": 268
+      },
+      "jobsQueued": 1697,
+      "jobsProcessed": 1697,
+      "succeeded": 1697,
+      "failed": 0,
+      "retried": 0,
+      "reconnectRequired": 0,
+      "unrecoveredFailedWindows": 0,
+      "requests": {
+        "ga4": 217,
+        "gsc": 1410,
+        "wix": 70
+      },
+      "rejectedRequests": {
+        "ga4": 0,
+        "gsc": 0,
+        "wix": 0
+      },
+      "maxQueueDepth": 221,
+      "remainingAtEnd": {
+        "due": 0,
+        "waiting": 0,
+        "leased": 0
+      },
+      "jobsPerBusyInvocation": {
+        "mean": 24.96,
+        "max": 28
+      },
+      "invocationSeconds": {
+        "mean": 56.15,
+        "max": 63
+      },
+      "clearHours": {
+        "episodes": 14,
+        "mean": 2.06,
+        "max": 3.53
+      },
+      "clearDueHours": {
+        "episodes": 14,
+        "mean": 2.06,
+        "max": 3.53
+      },
+      "busyInvocationsPerDay": 9.7,
+      "daily": [
+        {
+          "day": 1,
+          "invocations": 48,
+          "jobs": 401,
+          "succeeded": 401,
+          "failed": 0,
+          "retried": 0,
+          "enqueued": 401,
+          "requests": {
+            "ga4": 31,
+            "gsc": 360,
+            "wix": 10
+          }
+        },
+        {
+          "day": 2,
+          "invocations": 48,
+          "jobs": 221,
+          "succeeded": 221,
+          "failed": 0,
+          "retried": 0,
+          "enqueued": 221,
+          "requests": {
+            "ga4": 31,
+            "gsc": 180,
+            "wix": 10
+          }
+        },
+        {
+          "day": 3,
+          "invocations": 48,
+          "jobs": 221,
+          "succeeded": 221,
+          "failed": 0,
+          "retried": 0,
+          "enqueued": 221,
+          "requests": {
+            "ga4": 31,
+            "gsc": 180,
+            "wix": 10
+          }
+        },
+        {
+          "day": 4,
+          "invocations": 48,
+          "jobs": 221,
+          "succeeded": 221,
+          "failed": 0,
+          "retried": 0,
+          "enqueued": 221,
+          "requests": {
+            "ga4": 31,
+            "gsc": 180,
+            "wix": 10
+          }
+        },
+        {
+          "day": 5,
+          "invocations": 48,
+          "jobs": 221,
+          "succeeded": 221,
+          "failed": 0,
+          "retried": 0,
+          "enqueued": 221,
+          "requests": {
+            "ga4": 31,
+            "gsc": 180,
+            "wix": 10
+          }
+        },
+        {
+          "day": 6,
+          "invocations": 48,
+          "jobs": 221,
+          "succeeded": 221,
+          "failed": 0,
+          "retried": 0,
+          "enqueued": 221,
+          "requests": {
+            "ga4": 31,
+            "gsc": 180,
+            "wix": 10
+          }
+        },
+        {
+          "day": 7,
+          "invocations": 48,
+          "jobs": 191,
+          "succeeded": 191,
+          "failed": 0,
+          "retried": 0,
+          "enqueued": 191,
+          "requests": {
+            "ga4": 31,
+            "gsc": 150,
+            "wix": 10
+          }
+        }
+      ]
+    }
+  }
+]

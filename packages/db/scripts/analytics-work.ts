@@ -23,7 +23,7 @@ const outcome = await drainMaintenance((fn) => withContext(SERVICE, fn), {
   wixAppId: process.env.ANALYTICS_WIX_APP_ID,
   wixAppSecret: process.env.ANALYTICS_WIX_APP_SECRET,
   pageSpeedKey: process.env.PAGESPEED_API_KEY,
-}, { owner: "cli" });
+}, { owner: "cli", trigger: "cli" });
 
 const worked = outcome.jobs > 0 || outcome.inspected > 0 || outcome.measured > 0;
 console.log(worked

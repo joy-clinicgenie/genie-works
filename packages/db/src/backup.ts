@@ -100,6 +100,7 @@ export const BACKUP_TABLES = [
   "analytics_source_policies",
   "analytics_jobs",
   "analytics_sync_runs",
+  "analytics_worker_invocations",
   "analytics_report_partitions",
   "analytics_report_rows",
   "analytics_metric_values",
