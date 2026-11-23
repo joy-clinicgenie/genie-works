@@ -7,6 +7,7 @@ import { staffTx } from "@/lib/db";
 import { AiAccessPanel } from "@/components/modules/seo/AiAccessPanel";
 import { SeoFrame, Unavailable } from "@/components/modules/seo/SeoFrame";
 import { DemoNote } from "@/components/modules/seo/OverviewPanels";
+import { AI_SECTION_TABS } from "@/lib/seo-sections";
 import { loadSeoContext, queryText, selectedTab, type SeoSearch } from "@/lib/seo-workspace";
 
 export const dynamic = "force-dynamic";
@@ -47,7 +48,15 @@ export default async function AiVisibilityPage({ searchParams }: { searchParams:
   const reason = queryText(query, "reason");
   const ingestUrl = site ? `${process.env.AUTH_URL ?? ""}/api/public/crawler-events/${site.id}` : "";
   return (
-    <SeoFrame ctx={ctx} pathname="/seo/ai-visibility" title="AI Visibility" description="Crawler visits, AI referral sessions and saved answer tests are separate measures. AI Access reads the website’s robots.txt and llms.txt and tests its NLWeb endpoint." tabs={TABS} currentTab={tab}>
+    <SeoFrame
+      ctx={ctx}
+      pathname="/seo/ai-visibility"
+      currentTab={tab}
+      title="AI Visibility"
+      description="Crawler visits, AI referral sessions and saved answer tests are separate measures. AI Access reads the website’s robots.txt and llms.txt and tests its NLWeb endpoint."
+      // D79: the AI visibility group: these tabs plus the AI Report, which lives on the Reports route.
+      tabs={AI_SECTION_TABS}
+    >
       {notice && AI_NOTICES[notice] && <div className="mb-4"><Notice tone="neutral">{AI_NOTICES[notice]}{reason ? ` ${reason}` : ""}</Notice></div>}
       {ctx.demo ? <DemoNote>No sample mentions, citations or crawler totals are shown.</DemoNote> : tab === "visibility" ? (
         site && activity ? (

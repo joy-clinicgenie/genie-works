@@ -12,7 +12,13 @@ const tones: Record<Tone, string> = {
 
 /** Status badge. The text always carries the meaning; colour is reinforcement only. */
 export function Badge({ tone = "neutral", children, className = "" }: { tone?: Tone; children: ReactNode; className?: string }) {
-  return <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold whitespace-nowrap ${tones[tone]} ${className}`}>{children}</span>;
+  // D75: a pill with a leading dot, like "• High". The word carries the meaning; the dot and colour reinforce it.
+  return (
+    <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-semibold whitespace-nowrap ${tones[tone]} ${className}`}>
+      <span aria-hidden="true" className="size-1.5 shrink-0 rounded-full bg-current opacity-80" />
+      {children}
+    </span>
+  );
 }
 
 const NAMES: Record<string, string> = {

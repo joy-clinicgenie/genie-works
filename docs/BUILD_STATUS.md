@@ -1,6 +1,6 @@
 # Build status
 
-Updated: 23 November 2026, Asia/Singapore. Decisions run through D73.
+Updated: 23 November 2026, Asia/Singapore. Decisions run through D81.
 
 Analytics Phase 1 (environment safety, D54) is implemented in the working tree and awaits review: see `docs/audits/ANALYTICS_PHASE_1_IMPLEMENTATION.md`. Nothing is committed or deployed. Synchronisation repairs (Phase 2 onward) have not started.
 
@@ -20,7 +20,7 @@ Analytics connection recovery, C1 and C2, are implemented and tested locally: `d
 
 ## Current stage
 
-Genie Works V1 is a local nine-module staff application. The launch menu is Dashboard (Agency Overview), Clients, Website analytics, SEO performance, Blog, Leads and forms, Reports, Settings and Admin.
+Genie Works V1 is a local nine-module staff application. The launch menu is Dashboard (Agency Overview), Clients, SEO performance, Website analytics, Leads and forms, Blog, Reports, Settings and Admin.
 
 Migrations are the 43 files in `packages/db/migrations/`. Two applied files share 0034: `0034_client_public_profiles.sql` and `0034_leads_forms.sql`. Do not rename or rewrite them. The runner records the full filename and skips an unchanged file. The newest file is `0042_analytics_job_reliability.sql`. D41 splits analytics claims and result writes into short transactions, keeps provider I/O outside PostgreSQL, and adds bounded retries, recoverable leases and audited administrator retry. D40 removes demonstration clients, placeholder websites, synthetic preview figures and demonstration staff accounts. Clinic directory rows stay. D39 removes the fictional Meridian Skin client and its websites. D38 lists every public page on Site Health and reads a Google index verdict when Search Console is connected. The analytics worker drains a batch of due jobs, then stores index checks and mobile lab scores. A hosted run is still required before those production rows change. `0036_wix_enquiry_binding.sql` stores one Wix form's identifiers on a website. `0038_enquiry_source_binding.sql` assigns a missing enquiry key from the client slug and environment, and keeps a Wix identifier change to an administrator. Enquiry answers are not stored. D31 records one source per website. D36 records both connectors on the same Enquiries page, and assesses DEP-02 once per source connection. `0035_connection_secret_admin.sql` still limits connection-secret writes to an administrator. D44 connects the Clinic Genie website to `clinic_genie_enquiry_staging` as its live enquiry database. A Wix form remains a separate connection.
 

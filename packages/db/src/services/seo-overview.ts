@@ -10,12 +10,17 @@ import { setupChecklist, seoWorkCounts, type SeoWorkCounts, type SetupStep } fro
 
 export interface ChecklistHealth {
   counts: SeoWorkCounts;
-  /** Whole percent of completed setup steps. */
-  setupPercent: number;
+  /** Whole percent of completed applicable setup steps, or null when no step applies. */
+  setupPercent: number | null;
   next: SetupStep | null;
   /** The window the completed-task count uses: the Checklist & Tasks default of 30 Asia/Singapore days. */
   completedWindow: { start: string; end: string; days: number };
   lastCheck: { finishedAt: Date; completed: number; failed: number; skipped: number } | null;
+  /**
+   * The newest time any figure on the panel could have changed: setup evidence, a website check, an issue, a
+   * recommendation or a completed task of this website. Null when none of them has a recorded time.
+   */
+  lastUpdated: Date | null;
 }
 
 export async function loadChecklistHealth(db: Queryable, input: { websiteId: string; clientId: string; today: string }): Promise<ChecklistHealth> {
@@ -26,12 +31,28 @@ export async function loadChecklistHealth(db: Queryable, input: { websiteId: str
     "select finished_at, completed, failed, skipped from seo_site_check_runs where website_id = $1 and status = 'completed' and finished_at is not null order by finished_at desc limit 1",
     [input.websiteId],
   )).rows[0];
+  const activity = (await db.query<{ at: Date | null }>(
+    `select greatest(
+       (select max(greatest(created_at, coalesce(decided_at, created_at))) from seo_recommendations where website_id = $1),
+       (select max(i.updated_at) from issues i
+         where i.related_type = 'seo_finding' and exists (select 1 from seo_site_findings f where f.issue_id = i.id and f.website_id = $1)),
+       (select max(t.completed_at) from tasks t
+         left join seo_pages p on t.related_type = 'seo_page' and p.id = t.related_id
+         left join seo_site_findings f on t.related_type = 'seo_finding' and f.id = t.related_id
+         left join seo_recommendations r on t.related_type = 'seo_recommendation' and r.id = t.related_id
+         where t.status = 'completed' and coalesce(p.website_id, f.website_id, r.website_id) = $1)
+     ) as at`,
+    [input.websiteId],
+  )).rows[0]?.at ?? null;
+  const times = [activity, run?.finished_at ?? null, ...checklist.steps.map((step) => step.evidenceAt)]
+    .filter((at): at is Date => at instanceof Date);
   return {
     counts,
-    setupPercent: Math.round((counts.setupDone / counts.setupTotal) * 100),
+    setupPercent: counts.setupTotal > 0 ? Math.round((counts.setupDone / counts.setupTotal) * 100) : null,
     next: checklist.next,
     completedWindow,
     lastCheck: run ? { finishedAt: run.finished_at, completed: run.completed, failed: run.failed, skipped: run.skipped } : null,
+    lastUpdated: times.length ? new Date(Math.max(...times.map((at) => at.getTime()))) : null,
   };
 }
 

@@ -85,7 +85,7 @@ export interface WebsiteChoice {
  * One selector for every website and environment the staff member can read, labelled
  * Organisation · Website · Environment. Without JavaScript it submits as a plain GET form.
  */
-export function SeoWebsiteSelector({ pathname, tab, sites, website }: { pathname: string; tab?: string; sites: WebsiteChoice[]; website?: string }) {
+export function SeoWebsiteSelector({ pathname, tab, sites, website, compact = false }: { pathname: string; tab?: string; sites: WebsiteChoice[]; website?: string; compact?: boolean }) {
   const scope = useContext(ScopeContext);
   const [choice, setChoice] = useState(website ?? "");
   const id = `${pathname}-website`;
@@ -101,14 +101,16 @@ export function SeoWebsiteSelector({ pathname, tab, sites, website }: { pathname
     scope.open(site.id, `${pathname}?${params}`, websiteChoiceLabel(site));
   }
   return (
-    <form method="get" action={pathname} onSubmit={submit} className="mt-3 flex flex-wrap items-end gap-3">
+    <form method="get" action={pathname} onSubmit={submit} className={`flex flex-wrap items-end gap-3 ${compact ? "sm:flex-nowrap" : "mt-3"}`} data-website-selector>
       {tab && <input type="hidden" name="tab" value={tab} />}
+      <div className="w-full min-w-0 sm:w-auto">
       <Field label="Organisation · Website · Environment" htmlFor={id}>
-        <Select id={id} name="website" value={choice} required onChange={(event) => setChoice(event.target.value)} className="min-w-72">
+        <Select id={id} name="website" value={choice} required onChange={(event) => setChoice(event.target.value)} className="w-full min-w-0 sm:w-80">
           <option value="">Choose a website</option>
           {sites.map((site) => <option key={site.id} value={site.id}>{websiteChoiceLabel(site)}</option>)}
         </Select>
       </Field>
+      </div>
       <Button type="submit" variant="secondary" size="sm" disabled={!choice}>Open website</Button>
     </form>
   );

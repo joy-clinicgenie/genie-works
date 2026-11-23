@@ -8,7 +8,7 @@ import { X } from "lucide-react";
  */
 export function Drawer({ title, closeHref, children, eyebrow }: { title: ReactNode; closeHref: string; children: ReactNode; eyebrow?: ReactNode }) {
   return (
-    <aside className="card p-5 lg:sticky lg:top-20 lg:max-h-[calc(100dvh-6rem)] lg:overflow-y-auto" aria-label={typeof title === "string" ? title : "Details"}>
+    <aside className="card p-5 lg:sticky lg:top-4 lg:max-h-[calc(100dvh-8rem)] lg:overflow-y-auto" aria-label={typeof title === "string" ? title : "Details"}>
       <div className="flex items-start justify-between gap-3 mb-4">
         <div>
           {eyebrow && <div className="text-xs font-semibold uppercase tracking-wide text-muted">{eyebrow}</div>}

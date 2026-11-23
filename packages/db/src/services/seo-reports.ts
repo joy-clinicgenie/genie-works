@@ -127,6 +127,54 @@ export async function loadSearchReport(db: Queryable, input: { clientId: string;
   };
 }
 
+export interface SearchChange {
+  key: string;
+  current: number;
+  previous: number;
+  change: number;
+}
+
+export type SearchChanges =
+  | { status: "available"; increased: SearchChange[]; decreased: SearchChange[]; previousWindow: { start: string; end: string } }
+  | { status: "not_stored"; missing: "current" | "previous" };
+
+/**
+ * Most significant changes (D76): pages or queries whose clicks or impressions moved most between a window and the
+ * equal window before it, both from stored Search Console reports. Search Console returns only the top rows, so a row
+ * missing from one window is not a zero: only rows present in both windows are compared.
+ */
+export async function loadSearchChanges(db: Queryable, input: { clientId: string; websiteId: string; window: { start: string; end: string }; record: "pages" | "queries"; metric: "clicks" | "impressions"; limit?: number }): Promise<SearchChanges> {
+  const ids = { clientId: input.clientId, websiteId: input.websiteId };
+  const templateKey = input.record === "queries" ? "gsc.queries" : "gsc.pages";
+  const previousEnd = addDays(input.window.start, -1);
+  const previousWindow = { start: addDays(previousEnd, 1 - windowLength(input.window.start, input.window.end)), end: previousEnd };
+  const current = await publishedReport(db, { ...ids, templateKey, ...input.window });
+  if (!current) return { status: "not_stored", missing: "current" };
+  const previous = await publishedReport(db, { ...ids, templateKey, ...previousWindow });
+  if (!previous) return { status: "not_stored", missing: "previous" };
+  const rows = (report: PublishedReport) => report.rows.map((row) => ({ key: row.dimensionKey, value: metrics(row)[input.metric] }));
+  return { status: "available", ...compareSearchRows(rows(current), rows(previous), input.limit ?? 5), previousWindow };
+}
+
+/**
+ * The largest increases and decreases between two row sets. Only keys present in both with a value are compared;
+ * ties are ordered by key so the list is stable.
+ */
+export function compareSearchRows(current: Array<{ key: string; value: number | null }>, previous: Array<{ key: string; value: number | null }>, limit: number): { increased: SearchChange[]; decreased: SearchChange[] } {
+  const before = new Map(previous.map((row) => [row.key, row.value]));
+  const changes: SearchChange[] = [];
+  for (const row of current) {
+    const then = before.get(row.key);
+    if (row.value === null || then === null || then === undefined) continue;
+    changes.push({ key: row.key, current: row.value, previous: then, change: row.value - then });
+  }
+  const byKey = (a: SearchChange, b: SearchChange) => a.key.localeCompare(b.key);
+  return {
+    increased: changes.filter((row) => row.change > 0).sort((a, b) => b.change - a.change || byKey(a, b)).slice(0, limit),
+    decreased: changes.filter((row) => row.change < 0).sort((a, b) => a.change - b.change || byKey(a, b)).slice(0, limit),
+  };
+}
+
 /**
  * Queues the Search Console reports a window still needs: totals, pages, queries and dated rows, plus totals
  * for the equal window before. Existing reports are queued again only when asked to refresh. Returns new jobs.

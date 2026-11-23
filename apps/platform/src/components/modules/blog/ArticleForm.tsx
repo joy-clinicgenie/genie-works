@@ -233,7 +233,7 @@ export function ArticleForm({
 
   return (
     <div className="bg-surface">
-      <div className="sticky top-16 z-30 border-b border-line bg-surface">
+      <div className="sticky top-0 z-30 border-b border-line bg-surface">
         <form id={FORM_ID} ref={formRef} action={submit} onChange={markDirty}>
           {article && <input type="hidden" name="articleId" value={article.id} />}
           {article?.current_version_id && <input type="hidden" name="expectedVersionId" value={article.current_version_id} />}
@@ -365,7 +365,7 @@ export function ArticleForm({
             </div>
           </div>
         </div>
-        <aside className="sticky top-40 z-20 flex shrink-0 self-start border-l border-line bg-surface">
+        <aside className="sticky top-24 z-20 flex shrink-0 self-start border-l border-line bg-surface">
           <div hidden={panel === null} className="absolute right-full top-0 max-h-[calc(100dvh-10rem)] w-[min(22rem,calc(100vw-7rem))] overflow-y-auto border border-line bg-surface shadow-pop">
             <div hidden={panel !== "settings"} id="settings-panel" className="space-y-5 p-4" onChange={markDirty}>
               <div className="flex items-center justify-between gap-2">

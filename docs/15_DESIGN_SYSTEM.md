@@ -12,7 +12,7 @@ Confirmed brand anchor: pale aqua #DDF7F8 from the user's supplied direction. Su
 | surface | #FFFFFF | Panels, tables and forms |
 | border | #D7E7E9 | Quiet separation |
 
-Use Helvetica/Arial/system sans-serif fallback. Base 16px; compact table text may be 14px. Use consistent spacing on a 4/8px scale, modest corners, readable density and minimal shadows. No decorative gradients or invented corporate logo. Use a text placeholder until the approved vector logo is supplied.
+Use Helvetica/Arial/system sans-serif fallback. Base 16px; compact table text may be 14px. Use consistent spacing on a 4/8px scale, modest corners, readable density and minimal shadows. No decorative gradients on content, charts or status, and no invented corporate logo. Since D75 the app canvas behind the panels is a soft aqua/mint/sky gradient and surfaces are floating rounded panels with soft shadows (see D75). Use a text placeholder until the approved vector logo is supplied.
 
 ## Phase 1 shell
 Navigation: Websites, Enquiries, Notification status, Settings. Add future modules only when implemented. Header includes authorised site context and user menu. Clearly mark staging and synthetic data.

@@ -157,7 +157,7 @@ export default async function ClientOverviewPage({ params }: { params: Promise<{
           </Card>
         </div>
 
-        <Card className="xl:sticky xl:top-24">
+        <Card className="xl:sticky xl:top-6">
           <CardHeader title="Recent activity" action={<Link href={`/clients/${id}/timeline`} className="text-sm text-action hover:underline">Timeline</Link>} />
           <ol className="divide-y divide-line">
             {data.timeline.length === 0 && <li className="px-5 py-4 text-sm text-muted">No activity recorded yet.</li>}

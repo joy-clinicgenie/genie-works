@@ -254,6 +254,36 @@ function mergedCover(windows: Array<{ start: Date; end: Date }>, from: Date, to:
 
 const emptyProviders = (): Record<AiProvider, number> => ({ chatgpt: 0, gemini: 0, claude: 0 });
 
+export interface LatestCrawl {
+  provider: AiProvider;
+  /**
+   * measured: a crawler source can report this platform (Gemini needs documented Gemini attribution, D63);
+   * no_source: no crawler source was ever connected for the website; not_measured: sources exist but none can
+   * attribute this platform.
+   */
+  state: "measured" | "no_source" | "not_measured";
+  lastCrawledAt: Date | null;
+}
+
+/**
+ * The newest recorded crawl per platform for one website (D76), over every source that ever reported for it. A crawl
+ * shows only that the site was fetched; it says nothing about queries or visibility in answers.
+ */
+export async function latestCrawlsByPlatform(db: Queryable, websiteId: string): Promise<LatestCrawl[]> {
+  const sources = (await db.query<{ gemini_attribution: boolean }>(
+    "select gemini_attribution from seo_crawler_sources where website_id = $1",
+    [websiteId],
+  )).rows;
+  const latest = new Map((await db.query<{ provider: AiProvider; at: Date }>(
+    "select provider, max(occurred_at) as at from seo_crawler_events where website_id = $1 group by provider",
+    [websiteId],
+  )).rows.map((row) => [row.provider, row.at]));
+  return AI_PROVIDERS.map((provider) => {
+    const state = sources.length === 0 ? "no_source" : provider === "gemini" && !sources.some((source) => source.gemini_attribution) && !latest.has("gemini") ? "not_measured" : "measured";
+    return { provider, state, lastCrawledAt: state === "measured" ? latest.get(provider) ?? null : null };
+  });
+}
+
 /**
  * One read of AI Activity for a website and date range (Asia/Singapore days), shared by AI Activity, the SEO
  * Overview and the AI Report. Crawlers, referrals and mentions are separate measures.

@@ -12,7 +12,7 @@ import { SeoFrame } from "@/components/modules/seo/SeoFrame";
 import { DemoNote } from "@/components/modules/seo/OverviewPanels";
 import { acceptRecommendationAction, dismissRecommendationAction, moveSeoIssueAction, recordSetupReviewAction, refreshRecommendationsAction, verifySeoIssueAction } from "@/app/actions/seo-work";
 import { findingLabel } from "@/lib/technical-seo-view";
-import { loadSeoContext, queryText, selectedTab, type SeoSearch } from "@/lib/seo-workspace";
+import { loadSeoContext, queryText, selectedTab, seoHref, type SeoSearch } from "@/lib/seo-workspace";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Checklist and tasks" };
@@ -189,7 +189,12 @@ export default async function SeoTasksPage({ searchParams }: { searchParams: Pro
         </Card>
       ) : (
         <Card>
-          <CardHeader title={`Completed tasks: ${data.completed.length}`} description={`Tasks finished from ${start} to ${end} (Asia/Singapore) that are linked to this website. A reopened task is not counted.`} />
+          <CardHeader
+            title={`Completed tasks: ${data.completed.length}`}
+            description={`Tasks finished from ${start} to ${end} (Asia/Singapore) that are linked to this website. A reopened task is not counted.`}
+            // D79: the SEO Work report (formerly under Reports) belongs with Checklist & Tasks.
+            action={<LinkButton href={seoHref("/seo/reports", ctx, { tab: "work" })} variant="secondary" size="sm">SEO Work report</LinkButton>}
+          />
           <form method="get" className="flex flex-wrap items-end gap-2 px-5 pb-4">
             <input type="hidden" name="website" value={site.id} />
             <input type="hidden" name="tab" value="completed" />

@@ -11,6 +11,7 @@ import { Table, Td, Th } from "@/components/ui/Table";
 import { SeoFrame, Unavailable } from "@/components/modules/seo/SeoFrame";
 import { DemoNote } from "@/components/modules/seo/OverviewPanels";
 import { prepareSearchReportAction } from "@/app/actions/seo-reports";
+import { AI_SECTION_TABS, type SeoTab } from "@/lib/seo-sections";
 import { loadSeoContext, queryText, readGoogleControls, searchConsoleWindow, selectedTab, seoHref, type SeoContext, type SeoSearch } from "@/lib/seo-workspace";
 
 export const dynamic = "force-dynamic";
@@ -21,6 +22,16 @@ const TABS = [
   ["work", "SEO Work"],
   ["ai", "AI Report"],
 ] as const;
+
+/**
+ * D79: each report belongs to a sidebar section. Google Search is "Site performance on Google"; the SEO Work report
+ * sits with Checklist & Tasks (a link from its Completed tab); the AI Report is a tab of AI Visibility.
+ */
+const FRAMES: Record<(typeof TABS)[number][0], { title: string; description: string; tabs?: ReadonlyArray<SeoTab> }> = {
+  "google-search": { title: "Site performance on Google", description: "Search Console clicks, impressions, CTR and position for the selected website, with pages and queries. Each figure shows its own dates." },
+  work: { title: "SEO Work report", description: "Completed tasks, resolved issues and recorded changes for the selected website over a chosen period." },
+  ai: { title: "AI Visibility", description: "The AI Report: crawler visits, AI referral sessions and tracked mentions for the selected website.", tabs: AI_SECTION_TABS },
+};
 
 const NOTICES: Record<string, string> = {
   denied: "Only an administrator or manager can prepare Search Console reports for this website.",
@@ -53,7 +64,7 @@ export default async function SeoReportsPage({ searchParams }: { searchParams: P
   const site = ctx.selected && !ctx.demo ? ctx.selected : null;
   const notice = queryText(query, "notice");
   return (
-    <SeoFrame ctx={ctx} pathname="/seo/reports" title="Reports" description="Search performance, SEO work and AI activity for the selected website. Each figure shows its own dates and source." tabs={TABS} currentTab={tab}>
+    <SeoFrame ctx={ctx} pathname="/seo/reports" {...FRAMES[tab as keyof typeof FRAMES]} currentTab={tab}>
       {notice && NOTICES[notice] && <div className="mb-4"><Notice tone="neutral">{NOTICES[notice]}</Notice></div>}
       {ctx.demo ? <DemoNote>Report tables do not contain sample performance.</DemoNote> : !site ? null : tab === "google-search" ? (
         <SearchTab ctx={ctx} query={query} canPrepare={canManageRegistry(access)} access={access} />

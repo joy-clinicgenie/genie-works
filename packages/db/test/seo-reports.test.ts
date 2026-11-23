@@ -9,8 +9,8 @@ import { AiAccessFetchError, type TextFetcher, type TextFetchResult } from "../s
 import { createSeoPage } from "../src/services/seo";
 import { finishSiteCheckRun, runSiteChecks, siteCheckTargets, startSiteCheckRun } from "../src/services/technical-seo";
 import { listSeoIssues, moveSeoIssue, verifySeoIssue } from "../src/services/seo-workflow";
-import { loadAiActivity, recordAnswerTest } from "../src/services/ai-visibility";
-import { countOpenSeoIssues, loadAiReport, loadSearchReport, loadWorkReport, prepareSearchReport } from "../src/services/seo-reports";
+import { createCrawlerSource, crawlerTokenHash, ingestCrawlerBatch, latestCrawlsByPlatform, loadAiActivity, recordAnswerTest } from "../src/services/ai-visibility";
+import { compareSearchRows, countOpenSeoIssues, loadAiReport, loadSearchChanges, loadSearchReport, loadWorkReport, prepareSearchReport } from "../src/services/seo-reports";
 import { saveSeoPageSetting } from "../src/services/seo-soft-launch";
 import { todaySgt, addDays } from "../src/services/dates";
 import { fakeSearchConsole, runQueuedSearchJobs } from "../src/testing/search-console-fixture";
@@ -163,6 +163,69 @@ describe("AI report (SEO-07.3)", () => {
       expect(report.figures.crawlerVisits).toEqual({ value: null, coverage: "No crawler log source is connected." });
       expect(report.figures.referralSessions).toEqual({ value: null, coverage: "No GA4 property is connected." });
       expect(report.figures.trackedMentions.value).toBe(1);
+    });
+  });
+});
+
+describe("SEO Overview insights (D76)", () => {
+  it("ranks the largest increases and decreases, comparing only rows present in both periods", () => {
+    const current = [{ key: "/a", value: 50 }, { key: "/b", value: 5 }, { key: "/c", value: 20 }, { key: "/new", value: 99 }, { key: "/same", value: 7 }, { key: "/gap", value: null }];
+    const previous = [{ key: "/a", value: 10 }, { key: "/b", value: 30 }, { key: "/c", value: 18 }, { key: "/gone", value: 80 }, { key: "/same", value: 7 }, { key: "/gap", value: 3 }];
+    const result = compareSearchRows(current, previous, 5);
+    expect(result.increased.map((row) => [row.key, row.change])).toEqual([["/a", 40], ["/c", 2]]);
+    expect(result.decreased.map((row) => [row.key, row.change])).toEqual([["/b", -25]]);
+    expect(compareSearchRows(current, previous, 1).increased.map((row) => row.key)).toEqual(["/a"]);
+  });
+
+  it("compares stored page reports with the period before, and says which period is missing", async () => {
+    const admin = await staffByEmail("admin@example.invalid");
+    await asContext(SERVICE, async (db) => {
+      const clinic = await provisionClinic(db, admin.id);
+      const ids = { clientId: clinic.clientId, websiteId: clinic.websiteId };
+      await connectSearch(db, ids, admin.id);
+      const window = { start: "2026-10-01", end: "2026-10-07" };
+      expect(await loadSearchChanges(db, { ...ids, window, record: "pages", metric: "clicks" })).toEqual({ status: "not_stored", missing: "current" });
+      const fake = fakeSearchConsole(SITE);
+      await prepareSearchReport(db, { ...ids, ...window, refresh: false });
+      await runQueuedSearchJobs(db, clinic.websiteId, fake, new Date("2099-01-01T00:00:00Z"));
+      expect(await loadSearchChanges(db, { ...ids, window, record: "pages", metric: "clicks" })).toEqual({ status: "not_stored", missing: "previous" });
+      await prepareSearchReport(db, { ...ids, start: "2026-09-24", end: "2026-09-30", refresh: false });
+      await runQueuedSearchJobs(db, clinic.websiteId, fake, new Date("2099-01-01T00:00:00Z"));
+      // The fixture returns the same figures for both periods: compared, with nothing increased or decreased.
+      expect(await loadSearchChanges(db, { ...ids, window, record: "queries", metric: "impressions" })).toEqual({
+        status: "available", increased: [], decreased: [], previousWindow: { start: "2026-09-24", end: "2026-09-30" },
+      });
+      // Another website's reports are never compared.
+      expect((await loadSearchChanges(db, { clientId: clinic.clientId, websiteId: clinic.stagingId, window, record: "pages", metric: "clicks" })).status).toBe("not_stored");
+    });
+  });
+
+  it("gives the latest crawl per platform, and Gemini only from a source that can attribute it", async () => {
+    const admin = await staffByEmail("admin@example.invalid");
+    await asContext(SERVICE, async (db) => {
+      const clinic = await provisionClinic(db, admin.id);
+      const ids = { clientId: clinic.clientId, websiteId: clinic.websiteId };
+      expect((await latestCrawlsByPlatform(db, clinic.websiteId)).map((row) => [row.provider, row.state, row.lastCrawledAt])).toEqual([
+        ["chatgpt", "no_source", null], ["gemini", "no_source", null], ["claude", "no_source", null],
+      ]);
+      const source = await createCrawlerSource(db, { ...ids, kind: "request_log", label: "Fixture log", geminiAttribution: false, actorUserId: admin.id });
+      const events = [
+        { id: "e1", timestamp: "2026-11-01T02:00:00.000Z", userAgent: "Mozilla/5.0 (compatible; GPTBot/1.2; +https://openai.com/gptbot)", path: "/", status: 200 },
+        { id: "e2", timestamp: "2026-11-03T02:00:00.000Z", userAgent: "Mozilla/5.0 (compatible; OAI-SearchBot/1.0; +https://openai.com/searchbot)", path: "/contact", status: 200 },
+      ];
+      await ingestCrawlerBatch(db, { tokenHash: crawlerTokenHash(source.token), websiteId: ids.websiteId, windowStart: "2026-11-01T00:00:00.000Z", windowEnd: "2026-11-04T00:00:00.000Z", events });
+      const crawls = await latestCrawlsByPlatform(db, clinic.websiteId);
+      expect(crawls.find((row) => row.provider === "chatgpt")).toEqual({ provider: "chatgpt", state: "measured", lastCrawledAt: new Date("2026-11-03T02:00:00.000Z") });
+      expect(crawls.find((row) => row.provider === "claude")).toEqual({ provider: "claude", state: "measured", lastCrawledAt: null });
+      expect(crawls.find((row) => row.provider === "gemini")).toEqual({ provider: "gemini", state: "not_measured", lastCrawledAt: null });
+      // Another website of the same client shares nothing.
+      expect((await latestCrawlsByPlatform(db, clinic.stagingId)).every((row) => row.state === "no_source")).toBe(true);
+      // Staff read it under row-level security: an administrator sees the same; a specialist with no membership sees
+      // no source and no crawl.
+      await applyContext(db, staffCtx(admin));
+      expect((await latestCrawlsByPlatform(db, clinic.websiteId)).find((row) => row.provider === "chatgpt")?.lastCrawledAt).toEqual(new Date("2026-11-03T02:00:00.000Z"));
+      await applyContext(db, staffCtx(await staffByEmail("specialist-a@example.invalid")));
+      expect((await latestCrawlsByPlatform(db, clinic.websiteId)).map((row) => row.state)).toEqual(["no_source", "no_source", "no_source"]);
     });
   });
 });

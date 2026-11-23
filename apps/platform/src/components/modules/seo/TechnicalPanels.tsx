@@ -134,7 +134,7 @@ function SitemapResult({ row, heading }: { row: SitemapCheckRow; heading: string
 export function CrawlSettingsPanel({ websiteId, sitemap, robots, canCheck }: { websiteId: string; sitemap: SitemapStatus; robots: RobotsCheckRow | null; canCheck: boolean }) {
   return (
     <div className="space-y-5">
-      <Card>
+      <Card id="sitemaps" className="scroll-mt-4">
         <CardHeader
           title="Sitemap"
           description="Read from the website's own address. Only a check where every sitemap file was read counts as a full pass; the last full pass stays visible beside a newer incomplete attempt."
@@ -145,7 +145,7 @@ export function CrawlSettingsPanel({ websiteId, sitemap, robots, canCheck }: { w
           {sitemap.latestPass ? <SitemapResult row={sitemap.latestPass} heading="Last full pass" /> : <p className="text-sm text-muted">No full sitemap pass is recorded.</p>}
         </div>
       </Card>
-      <Card>
+      <Card id="robots" className="scroll-mt-4">
         <CardHeader
           title="robots.txt"
           description="The live crawl instructions for this website and environment. Crawl blocking and noindex are different controls."

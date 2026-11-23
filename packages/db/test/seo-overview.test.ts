@@ -42,6 +42,26 @@ describe("SEO Checklist & Health (SEO-01.2)", () => {
   });
 });
 
+describe("SEO Assistant last updated (D74)", () => {
+  it("has no last-updated time before any activity, then shows the newest evidence time", async () => {
+    const admin = await staffByEmail("admin@example.invalid");
+    await asContext(SERVICE, async (db) => {
+      const clinic = await provisionClinic(db, admin.id);
+      const ids = { clientId: clinic.clientId, websiteId: clinic.websiteId };
+      await applyContext(db, staffCtx(admin));
+      const empty = await loadChecklistHealth(db, { ...ids, today: "2026-11-20" });
+      expect(empty.lastUpdated).toBeNull();
+      expect(empty.setupPercent).toBe(0);
+      await recordSetupReview(db, { ...ids, step: "website_details", note: null, actorUserId: admin.id });
+      const reviewed = (await db.query<{ at: Date }>("select max(reviewed_at) as at from seo_setup_reviews where website_id = $1", [clinic.websiteId])).rows[0]!.at;
+      const health = await loadChecklistHealth(db, { ...ids, today: "2026-11-20" });
+      expect(health.lastUpdated?.getTime()).toBe(reviewed.getTime());
+      // Another website's activity never moves this website's time.
+      expect((await loadChecklistHealth(db, { clientId: clinic.clientId, websiteId: clinic.stagingId, today: "2026-11-20" })).lastUpdated).toBeNull();
+    });
+  });
+});
+
 describe("Google Search Performance card (SEO-01.3)", () => {
   it("keeps the period totals when daily observations are missing", async () => {
     const admin = await staffByEmail("admin@example.invalid");
