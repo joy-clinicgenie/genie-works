@@ -83,5 +83,5 @@ export const BLOG_STATUSES = ["draft", "in_review", "approved", "published", "ar
 export type BlogStatus = (typeof BLOG_STATUSES)[number];
 export const BLOG_LAYOUT = "clinic-article-v1" as const;
 
-export const RELATED_RECORD_TYPES = ["task", "approval", "seo_page", "seo_change", "ads_audit", "ads_finding", "ads_change", "issue", "evidence", "medical_claim", "medical_review", "report_snapshot", "website", "account_reference", "blog_article"] as const;
+export const RELATED_RECORD_TYPES = ["task", "approval", "seo_page", "seo_change", "ads_audit", "ads_finding", "ads_change", "issue", "evidence", "medical_claim", "medical_review", "report_snapshot", "website", "account_reference", "blog_article", "seo_finding", "seo_recommendation"] as const;
 export type RelatedRecordType = (typeof RELATED_RECORD_TYPES)[number];

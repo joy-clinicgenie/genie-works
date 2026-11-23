@@ -17,6 +17,8 @@ const TABLES: Record<RelatedRecordType, { table: string; titleColumn: string }> 
   website: { table: "websites", titleColumn: "name" },
   account_reference: { table: "account_references", titleColumn: "label" },
   blog_article: { table: "blog_articles", titleColumn: "title" },
+  seo_finding: { table: "seo_site_findings", titleColumn: "page_path" },
+  seo_recommendation: { table: "seo_recommendations", titleColumn: "title" },
 };
 
 export function isRelatedType(v: string): v is RelatedRecordType {
@@ -64,6 +66,8 @@ export function relatedHref(type: string | null, id: string | null): string | nu
     case "report_snapshot": return `/reports?snapshot=${id}`;
     case "website": return `/clients?website=${id}`;
     case "account_reference": return `/clients?reference=${id}`;
+    case "seo_finding": return `/seo/tasks?tab=issues&finding=${id}`;
+    case "seo_recommendation": return `/seo/tasks?tab=recommendations&recommendation=${id}`;
     default: return null;
   }
 }

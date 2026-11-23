@@ -108,3 +108,72 @@ function safeCoverage(value: unknown): string | null {
 function asRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
 }
+
+/**
+ * Whether a page URL is inside a Search Console property, by Google's documented rules (D61).
+ * Domain property `sc-domain:example.com`: the domain and every subdomain, over http or https.
+ * URL-prefix property `https://www.example.com/path/`: URLs that start with that exact prefix, so the
+ * protocol, host and port must match and the path must begin with the property path.
+ */
+export function propertyCovers(property: string, pageUrl: string): boolean {
+  let url: URL;
+  try {
+    url = new URL(pageUrl);
+  } catch {
+    return false;
+  }
+  if (url.protocol !== "https:" && url.protocol !== "http:") return false;
+  if (url.username || url.password) return false;
+  const value = property.trim();
+  if (value.toLowerCase().startsWith("sc-domain:")) {
+    const domain = value.slice("sc-domain:".length).trim().toLowerCase().replace(/\.$/, "");
+    if (!/^[a-z0-9-]+(\.[a-z0-9-]+)+$/.test(domain)) return false;
+    const host = url.hostname.toLowerCase().replace(/\.$/, "");
+    return host === domain || host.endsWith(`.${domain}`);
+  }
+  // Google requires a URL-prefix property to end with "/"; the URL parser would add one silently.
+  if (!value.endsWith("/")) return false;
+  let prefix: URL;
+  try {
+    prefix = new URL(value);
+  } catch {
+    return false;
+  }
+  if (prefix.protocol !== "https:" && prefix.protocol !== "http:") return false;
+  if (!prefix.pathname.endsWith("/")) return false;
+  if (url.protocol !== prefix.protocol || url.host.toLowerCase() !== prefix.host.toLowerCase()) return false;
+  return `${url.pathname}${url.search}`.startsWith(prefix.pathname);
+}
+
+const INSPECTION_VERDICTS = new Set(["VERDICT_UNSPECIFIED", "PASS", "PARTIAL", "FAIL", "NEUTRAL"]);
+
+export interface InspectionDetail {
+  verdict: "VERDICT_UNSPECIFIED" | "PASS" | "PARTIAL" | "FAIL" | "NEUTRAL" | null;
+  coverage: string | null;
+  indexingState: string | null;
+  pageFetchState: string | null;
+  robotsTxtState: string | null;
+  lastCrawlTime: Date | null;
+  googleCanonical: string | null;
+}
+
+function enumValue(value: unknown, pattern: RegExp): string | null {
+  return typeof value === "string" && pattern.test(value) ? value : null;
+}
+
+/** The stored fields of Google's indexStatusResult. Unknown or unsafe values become null. */
+export function parseInspectionDetail(body: unknown): InspectionDetail {
+  const result = asRecord(asRecord(asRecord(body).inspectionResult).indexStatusResult);
+  const verdict = typeof result.verdict === "string" && INSPECTION_VERDICTS.has(result.verdict) ? result.verdict as InspectionDetail["verdict"] : null;
+  const crawl = typeof result.lastCrawlTime === "string" ? new Date(result.lastCrawlTime) : null;
+  const canonical = typeof result.googleCanonical === "string" && /^https?:\/\//.test(result.googleCanonical) ? result.googleCanonical.slice(0, 2000) : null;
+  return {
+    verdict,
+    coverage: safeCoverage(result.coverageState),
+    indexingState: enumValue(result.indexingState, /^[A-Z_]{1,60}$/),
+    pageFetchState: enumValue(result.pageFetchState, /^[A-Z_0-9]{1,60}$/),
+    robotsTxtState: enumValue(result.robotsTxtState, /^[A-Z_]{1,60}$/),
+    lastCrawlTime: crawl && !Number.isNaN(crawl.getTime()) ? crawl : null,
+    googleCanonical: canonical,
+  };
+}

@@ -50,3 +50,15 @@ describe("Search Console connection status", () => {
     expect(check?.detail).toContain(property);
   });
 });
+
+describe("setup checklist sitemap step (SEO-04.1)", () => {
+  const base = { codeManaged: true, connected: true, pageSettingCount: 0, redirectCount: 0, verification: null, searchConsole: null, profiles: [] };
+  it("is ready only with a full sitemap pass", () => {
+    const without = setupChecks(base).find((item) => item.title === "Domain, sitemap and robots.txt");
+    expect(without?.status).toBe("unverified");
+    expect(without?.detail).toContain("No full sitemap pass is recorded");
+    const withPass = setupChecks({ ...base, sitemapPass: { checkedAt: new Date("2026-11-20T01:00:00Z"), urlCount: 12 } }).find((item) => item.title === "Domain, sitemap and robots.txt");
+    expect(withPass?.status).toBe("ready");
+    expect(withPass?.detail).toContain("lists 12 URL(s)");
+  });
+});

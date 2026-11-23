@@ -1,46 +1,57 @@
+import { addDays, loadAiReport, loadChecklistHealth, loadRecentChanges, loadSearchReport, todaySgt } from "@clinic-genie/db";
 import { requireAccess } from "@/lib/session";
-import { Button, LinkButton } from "@/components/ui/Button";
-import { SeoFrame, Unavailable } from "@/components/modules/seo/SeoFrame";
-import { AiPanel, AssistantPanel, GooglePanel, QuickActions, RecentChanges } from "@/components/modules/seo/OverviewPanels";
-import { loadSearchPerformance, loadSeoOverview, readGoogleControls, seoHref, type SeoSearch } from "@/lib/seo-workspace";
+import { staffTx } from "@/lib/db";
+import { LinkButton } from "@/components/ui/Button";
+import { SeoFrame } from "@/components/modules/seo/SeoFrame";
+import { AiPanel, ChecklistHealthPanel, DemoNote, GooglePanel, QuickActions, RecentChanges } from "@/components/modules/seo/OverviewPanels";
+import { loadSeoContext, readGoogleControls, searchConsoleWindow, seoHref, type SeoSearch } from "@/lib/seo-workspace";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "SEO" };
 
+/** AI Visibility on the overview is always the last 30 days ending yesterday, Asia/Singapore (SEO-01.4). */
+const AI_DAYS = 30;
+
 export default async function SeoOverviewPage({ searchParams }: { searchParams: Promise<SeoSearch> }) {
   const access = await requireAccess();
   const query = await searchParams;
-  const { ctx, bundle } = await loadSeoOverview(access, query);
+  const ctx = await loadSeoContext(access, query);
+  const site = ctx.selected && !ctx.demo ? ctx.selected : null;
+  // SEO-01.3: the full report's date logic, defaulting to the last 30 days.
   const controls = readGoogleControls(query);
-  const performance = bundle?.searchConsole?.status === "connected" && ctx.selected
-    ? await loadSearchPerformance(access, ctx.selected.clientId, ctx.selected.id, controls)
+  const window = searchConsoleWindow(controls);
+  const today = todaySgt();
+  const aiEnd = addDays(today, -1);
+  // Every card reads the loader its destination reads (D67), in one transaction for this website.
+  const data = site
+    ? await staffTx(access, async (db) => ({
+      health: await loadChecklistHealth(db, { websiteId: site.id, clientId: site.clientId, today }),
+      search: window ? await loadSearchReport(db, { clientId: site.clientId, websiteId: site.id, ...window, preset: controls.range !== "custom" }) : null,
+      ai: await loadAiReport(db, { clientId: site.clientId, websiteId: site.id, start: addDays(aiEnd, 1 - AI_DAYS), end: aiEnd }),
+      changes: await loadRecentChanges(db, site.id, 5),
+    }))
     : null;
-  const drafts = bundle?.changes.filter((change) => !change.verification_on).length ?? 0;
   return (
     <SeoFrame
       ctx={ctx}
       pathname="/seo"
       title="SEO Overview"
-      description="What needs attention, how the site is performing, and what to do next."
-      action={ctx.selected ? (
-        <>
-          <Button type="button" disabled aria-describedby="check-unavailable">Run website check</Button>
-          <LinkButton href={seoHref("/seo/settings", ctx, { tab: "publishing" })} variant="secondary">Review changes{drafts ? ` (${drafts})` : ""}</LinkButton>
-        </>
-      ) : undefined}
+      description="Setup and health, search performance, AI visibility and recent changes for the selected website."
+      action={site ? <LinkButton href={seoHref("/seo/site-health", ctx, { tab: "checks" })} variant="secondary">Website checks</LinkButton> : undefined}
     >
-      <div className="space-y-4">
-        <p id="check-unavailable" className="text-xs text-muted">Run website check is unavailable because no crawler is connected.</p>
-        <AssistantPanel ctx={ctx} bundle={bundle} />
-        <div className="grid items-start gap-4 xl:grid-cols-3">
-          <div className="xl:col-span-2"><GooglePanel ctx={ctx} controls={controls} search={bundle?.searchConsole} performance={performance} /></div>
-          <AiPanel ctx={ctx} />
+      {ctx.demo ? <DemoNote>The overview cards are not loaded for the demo workspace.</DemoNote> : data ? (
+        <div className="space-y-4">
+          <ChecklistHealthPanel ctx={ctx} health={data.health} />
+          <div className="grid items-start gap-4 xl:grid-cols-3">
+            <div className="xl:col-span-2"><GooglePanel ctx={ctx} controls={controls} report={data.search} /></div>
+            <AiPanel ctx={ctx} report={data.ai} days={AI_DAYS} />
+          </div>
+          <div className="grid items-start gap-4 lg:grid-cols-2">
+            <QuickActions ctx={ctx} />
+            <RecentChanges ctx={ctx} changes={data.changes} />
+          </div>
         </div>
-        <div className="grid items-start gap-4 lg:grid-cols-2">
-          <QuickActions ctx={ctx} />
-          {bundle ? <RecentChanges ctx={ctx} bundle={bundle} /> : <Unavailable title="Recent changes">Choose a website to see its saved change records.</Unavailable>}
-        </div>
-      </div>
+      ) : null}
     </SeoFrame>
   );
 }

@@ -24,10 +24,11 @@ export interface SeoPageSettingRow {
   website_id: string;
   website_name: string;
   page_path: string;
-  title: string;
-  description: string;
+  /** Null inherits the website or blog default (D61). */
+  title: string | null;
+  description: string | null;
   canonical_path: string | null;
-  indexable: boolean;
+  indexable: boolean | null;
   updated_at: Date;
 }
 
@@ -51,6 +52,10 @@ export interface SeoBusinessProfileRow {
   external_identifier: string | null;
   setup_status: "not_started" | "in_progress" | "staff_marked_verified";
   notes: string | null;
+  /** Saved branch details (D64). */
+  address: string | null;
+  phone: string | null;
+  opening_hours: string | null;
   updated_at: Date;
 }
 
@@ -107,28 +112,50 @@ export async function listSeoPageSettings(db: Queryable, f: { clientId?: string;
   return rows;
 }
 
+/**
+ * Saves the page-level overrides for one path (D61). Each of title, description and indexing preference is
+ * optional: null inherits the website or blog default. Clearing every value removes the override row.
+ * Saving makes the values available to the settings API; the website still has to fetch them before they
+ * count as published.
+ */
 export async function saveSeoPageSetting(
   db: Queryable,
   clientId: string,
   websiteId: string,
-  input: { pagePath: string; title: string; description: string; canonicalPath: string | null; indexable: boolean },
+  input: { pagePath: string; title: string | null; description: string | null; canonicalPath: string | null; indexable: boolean | null },
   actorUserId: string,
-): Promise<void> {
+  now?: Date,
+): Promise<"saved" | "cleared"> {
   const pagePath = normalizeSeoPath(input.pagePath, "Page path");
   const canonicalPath = input.canonicalPath?.trim() ? normalizeSeoPath(input.canonicalPath, "Canonical path") : null;
-  const title = input.title.trim();
-  const description = input.description.trim();
-  if (title.length < 1 || title.length > 200) throw new SeoSoftLaunchRuleError("Page title must be 1–200 characters.");
-  if (description.length < 1 || description.length > 320) throw new SeoSoftLaunchRuleError("Meta description must be 1–320 characters.");
+  const title = input.title?.trim() || null;
+  const description = input.description?.trim() || null;
+  if (title !== null && title.length > 200) throw new SeoSoftLaunchRuleError("Page title must be 1–200 characters.");
+  if (description !== null && description.length > 320) throw new SeoSoftLaunchRuleError("Meta description must be 1–320 characters.");
   await assertPublisher(db, actorUserId);
   await requireWebsiteForClient(db, websiteId, clientId);
 
+  if (title === null && description === null && input.indexable === null && canonicalPath === null) {
+    await db.query("delete from seo_page_settings where website_id = $1 and page_path = $2", [websiteId, pagePath]);
+    await recordAudit(db, {
+      actorType: "staff",
+      actorUserId,
+      action: "seo.page_settings.clear",
+      targetType: "website",
+      targetId: websiteId,
+      clientId,
+      outcome: "success",
+      metadata: { pagePath },
+      occurredAt: now,
+    });
+    return "cleared";
+  }
   await db.query(
-    `insert into seo_page_settings (client_id, website_id, page_path, title, description, canonical_path, indexable, updated_by)
-     values ($1, $2, $3, $4, $5, $6, $7, $8)
+    `insert into seo_page_settings (client_id, website_id, page_path, title, description, canonical_path, indexable, updated_by, updated_at)
+     values ($1, $2, $3, $4, $5, $6, $7, $8, coalesce($9::timestamptz, now()))
      on conflict (website_id, page_path) do update set title = excluded.title, description = excluded.description,
-       canonical_path = excluded.canonical_path, indexable = excluded.indexable, updated_by = excluded.updated_by, updated_at = now()`,
-    [clientId, websiteId, pagePath, title, description, canonicalPath, input.indexable, actorUserId],
+       canonical_path = excluded.canonical_path, indexable = excluded.indexable, updated_by = excluded.updated_by, updated_at = excluded.updated_at`,
+    [clientId, websiteId, pagePath, title, description, canonicalPath, input.indexable, actorUserId, now?.toISOString() ?? null],
   );
   await recordAudit(db, {
     actorType: "staff",
@@ -138,8 +165,10 @@ export async function saveSeoPageSetting(
     targetId: websiteId,
     clientId,
     outcome: "success",
-    metadata: { pagePath, indexable: input.indexable },
+    metadata: { pagePath, indexable: input.indexable, title: title !== null, description: description !== null },
+    occurredAt: now,
   });
+  return "saved";
 }
 
 export async function saveGoogleSiteVerification(db: Queryable, clientId: string, websiteId: string, value: string | null, actorUserId: string): Promise<void> {
@@ -247,7 +276,17 @@ export async function listSeoBusinessProfiles(db: Queryable, clientId?: string):
 export async function saveSeoBusinessProfile(
   db: Queryable,
   clientId: string,
-  input: { id?: string; branchName: string; profileUrl: string | null; externalIdentifier: string | null; setupStatus: SeoBusinessProfileRow["setup_status"]; notes: string | null },
+  input: {
+    id?: string;
+    branchName: string;
+    profileUrl: string | null;
+    externalIdentifier: string | null;
+    setupStatus: SeoBusinessProfileRow["setup_status"];
+    notes: string | null;
+    address?: string | null;
+    phone?: string | null;
+    openingHours?: string | null;
+  },
   actorUserId: string,
 ): Promise<void> {
   const branchName = input.branchName.trim();
@@ -270,18 +309,29 @@ export async function saveSeoBusinessProfile(
   if ((input.externalIdentifier?.length ?? 0) > 200 || (input.notes?.length ?? 0) > 2000) {
     throw new SeoSoftLaunchRuleError("Profile ID must be at most 200 characters and notes at most 2,000 characters.");
   }
+  // A Google location is named locations/{id} in the Business Profile API (D64).
+  const externalIdentifier = input.externalIdentifier?.trim() || null;
+  if (externalIdentifier && !/^locations\/\d{1,30}$/.test(externalIdentifier)) {
+    throw new SeoSoftLaunchRuleError("Enter the Google location ID as locations/ followed by its number, or leave it blank.");
+  }
+  const address = input.address?.trim() || null;
+  const phone = input.phone?.trim() || null;
+  const openingHours = input.openingHours?.trim() || null;
+  if ((address?.length ?? 0) > 500 || (phone?.length ?? 0) > 40 || (openingHours?.length ?? 0) > 1000) {
+    throw new SeoSoftLaunchRuleError("Address must be at most 500 characters, phone 40 and opening hours 1,000.");
+  }
   if (input.id) {
     const { rows } = await db.query(
       `update seo_business_profiles set branch_name = $3, profile_url = $4, external_identifier = $5, setup_status = $6,
-       notes = $7, updated_by = $8, updated_at = now() where id = $1 and client_id = $2 returning id`,
-      [input.id, clientId, branchName, profileUrl, input.externalIdentifier?.trim() || null, input.setupStatus, input.notes?.trim() || null, actorUserId],
+       notes = $7, updated_by = $8, address = $9, phone = $10, opening_hours = $11, updated_at = now() where id = $1 and client_id = $2 returning id`,
+      [input.id, clientId, branchName, profileUrl, externalIdentifier, input.setupStatus, input.notes?.trim() || null, actorUserId, address, phone, openingHours],
     );
     if (!rows.length) throw new SeoSoftLaunchRuleError("Business Profile record not found for this client.");
   } else {
     await db.query(
-      `insert into seo_business_profiles (client_id, branch_name, profile_url, external_identifier, setup_status, notes, updated_by)
-       values ($1, $2, $3, $4, $5, $6, $7)`,
-      [clientId, branchName, profileUrl, input.externalIdentifier?.trim() || null, input.setupStatus, input.notes?.trim() || null, actorUserId],
+      `insert into seo_business_profiles (client_id, branch_name, profile_url, external_identifier, setup_status, notes, updated_by, address, phone, opening_hours)
+       values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+      [clientId, branchName, profileUrl, externalIdentifier, input.setupStatus, input.notes?.trim() || null, actorUserId, address, phone, openingHours],
     );
   }
   await recordAudit(db, {
@@ -326,8 +376,17 @@ export async function hasActiveSeoSiteToken(db: Queryable, websiteId: string): P
   return rows.length > 0;
 }
 
-export async function getPublishedSeoConfiguration(db: Queryable, websiteId: string, token: string): Promise<{
-  pages: Array<{ path: string; title: string; description: string; canonicalPath: string | null; indexable: boolean }>;
+/** One page in the settings API. An inherited title, description or indexing preference is left out (D61). */
+export interface PublishedPageSetting {
+  path: string;
+  canonicalPath: string | null;
+  title?: string;
+  description?: string;
+  indexable?: boolean;
+}
+
+export async function getPublishedSeoConfiguration(db: Queryable, websiteId: string, token: string, now = new Date()): Promise<{
+  pages: PublishedPageSetting[];
   redirects: Array<{ source: string; destination: string }>;
   googleSiteVerification: string | null;
 } | null> {
@@ -337,20 +396,25 @@ export async function getPublishedSeoConfiguration(db: Queryable, websiteId: str
     [websiteId, tokenHash],
   );
   if (!authorised.length) return null;
+  // Publication evidence (D61): the website fetched its settings. Written at most once a minute.
+  await db.query(
+    `insert into seo_settings_deliveries (website_id, client_id, last_served_at)
+     select id, client_id, $2 from websites where id = $1
+     on conflict (website_id) do update set last_served_at = excluded.last_served_at
+     where seo_settings_deliveries.last_served_at < excluded.last_served_at - interval '1 minute'`,
+    [websiteId, now.toISOString()],
+  );
   const { rows } = await db.query<{
-    pages: Array<{ path: string; title: string; description: string; canonicalPath: string | null; indexable: boolean }>;
+    pages: PublishedPageSetting[];
     redirects: Array<{ source: string; destination: string }>;
     google_site_verification: string | null;
   }>(
     `select
        coalesce((
-         select jsonb_agg(jsonb_build_object(
-           'path', page_path,
-           'title', title,
-           'description', description,
-           'canonicalPath', canonical_path,
-           'indexable', indexable
-         ) order by page_path)
+         select jsonb_agg(
+           jsonb_build_object('path', page_path, 'canonicalPath', canonical_path)
+           || jsonb_strip_nulls(jsonb_build_object('title', title, 'description', description, 'indexable', indexable))
+           order by page_path)
          from seo_page_settings where website_id = $1
        ), '[]'::jsonb) as pages,
        coalesce((

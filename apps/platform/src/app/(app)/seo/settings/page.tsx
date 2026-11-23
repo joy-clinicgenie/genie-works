@@ -1,12 +1,13 @@
 import Link from "next/link";
 import { canExport, canPublishClient, canReviewClient, canWriteConnectionSecrets } from "@clinic-genie/db";
 import { requireAccess } from "@/lib/session";
-import { Badge, label, type Tone } from "@/components/ui/Badge";
+import { Badge, label } from "@/components/ui/Badge";
 import { Card, CardHeader } from "@/components/ui/Card";
 import { SeoSiteSettingsEditor } from "@/components/modules/SeoSoftLaunchForms";
 import { SeoFrame, Unavailable } from "@/components/modules/seo/SeoFrame";
+import { WebsiteConnectionsPanel } from "@/components/modules/seo/WebsiteConnections";
 import { DemoNote } from "@/components/modules/seo/OverviewPanels";
-import { environmentLabel, loadSeoContext, loadWebsiteSeo, queryText, searchConsoleCapability, selectedTab, type SeoSearch } from "@/lib/seo-workspace";
+import { environmentLabel, loadSeoContext, loadWebsiteSeo, queryText, selectedTab, type SeoSearch } from "@/lib/seo-workspace";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "SEO settings" };
@@ -25,31 +26,10 @@ export default async function SeoSettingsPage({ searchParams }: { searchParams: 
   const bundle = ctx.selected ? await loadWebsiteSeo(access, ctx.selected) : null;
   const tab = selectedTab(queryText(query, "tab"), TABS, "connections");
   const site = ctx.selected;
-  const search = bundle?.searchConsole ?? null;
-  const searchTone: Tone = search?.status === "connected" ? "good" : search?.status === "reconnect_required" ? "warn" : "neutral";
-  const searchLabel = search?.status === "connected" ? "Connected" : search?.status === "reconnect_required" ? "Reconnect required" : "Not connected";
   return (
     <SeoFrame ctx={ctx} pathname="/seo/settings" title="Settings & Connections" description="Administration stays separate from routine editing. Credentials are not shown again after they are saved." tabs={TABS} currentTab={tab} requireWebsite={tab !== "access"}>
       {ctx.demo && tab !== "access" ? <DemoNote>Connection status is not simulated.</DemoNote> : bundle && site && tab === "connections" ? (
-        <div className="space-y-4">
-          <Card className="p-5">
-            <div className="flex items-start justify-between gap-3">
-              <h2 className="font-semibold">Search Console</h2>
-              <Badge tone={searchTone}>{searchLabel}</Badge>
-            </div>
-            <p className="mt-1 text-sm text-muted">Capability: {searchConsoleCapability(search, bundle.verification)}</p>
-          </Card>
-          <Card className="p-5">
-            <h2 className="font-semibold">Website settings API</h2>
-            <p className="mt-1 text-sm text-muted">Capability: {bundle.connected ? "Can publish saved page settings and redirects to a connected Next.js deployment." : "Not connected."} This is not a full website management integration.</p>
-            {site.platform.toLowerCase().includes("next") ? (
-              <div className="mt-4">
-                <SeoSiteSettingsEditor clientId={site.clientId} website={site} settings={[]} verificationToken={bundle.verification} connected={bundle.connected} canManageIntegration={canWriteConnectionSecrets(access)} canPublish={canPublishClient(access, site.clientId)} section="connection" />
-              </div>
-            ) : <p className="mt-3 text-sm text-muted">This website platform does not accept the published-settings API.</p>}
-          </Card>
-          <Unavailable title="Other providers">Keyword research, analytics for AI referrals, crawler logs, AI test providers and deployment access beyond the settings API are not connected. Account switching is unavailable.</Unavailable>
-        </div>
+        <WebsiteConnectionsPanel access={access} site={site} verification={bundle.verification} settingsApiConnected={bundle.connected} notice={queryText(query, "connections")} />
       ) : bundle && site && tab === "defaults" ? (
         <Card>
           <CardHeader title="Website defaults" description="The registry website is the canonical record. Page overrides are edited here." />

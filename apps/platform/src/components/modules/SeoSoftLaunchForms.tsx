@@ -13,9 +13,9 @@ import { Checkbox, Field, FormError, Input, Select, Textarea } from "@/component
 import { Badge } from "@/components/ui/Badge";
 
 type Site = { id: string; name: string; url: string | null; platform: string };
-type PageSetting = { id: string; page_path: string; title: string; description: string; canonical_path: string | null; indexable: boolean };
+type PageSetting = { id: string; page_path: string; title: string | null; description: string | null; canonical_path: string | null; indexable: boolean | null };
 type Redirect = { id: string; source_path: string; destination_path: string; active: boolean };
-type BusinessProfile = { id: string; branch_name: string; profile_url: string | null; external_identifier: string | null; setup_status: string; notes: string | null };
+type BusinessProfile = { id: string; branch_name: string; profile_url: string | null; external_identifier: string | null; setup_status: string; notes: string | null; address?: string | null; phone?: string | null; opening_hours?: string | null };
 
 function SiteConnectionForm({ clientId, website, verificationToken, connected, canManageIntegration, canPublish }: { clientId: string; website: Site; verificationToken: string | null; connected: boolean; canManageIntegration: boolean; canPublish: boolean }) {
   const [state, action, pending] = useActionState(saveGoogleVerificationAction, null);
@@ -58,6 +58,19 @@ function SiteConnectionForm({ clientId, website, verificationToken, connected, c
   );
 }
 
+/** Inherit, allow or block indexing for one page (D61). Inherit uses the website default. */
+export function IndexingPreferenceField({ id, value }: { id: string; value: boolean | null }) {
+  return (
+    <Field label="Indexing preference" htmlFor={id} hint="This is the site's instruction to search engines. Google's reported status is shown separately.">
+      <Select id={id} name="indexing" defaultValue={value === null ? "inherit" : value ? "index" : "noindex"}>
+        <option value="inherit">Inherit the website default</option>
+        <option value="index">Allow indexing</option>
+        <option value="noindex">Do not index (noindex)</option>
+      </Select>
+    </Field>
+  );
+}
+
 function PageSettingForm({ clientId, website, setting }: { clientId: string; website: Site; setting?: PageSetting }) {
   const [state, action, pending] = useActionState(saveSeoPageSettingAction, null);
   const id = setting?.id ?? `${website.id}-new`;
@@ -69,19 +82,19 @@ function PageSettingForm({ clientId, website, setting }: { clientId: string; web
         <Field label="Published page path" htmlFor={`page-${id}`} required hint="Use the exact route, for example /services/consultation.">
           <Input id={`page-${id}`} name="pagePath" defaultValue={setting?.page_path ?? ""} required maxLength={500} />
         </Field>
-        <Field label="SEO title" htmlFor={`title-${id}`} required>
-          <Input id={`title-${id}`} name="title" defaultValue={setting?.title ?? ""} required maxLength={200} />
+        <Field label="SEO title override" htmlFor={`title-${id}`} hint="Leave blank to inherit the website default.">
+          <Input id={`title-${id}`} name="title" defaultValue={setting?.title ?? ""} maxLength={200} />
         </Field>
-        <Field label="Meta description" htmlFor={`description-${id}`} required>
-          <Textarea id={`description-${id}`} name="description" defaultValue={setting?.description ?? ""} required maxLength={320} />
+        <Field label="Meta description override" htmlFor={`description-${id}`} hint="Leave blank to inherit the website default.">
+          <Textarea id={`description-${id}`} name="description" defaultValue={setting?.description ?? ""} maxLength={320} />
         </Field>
         <Field label="Canonical path (optional)" htmlFor={`canonical-${id}`} hint="Leave blank to use the page's own canonical URL.">
           <Input id={`canonical-${id}`} name="canonicalPath" defaultValue={setting?.canonical_path ?? ""} maxLength={500} />
         </Field>
       </div>
-      <Checkbox name="indexable" label="Allow search engines to index this page" defaultChecked={setting?.indexable ?? true} />
+      <IndexingPreferenceField id={`indexing-${id}`} value={setting?.indexable ?? null} />
       <FormError state={state} />
-      <Button type="submit" variant="secondary" size="sm" disabled={pending}>{pending ? "Publishing…" : "Publish SEO settings"}</Button>
+      <Button type="submit" variant="secondary" size="sm" disabled={pending}>{pending ? "Saving…" : "Save page settings"}</Button>
     </form>
   );
 }
@@ -101,7 +114,7 @@ export function SeoSiteSettingsEditor({ clientId, website, settings, verificatio
           ) : (
             <div className="space-y-2 text-sm">
               {settings.length === 0 && <p className="text-muted">No published page settings.</p>}
-              {settings.map((setting) => <p key={setting.id}>{setting.page_path} — {setting.title}</p>)}
+              {settings.map((setting) => <p key={setting.id}>{setting.page_path} — {setting.title ?? "Title inherited"}</p>)}
               <p className="text-xs text-muted">Publishing page titles and descriptions stays with an admin or manager.</p>
             </div>
           )}
@@ -146,11 +159,20 @@ export function SeoBusinessProfileForm({ clientId, profile }: { clientId: string
         <Field label="Clinic branch" htmlFor={`branch-${id}`} required>
           <Input id={`branch-${id}`} name="branchName" defaultValue={profile?.branch_name ?? ""} required maxLength={120} />
         </Field>
-        <Field label="Google Business Profile URL" htmlFor={`gbp-url-${id}`} hint="Optional. Use the HTTPS Google profile or Maps link.">
+        <Field label="Public listing link" htmlFor={`gbp-url-${id}`} hint="Optional. The HTTPS Google Maps or profile link for this branch.">
           <Input id={`gbp-url-${id}`} name="profileUrl" type="url" defaultValue={profile?.profile_url ?? ""} maxLength={1000} />
         </Field>
-        <Field label="Google profile/location ID (optional)" htmlFor={`gbp-id-${id}`}>
-          <Input id={`gbp-id-${id}`} name="externalIdentifier" defaultValue={profile?.external_identifier ?? ""} maxLength={200} />
+        <Field label="Google location ID (optional)" htmlFor={`gbp-id-${id}`} hint="As named by the Business Profile API, for example locations/1234567890.">
+          <Input id={`gbp-id-${id}`} name="externalIdentifier" defaultValue={profile?.external_identifier ?? ""} maxLength={200} placeholder="locations/…" />
+        </Field>
+        <Field label="Address" htmlFor={`gbp-address-${id}`}>
+          <Textarea id={`gbp-address-${id}`} name="address" defaultValue={profile?.address ?? ""} maxLength={500} />
+        </Field>
+        <Field label="Phone" htmlFor={`gbp-phone-${id}`}>
+          <Input id={`gbp-phone-${id}`} name="phone" defaultValue={profile?.phone ?? ""} maxLength={40} />
+        </Field>
+        <Field label="Opening hours" htmlFor={`gbp-hours-${id}`}>
+          <Textarea id={`gbp-hours-${id}`} name="openingHours" defaultValue={profile?.opening_hours ?? ""} maxLength={1000} />
         </Field>
         <Field label="Setup status" htmlFor={`gbp-status-${id}`}>
           <Select id={`gbp-status-${id}`} name="setupStatus" defaultValue={profile?.setup_status ?? "not_started"}>
