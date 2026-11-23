@@ -1,9 +1,0 @@
-[      92ms] [INFO] %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold @ http://localhost:3400/_next/static/chunks/node_modules_next_dist_05y3oi5z9mc_3._.js:761
-[      99ms] [LOG] [HMR] connected @ http://localhost:3400/_next/static/chunks/node_modules_next_dist_05y3oi5z9mc_3._.js:761
-[     208ms] TypeError: Failed to execute 'measure' on 'Performance': '​ClientLayout' cannot have a negative time stamp.
-    at flushComponentPerformance (http://localhost:3400/_next/static/chunks/node_modules_next_dist_compiled_react-server-dom-turbopack_164kp-67asdr9._.js:2298:45)
-    at flushComponentPerformance (http://localhost:3400/_next/static/chunks/node_modules_next_dist_compiled_react-server-dom-turbopack_164kp-67asdr9._.js:2270:31)
-    at flushComponentPerformance (http://localhost:3400/_next/static/chunks/node_modules_next_dist_compiled_react-server-dom-turbopack_164kp-67asdr9._.js:2270:31)
-    at flushComponentPerformance (http://localhost:3400/_next/static/chunks/node_modules_next_dist_compiled_react-server-dom-turbopack_164kp-67asdr9._.js:2270:31)
-    at flushComponentPerformance (http://localhost:3400/_next/static/chunks/node_modules_next_dist_compiled_react-server-dom-turbopack_164kp-67asdr9._.js:2270:31)
-    at flushInitialRenderPerformance (http://localhost:3400/_next/static/chunks/node_modules_next_dist_compiled_react-server-dom-turbopack_164kp-67asdr9._.js:2460:74)

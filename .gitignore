@@ -28,3 +28,6 @@ test-results/
 .cursor/debug-*.log
 .vercel
 .env*
+
+# Browser-testing output (Playwright MCP)
+.playwright-mcp/
