@@ -34,6 +34,7 @@ export function BlogWorkflow({
   canEdit,
   canDecide,
   canPublish,
+  shipConnected = false,
 }: {
   articleId: string;
   versionId: string | null;
@@ -53,6 +54,8 @@ export function BlogWorkflow({
   canEdit: boolean;
   canDecide: boolean;
   canPublish: boolean;
+  /** D89: the website is connected for Ship to site, which replaces the internal release. */
+  shipConnected?: boolean;
 }) {
   const [submitted, submit, submitting] = useActionState(submitArticleAction, null);
   const [reviewed, review, reviewing] = useActionState(reviewArticleAction, null);
@@ -112,7 +115,7 @@ export function BlogWorkflow({
         {(canEdit || canDecide) && (inReview || approved) && (
           <form action={returnDraft}><input type="hidden" name="articleId" value={articleId} /><Button type="submit" variant="secondary" disabled={returning}>Return for editing</Button></form>
         )}
-        {canPublish && approved && native && <Button type="button" onClick={() => setConfirmPublish(true)}>Release to content API</Button>}
+        {canPublish && approved && native && !shipConnected && <Button type="button" onClick={() => setConfirmPublish(true)}>Release to content API</Button>}
         {canEdit && status === "published" && !workingStatus && (
           <form action={start}><input type="hidden" name="articleId" value={articleId} /><Button type="submit" variant="secondary" disabled={starting}>Create revision</Button></form>
         )}

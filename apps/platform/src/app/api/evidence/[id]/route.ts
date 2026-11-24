@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { canAccessClient, getEvidence, recordAudit } from "@clinic-genie/db";
 import { getAccess } from "@/lib/session";
 import { staffTx } from "@/lib/db";
-import { readEvidenceFile } from "@/lib/storage";
+import { readStoredFile } from "@/lib/storage";
 
 /** Authorised retrieval only. A successful upload never makes a file public. */
 export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
@@ -20,7 +20,8 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
     return e;
   });
   if (!item || item.kind !== "upload" || !item.storage_key) return NextResponse.json({ error: "Not found" }, { status: 404 });
-  const bytes = await readEvidenceFile(item.storage_key);
+  const bytes = await readStoredFile(item.storage_key);
+  if (!bytes) return new Response("Not found", { status: 404 });
   const safeName = (item.original_name ?? "evidence").replace(/[^A-Za-z0-9._-]/g, "_");
   return new NextResponse(new Uint8Array(bytes), {
     headers: {

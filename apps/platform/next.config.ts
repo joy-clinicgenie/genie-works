@@ -13,6 +13,8 @@ const nextConfig: NextConfig = {
   poweredByHeader: false,
   experimental: {
     agentUpgrade: "security",
+    // Uploads (blog images, issue evidence) are up to 4 MB; a Vercel Function body is limited to 4.5 MB (D91).
+    serverActions: { bodySizeLimit: "4.4mb" },
   },
   async rewrites() {
     return [{ source: "/favicon.ico", destination: "/brandmark.svg" }];

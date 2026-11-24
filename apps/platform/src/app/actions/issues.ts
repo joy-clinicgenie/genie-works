@@ -6,7 +6,7 @@ import { addEvidenceLink, addEvidenceUpload, canEditClient, getIssue, openIssue,
 import { requireAccess } from "@/lib/session";
 import { staffTx } from "@/lib/db";
 import { optional, str, toActionError, type ActionState } from "@/lib/actions";
-import { MAX_UPLOAD_BYTES, isAllowedType, storeEvidenceFile } from "@/lib/storage";
+import { MAX_UPLOAD_BYTES, MAX_UPLOAD_LABEL, isAllowedType, storeEvidenceFile } from "@/lib/storage";
 
 function revalidate(id?: string) {
   revalidatePath("/");
@@ -82,10 +82,10 @@ export async function addEvidenceAction(_prev: ActionState, form: FormData): Pro
   const url = optional(form, "url");
   try {
     if (file instanceof File && file.size > 0) {
-      if (file.size > MAX_UPLOAD_BYTES) return { ok: false, error: "Files must be 10 MB or smaller.", field: "file" };
+      if (file.size > MAX_UPLOAD_BYTES) return { ok: false, error: `Files must be ${MAX_UPLOAD_LABEL} or smaller.`, field: "file" };
       if (!isAllowedType(file.type)) return { ok: false, error: "Allowed types: PNG, JPEG, WebP, GIF, PDF, plain text, CSV.", field: "file" };
       const bytes = Buffer.from(await file.arrayBuffer());
-      const stored = await storeEvidenceFile(clientId, bytes, file.name);
+      const stored = await storeEvidenceFile(clientId, bytes, file.name, file.type);
       await staffTx(access, (db) => addEvidenceUpload(db, clientId, { issueId, label: label || file.name, storageKey: stored.storageKey, originalName: file.name.slice(0, 200), mimeType: file.type, sizeBytes: file.size, sha256: stored.sha256 }, access.user.id));
     } else if (url) {
       await staffTx(access, (db) => addEvidenceLink(db, clientId, { issueId, label, url }, access.user.id));

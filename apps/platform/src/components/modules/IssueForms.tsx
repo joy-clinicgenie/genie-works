@@ -77,7 +77,7 @@ export function EvidenceForm({ clientId, issueId }: { clientId: string; issueId:
       <Field label="Label" htmlFor="ev-label" required>
         <Input id="ev-label" name="label" required maxLength={200} />
       </Field>
-      <Field label="Upload a file" htmlFor="ev-file" hint="PNG, JPEG, WebP, GIF, PDF, text or CSV up to 10 MB. Stored privately; only staff with access to this client can open it.">
+      <Field label="Upload a file" htmlFor="ev-file" hint="PNG, JPEG, WebP, GIF, PDF, text or CSV up to 4 MB. Stored privately; only staff with access to this client can open it.">
         <Input id="ev-file" name="file" type="file" accept=".png,.jpg,.jpeg,.webp,.gif,.pdf,.txt,.csv" />
       </Field>
       <Field label="Or an https link" htmlFor="ev-url">

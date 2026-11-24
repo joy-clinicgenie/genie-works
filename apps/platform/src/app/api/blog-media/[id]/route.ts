@@ -1,7 +1,7 @@
 import { canAccessClient, getArticleMediaFile, recordAudit } from "@clinic-genie/db";
 import { requireAccess } from "@/lib/session";
 import { staffTx } from "@/lib/db";
-import { readEvidenceFile } from "@/lib/storage";
+import { readStoredFile } from "@/lib/storage";
 
 export async function GET(_request: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -11,7 +11,8 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
     return new Response("Not found", { status: 404 });
   }
   await staffTx(access, (db) => recordAudit(db, { actorType: "staff", actorUserId: access.user.id, action: "blog.media.read", targetType: "blog_media", targetId: id, clientId: media.client_id, outcome: "success" }));
-  const bytes = await readEvidenceFile(media.storage_key);
+  const bytes = await readStoredFile(media.storage_key);
+  if (!bytes) return new Response("Not found", { status: 404 });
   return new Response(new Uint8Array(bytes), {
     headers: {
       "Content-Type": media.content_type,

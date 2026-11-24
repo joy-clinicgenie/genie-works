@@ -1,6 +1,6 @@
 import { PermissionDeniedError } from "@clinic-genie/db";
 
-export type ActionState = { ok: true; message?: string; id?: string } | { ok: false; error: string; field?: string; issues?: { field: string; message: string }[] } | null;
+export type ActionState = { ok: true; message?: string; id?: string; href?: string } | { ok: false; error: string; field?: string; issues?: { field: string; message: string }[] } | null;
 
 /** Converts domain and permission errors into a form state without leaking internals. */
 export function toActionError(err: unknown): ActionState {

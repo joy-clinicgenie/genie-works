@@ -33,3 +33,5 @@ test-results/
 .playwright-mcp/
 .next-blog-grants/
 e2e-blog-grants/.run/
+.next-blog-ship/
+e2e-blog-ship/.run/

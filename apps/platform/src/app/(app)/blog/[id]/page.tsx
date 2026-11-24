@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { canEditClient, canReviewClient, canShipWebsite, getArticle, listActiveStaff, listArticleActivity, listArticleApprovals, listArticleMedia, listArticleVersions, listBlogWebsites } from "@clinic-genie/db";
+import { canEditClient, canReviewClient, canShipWebsite, getArticle, getWebsiteConnection, intendedArticleUrl, listPublishingHistory, listActiveStaff, listArticleActivity, listArticleApprovals, listArticleMedia, listArticleVersions, listBlogWebsites } from "@clinic-genie/db";
 import { requireAccess } from "@/lib/session";
 import { staffTx } from "@/lib/db";
 import { PageHeader, Card, CardHeader } from "@/components/ui/Card";
@@ -12,6 +12,7 @@ import { ArticleTabs } from "@/components/modules/blog/ArticleTabs";
 import { BlogWorkflow } from "@/components/modules/blog/BlogWorkflow";
 import { HistoryRestore } from "@/components/modules/blog/HistoryRestore";
 import { ImageUpload } from "@/components/modules/blog/ImageUpload";
+import { ShipControls } from "@/components/modules/blog/ShipControls";
 import { blogHref, safeBlogReturn } from "@/lib/blog-scope";
 import { articleStatus } from "@/lib/blog-status";
 
@@ -30,7 +31,11 @@ const ACTIVITY_LABEL: Record<string, string> = {
   archived: "Archived",
   restored: "Restored to draft",
   version_restored: "Restored a previous version as a draft",
+  publish_verified: "Verified on the website",
+  publish_failed: "Publishing attempt not completed",
 };
+
+const HISTORY_STATUS: Record<string, string> = { started: "In progress", succeeded: "Succeeded", failed: "Failed", timed_out: "Timed out", superseded: "Superseded" };
 
 function stamp(value: Date | string | null) {
   if (!value) return "—";
@@ -54,6 +59,8 @@ export default async function ArticlePage({ params, searchParams }: { params: Pr
       staff: await listActiveStaff(db),
       // D87: the same website-scoped predicate the server enforces when publishing.
       canShip: await canShipWebsite(db, article.website_id),
+      connection: await getWebsiteConnection(db, article.website_id),
+      history: await listPublishingHistory(db, id),
     };
   });
   if (!data) notFound();
@@ -68,8 +75,12 @@ export default async function ArticlePage({ params, searchParams }: { params: Pr
   if (article.website_url) {
     try { domain = new URL(article.website_url).host; } catch { domain = null; }
   }
-  const liveUrl = article.website_url && article.live_slug ? `${article.website_url.replace(/\/$/, "")}/blog/${article.live_slug}` : null;
-  const intendedUrl = article.website_url && article.slug ? `${article.website_url.replace(/\/$/, "")}/blog/${article.slug}` : null;
+  // D89: addresses use the website's own blog route.
+  const liveUrl = intendedArticleUrl(article.website_url, article.blog_base_path, article.live_slug);
+  const intendedUrl = intendedArticleUrl(article.website_url, article.blog_base_path, article.slug);
+  const shipConnected = Boolean(data.connection?.configured && article.native);
+  const approvedCurrent = article.status === "approved" || article.working_status === "approved";
+  const releasedUnverified = Boolean(article.live_version_id) && ["unverified", "delivery_pending", "delivery_failed"].includes(article.website_status);
   // D87: only a website-verified revision is "live"; an internal release is not.
   const verifiedLive = article.website_status === "verified";
   // Return to the exact list or Overview the article was opened from.
@@ -108,7 +119,21 @@ export default async function ArticlePage({ params, searchParams }: { params: Pr
           canEdit={canEditClient(access, article.client_id)}
           canDecide={canDecide}
           canPublish={data.canShip}
+          shipConnected={shipConnected}
         />
+        {shipConnected && (
+          <div className="mt-4">
+            <ShipControls
+              articleId={article.id}
+              websiteName={article.website_name}
+              intendedUrl={approvedCurrent ? intendedUrl : liveUrl}
+              canShip={data.canShip}
+              shippable={approvedCurrent || releasedUnverified}
+              verifiable={article.website_status === "awaiting_verification"}
+              previewable={Boolean(article.current_version_id)}
+            />
+          </div>
+        )}
       </div>
       {article.status === "published" && article.working_status && <div className="mb-4"><Notice tone="neutral">The released revision is unchanged. This working copy is not released.</Notice></div>}
       {article.status === "published" && !article.working_status && <div className="mb-4"><Notice tone="neutral">Create a revision before editing. The released revision stays as it is until the new revision is approved and released.</Notice></div>}
@@ -166,6 +191,19 @@ export default async function ArticlePage({ params, searchParams }: { params: Pr
                     {canEditClient(access, article.client_id) && article.status !== "in_review" && article.status !== "approved" && (
                       <HistoryRestore articleId={article.id} versionId={version.id} needsReplace={Boolean(article.working_status)} />
                     )}
+                  </li>
+                ))}
+              </ol>
+            </Card>
+            <Card className="lg:col-span-2">
+              <CardHeader title="Publishing history" description="Every delivery to the website and every check of it." />
+              <ol className="divide-y divide-line">
+                {data.history.length === 0 && <li className="px-5 py-3 text-sm text-muted">Not shipped to the website yet.</li>}
+                {data.history.map((attempt) => (
+                  <li key={attempt.id} className="px-5 py-3 text-sm">
+                    <span className="font-medium">{attempt.kind === "deliver" ? "Delivery" : "Verification"} · version {attempt.version_number} · attempt {attempt.attempt_number}</span>
+                    <span className="text-muted"> · {HISTORY_STATUS[attempt.status] ?? attempt.status}{attempt.outcome_code && attempt.status !== "succeeded" ? ` (${attempt.outcome_code.replace(/_/g, " ")})` : ""} · {attempt.started_by_name ?? "—"} · {stamp(attempt.started_at)}</span>
+                    {attempt.public_url && <p className="mt-1"><a href={attempt.public_url} className="text-action underline" target="_blank" rel="noreferrer">{attempt.public_url}</a></p>}
                   </li>
                 ))}
               </ol>

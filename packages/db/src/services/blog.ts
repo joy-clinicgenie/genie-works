@@ -87,6 +87,7 @@ export interface ArticleRow {
   website_name: string;
   website_platform: string;
   website_url: string | null;
+  blog_base_path: string;
   title: string;
   slug: string | null;
   live_slug: string | null;
@@ -188,7 +189,7 @@ export type WebsitePublicationState = "not_published" | "unverified" | "delivery
 
 const ARTICLE_SELECT = `
   select a.*, c.name as client_name, w.name as website_name, w.platform as website_platform, w.url as website_url,
-         w.blog_requirements,
+         w.blog_requirements, w.blog_base_path,
          author.display_name as author_name, reviewer.display_name as reviewer_name,
          v.version_number, live.slug as live_slug,
          ${WEBSITE_STATUS_SQL} as website_status, ${LATEST_DECISION_SQL} as latest_decision
@@ -654,7 +655,7 @@ export async function submitArticleForReview(db: Queryable, id: string, actorUse
   );
   if (!rowCount) throw new BlogRuleError("Article was not submitted.");
   await recordActivity(db, article, "submitted", actorUserId);
-  await recordTimeline(db, { clientId: article.client_id, eventType: "article_submitted", title: `Submitted “${article.title || "Untitled article"}” for review`, summary: article.slug ? articlePath(article.slug) : "Draft", relatedType: "blog_article", relatedId: id, actorUserId, dedupeKey: `blog-submit:${article.current_version_id}` });
+  await recordTimeline(db, { clientId: article.client_id, eventType: "article_submitted", title: `Submitted “${article.title || "Untitled article"}” for review`, summary: article.slug ? articlePath(article.slug, article.blog_base_path) : "Draft", relatedType: "blog_article", relatedId: id, actorUserId, dedupeKey: `blog-submit:${article.current_version_id}` });
   await recordAudit(db, { actorType: "staff", actorUserId, action: "blog.submit_review", targetType: "blog_article", targetId: id, clientId: article.client_id, outcome: "success", metadata: { versionId: article.current_version_id } });
 }
 
@@ -693,7 +694,7 @@ export async function decideArticleReview(db: Queryable, id: string, decision: "
     clientId: article.client_id,
     eventType: decision === "approved" ? "article_approved" : "article_returned",
     title: decision === "approved" ? `Approved “${article.title || "Untitled article"}”` : `Requested changes on “${article.title || "Untitled article"}”`,
-    summary: article.slug ? articlePath(article.slug) : "Draft",
+    summary: article.slug ? articlePath(article.slug, article.blog_base_path) : "Draft",
     relatedType: "blog_article",
     relatedId: id,
     actorUserId,
@@ -760,8 +761,8 @@ export async function publishArticle(db: Queryable, id: string, actorUserId: str
   );
   const replacing = Boolean(article.live_version_id);
   await recordActivity(db, article, replacing ? "revision_published" : "published", actorUserId);
-  await recordTimeline(db, { clientId: article.client_id, eventType: "article_published", title: `Published “${article.title || "Untitled article"}”`, summary: article.slug ? articlePath(article.slug) : "Article", relatedType: "blog_article", relatedId: id, actorUserId, dedupeKey: `blog-publish:${publication[0]!.id}` });
-  await recordAudit(db, { actorType: "staff", actorUserId, action: "blog.publish", targetType: "blog_article", targetId: id, clientId: article.client_id, outcome: "success", metadata: { path: article.slug ? articlePath(article.slug) : null, versionId: article.current_version_id } });
+  await recordTimeline(db, { clientId: article.client_id, eventType: "article_published", title: `Published “${article.title || "Untitled article"}”`, summary: article.slug ? articlePath(article.slug, article.blog_base_path) : "Article", relatedType: "blog_article", relatedId: id, actorUserId, dedupeKey: `blog-publish:${publication[0]!.id}` });
+  await recordAudit(db, { actorType: "staff", actorUserId, action: "blog.publish", targetType: "blog_article", targetId: id, clientId: article.client_id, outcome: "success", metadata: { path: article.slug ? articlePath(article.slug, article.blog_base_path) : null, versionId: article.current_version_id } });
 }
 
 export async function unpublishArticle(db: Queryable, id: string, actorUserId: string): Promise<void> {
@@ -786,8 +787,8 @@ export async function unpublishArticle(db: Queryable, id: string, actorUserId: s
     [id, article.client_id, article.website_id, article.live_version_id, actorUserId],
   );
   await recordActivity(db, article, "unpublished", actorUserId, null, article.live_version_id);
-  await recordTimeline(db, { clientId: article.client_id, eventType: "article_unpublished", title: `Unpublished “${live.title || "Untitled article"}”`, summary: live.slug ? articlePath(live.slug) : "Article", relatedType: "blog_article", relatedId: id, actorUserId, dedupeKey: `blog-unpublish:${publication[0]!.id}` });
-  await recordAudit(db, { actorType: "staff", actorUserId, action: "blog.unpublish", targetType: "blog_article", targetId: id, clientId: article.client_id, outcome: "success", metadata: { path: live.slug ? articlePath(live.slug) : null, versionId: article.live_version_id } });
+  await recordTimeline(db, { clientId: article.client_id, eventType: "article_unpublished", title: `Unpublished “${live.title || "Untitled article"}”`, summary: live.slug ? articlePath(live.slug, article.blog_base_path) : "Article", relatedType: "blog_article", relatedId: id, actorUserId, dedupeKey: `blog-unpublish:${publication[0]!.id}` });
+  await recordAudit(db, { actorType: "staff", actorUserId, action: "blog.unpublish", targetType: "blog_article", targetId: id, clientId: article.client_id, outcome: "success", metadata: { path: live.slug ? articlePath(live.slug, article.blog_base_path) : null, versionId: article.live_version_id } });
 }
 
 export async function archiveArticle(db: Queryable, id: string, actorUserId: string): Promise<void> {
@@ -965,6 +966,8 @@ export interface PublishedBlogArticle {
   updatedAt: string;
   body: ArticleBody;
   media: Array<{ id: string; alt: string; contentType: string }>;
+  /** D86: the revision id the website prints in `<meta name="genie-works-revision">`. */
+  versionId: string;
 }
 
 export interface PublishedBlog {
@@ -994,6 +997,8 @@ interface LiveArticleRow {
   social_media_id: string | null;
   revised_at: Date;
   website_url: string | null;
+  version_id: string;
+  blog_base_path: string;
 }
 
 function websiteOrigin(url: string | null): string | null {
@@ -1027,7 +1032,8 @@ export async function getPublishedBlog(db: Queryable, websiteId: string, token: 
     const featured = media.find((item) => item.id === row.featured_media_id);
     articles.push({
       id: row.id,
-      path: articlePath(row.slug),
+      path: articlePath(row.slug, row.blog_base_path),
+      versionId: row.version_id,
       slug: row.slug,
       title: row.title,
       excerpt: row.excerpt,
@@ -1089,4 +1095,69 @@ export async function listArticleCategories(db: Queryable, opts: { clientId: str
     [opts.clientId, opts.websiteId ?? null],
   );
   return rows;
+}
+
+/**
+ * D86. One saved revision for the website's private preview. Needs the site token and an
+ * unexpired preview token issued for an article on that website. The result is never cached.
+ */
+export async function getPreviewBlogArticle(db: Queryable, websiteId: string, token: string, previewToken: string): Promise<PublishedBlogArticle | null> {
+  const tokenHash = createHash("sha256").update(token).digest("hex");
+  const previewHash = createHash("sha256").update(previewToken).digest("hex");
+  const { rows } = await db.query<{
+    id: string; title: string; slug: string | null; excerpt: string; category: string; author_name: string | null; body: unknown;
+    seo_title: string; seo_description: string; social_title: string; social_description: string;
+    featured_media_id: string | null; social_media_id: string | null; revised_at: Date; version_id: string; blog_base_path: string;
+  }>("select * from preview_blog_article($1, $2, $3)", [websiteId, tokenHash, previewHash]);
+  const row = rows[0];
+  if (!row) return null;
+  const body = parseArticleBody(row.body);
+  const used = new Set(body.blocks.flatMap((block) => block.type === "image" ? [block.mediaId] : []));
+  if (row.featured_media_id) used.add(row.featured_media_id);
+  const media = [];
+  for (const mediaId of used) {
+    const item = await getPreviewBlogMedia(db, websiteId, mediaId, token, previewToken);
+    if (item) media.push(item);
+  }
+  const featured = media.find((item) => item.id === row.featured_media_id);
+  const slug = row.slug || "preview";
+  const revisedAt = new Date(row.revised_at).toISOString();
+  return {
+    id: row.id,
+    path: articlePath(slug, row.blog_base_path),
+    slug,
+    title: row.title,
+    excerpt: row.excerpt,
+    category: row.category,
+    authorName: row.author_name,
+    featuredMediaId: featured ? row.featured_media_id : null,
+    featuredAlt: featured?.alt_text ?? null,
+    seoTitle: row.seo_title,
+    seoDescription: row.seo_description,
+    socialTitle: row.social_title,
+    socialDescription: row.social_description,
+    socialMediaId: row.social_media_id,
+    canonicalPath: null,
+    indexable: false,
+    publishedAt: revisedAt,
+    updatedAt: revisedAt,
+    body,
+    media: media.map((item) => ({ id: item.id, alt: item.alt_text, contentType: item.content_type })),
+    versionId: row.version_id,
+  };
+}
+
+/** A media file used by the previewed revision only. */
+export async function getPreviewBlogMedia(db: Queryable, websiteId: string, mediaId: string, token: string, previewToken: string): Promise<ArticleMediaRow | null> {
+  const tokenHash = createHash("sha256").update(token).digest("hex");
+  const previewHash = createHash("sha256").update(previewToken).digest("hex");
+  const { rows } = await db.query<ArticleMediaRow & { body: unknown; featured_media_id: string | null; social_media_id: string | null }>(
+    "select * from preview_blog_media($1, $2, $3, $4)",
+    [websiteId, mediaId, tokenHash, previewHash],
+  );
+  const media = rows[0];
+  if (!media) return null;
+  const inBody = parseArticleBody(media.body).blocks.some((block) => block.type === "image" && block.mediaId === media.id);
+  if (!inBody && media.featured_media_id !== media.id && media.social_media_id !== media.id) return null;
+  return { id: media.id, alt_text: media.alt_text, content_type: media.content_type, byte_size: media.byte_size, storage_key: media.storage_key };
 }

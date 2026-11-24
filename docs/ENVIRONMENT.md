@@ -21,7 +21,8 @@ Used by the embedded database on this machine. `npm run db:rehearse` creates `cl
 | `AUTH_GOOGLE_SECRET` | Google OAuth client secret. |
 | `AUTH_GOOGLE_HD` | Workspace domain. On a local database, an unknown matching user can be created as admin. A shared database does not create that user. |
 | `APP_ENVIRONMENT_LABEL` | Text shown in the header. It does not by itself enable sign-in shortcuts. |
-| `UPLOADS_DIR` | Private local directory for evidence files. |
+| `UPLOADS_DIR` | Private local directory for blog images and evidence files, used when no Blob store is configured. |
+| `BLOB_STORE_ID` / `BLOB_READ_WRITE_TOKEN` | Private Vercel Blob store for uploads (D91). Set on deployments by connecting the store; leave empty locally. When either is set, uploads go to the store, not `UPLOADS_DIR`. |
 | `ENQUIRY_DATABASE_URL` | Live Clinic Genie website enquiry source. Genie Works uses the staff role on `clinic_genie_enquiry_staging`. Empty means that source stays disconnected. A Wix form binding is separate and does not use this URL. A local database whose name contains `enquiry` and `test` is the fixture and is refused in production. `npm test` and `npm run db:rehearse` use separate disposable databases and do not reset the fixture or the live database. |
 | `ENQUIRY_STAGING_ADMIN_URL` | Owner connection for `clinic_genie_enquiry_staging` only. It creates that schema and its restricted roles. It is not the website or Genie Works credential, and it is not `ENQUIRY_DATABASE_URL`. |
 | `ENQUIRY_STAGING_INTAKE_URL` | Intake role for the Clinic Genie website. The website’s own `ENQUIRY_DATABASE_URL` uses this credential. Genie Works does not. |
@@ -103,7 +104,7 @@ Same names as production, with staging values supplied by the hosting project. N
 | `APP_ENVIRONMENT_LABEL` | Header label, normally `production`. |
 | `ENQUIRY_DATABASE_URL` | Staff role on `clinic_genie_enquiry_staging`, the live Clinic Genie website enquiry source. |
 | `ANALYTICS_*` | Production provider credentials and the worker secret. |
-| `UPLOADS_DIR` | Replaced by the production file store when one is chosen. |
+| `BLOB_STORE_ID` | Set by connecting the private Vercel Blob store `genie-works-uploads` to the project (D91). Authenticates with the deployment's OIDC token. `UPLOADS_DIR` is not used on a deployment. |
 
 The build command may substitute `AUTH_SECRET` when the hosting project has not provided one. That substitute is only for the build. A running server must have a distinct runtime secret. `assertRuntimeAuthSecret` rejects a missing value, `preview-build-only` and `replace-with-a-long-random-string` except while `NEXT_PHASE` is `phase-production-build`.
 

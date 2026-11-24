@@ -69,8 +69,9 @@ export function slugifyTitle(title: string): string {
   return slug || "article";
 }
 
-export function articlePath(slug: string): string {
-  return `/blog/${slug}`;
+/** D86: the website's own blog route (websites.blog_base_path), `/blog` by default. */
+export function articlePath(slug: string, basePath = "/blog"): string {
+  return `${basePath.replace(/\/$/, "")}/${slug}`;
 }
 
 export function emptyArticleBody(): ArticleBody {
