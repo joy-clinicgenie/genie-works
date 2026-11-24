@@ -441,6 +441,12 @@ export function ArticleForm({
                 </div>
                 <p className="text-xs text-muted">This preview illustrates a share card. It is not a guarantee of how a social platform will display the page.</p>
               </section>
+              {!readOnly && (
+                <div className="sticky bottom-0 -mx-4 -mb-5 flex items-center justify-between gap-3 border-t border-line bg-surface px-4 py-3">
+                  <p className="text-xs text-muted" aria-live="polite">{saveLabel}</p>
+                  <Button type="submit" form={FORM_ID} size="sm" disabled={pending}>{pending ? "Saving" : "Save settings"}</Button>
+                </div>
+              )}
             </div>
             <div hidden={panel !== "seo"} id="seo-panel" className="space-y-4 p-4" onChange={markDirty}>
               <div className="flex items-center justify-between gap-2">
