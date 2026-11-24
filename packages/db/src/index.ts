@@ -25,6 +25,7 @@ export * from "./services/approvals";
 export * from "./services/seo";
 export * from "./services/blog";
 export * from "./services/blog-publishing";
+export * from "./services/blog-queues";
 export * from "./services/seo-soft-launch";
 export * from "./services/site-health";
 export * from "./services/ai-access";

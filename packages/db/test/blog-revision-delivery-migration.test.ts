@@ -5,7 +5,7 @@ import { fileURLToPath } from "node:url";
 import { afterAll, describe, expect, it } from "vitest";
 import { runMigrations } from "../src/migrate";
 import { seedDemo } from "../src/seed";
-import { createArticle, decideArticleReview, getArticle, listArticleActivity, submitArticleForReview, updateArticle, type ArticleBody } from "../src/services/blog";
+import { getArticle, listArticleActivity, type ArticleBody } from "../src/services/blog";
 import { getRevisionState } from "../src/services/blog-publishing";
 import { createClient, createWebsite, grantMembership } from "../src/services/registry";
 import { createIsolatedDatabase, staffContext, type IsolatedDatabase } from "./isolated";
@@ -89,53 +89,69 @@ describe("migration 0058 (D87)", () => {
     const specA = await db.staff("specialist-a@example.invalid");
     const reviewer = await db.staff("reviewer@example.invalid");
 
-    // Representative pre-0058 data, written with the 0057 rules (admin/manager publish).
+    // Representative pre-0058 data. Written with plain SQL that mirrors the pre-0058 services
+    // (today's service code reads 0058 tables, so it cannot run against a 0057 database).
     const seeded = await db.asContext(staffContext(admin), async (tx) => {
       const client = await createClient(tx, { slug: "upgrade-check", name: "Upgrade check clinic", ownerUserId: admin.id, channels: ["website"], isSynthetic: true, notes: null }, admin.id);
       for (const userId of [specA.id, reviewer.id]) await grantMembership(tx, { userId, clientId: client.id }, admin.id);
       const site = await createWebsite(tx, { clientId: client.id, name: "Upgrade site", url: "https://upgrade.example.invalid", platform: "Next.js on Vercel", environment: "production", notes: null }, admin.id);
-      const input = (title: string, slug: string) => ({
-        clientId: client.id, websiteId: site.id, title, slug, category: "Care", authorUserId: specA.id, reviewerUserId: reviewer.id,
-        seoTitle: title, seoDescription: "Fictional.", canonicalPath: null, indexable: true, body,
-      });
-      const draft = await createArticle(tx, input("Upgrade draft", "upgrade-draft"), admin.id);
-      const firstDraftVersion = (await getArticle(tx, draft))!.current_version_id!;
-      await updateArticle(tx, draft, { ...input("Upgrade draft, second save", "upgrade-draft"), body: { ...body, blocks: [...body.blocks, { type: "paragraph", text: "Second save." }] } }, admin.id, firstDraftVersion);
-      const published = await createArticle(tx, input("Upgrade published", "upgrade-published"), admin.id);
-      await submitArticleForReview(tx, published, admin.id);
-      await decideArticleReview(tx, published, "approved", null, admin.id);
-      // The pre-0058 publish step, as publishArticle performed it.
-      await tx.query("select set_config('app.blog_transition', 'publish', true)");
+      const transition = (name: string) => tx.query("select set_config('app.blog_transition', $1, true)", [name]);
+      async function sqlArticle(title: string, slug: string, saves: number): Promise<{ id: string; versions: string[] }> {
+        const { rows } = await tx.query<{ id: string }>(
+          `insert into blog_articles (client_id, website_id, title, slug, excerpt, category, author_user_id, reviewer_user_id, status,
+             seo_title, seo_description, social_title, social_description, canonical_path, indexable, body, created_by, updated_by)
+           values ($1, $2, $3, $4, '', 'Care', $5, $6, 'draft', $3, 'Fictional.', '', '', null, true, $7::jsonb, $8, $8) returning id`,
+          [client.id, site.id, title, slug, specA.id, reviewer.id, JSON.stringify(body), admin.id],
+        );
+        const id = rows[0]!.id;
+        const versions: string[] = [];
+        for (let n = 1; n <= saves; n += 1) {
+          const blocks = n === 1 ? body.blocks : [...body.blocks, { type: "paragraph", text: `Save ${n}.` }];
+          const version = (await tx.query<{ id: string }>(
+            `insert into blog_article_versions (article_id, client_id, version_number, title, slug, excerpt, category, body, seo_title, seo_description,
+               social_title, social_description, featured_media_id, social_media_id, canonical_path, indexable, author_user_id, reviewer_user_id, created_by)
+             values ($1, $2, $3, $4, $5, '', 'Care', $6::jsonb, $4, 'Fictional.', '', '', null, null, null, true, $7, $8, $9) returning id`,
+            [id, client.id, n, title, slug, JSON.stringify({ ...body, blocks }), specA.id, reviewer.id, admin.id],
+          )).rows[0]!.id;
+          await transition("save");
+          await tx.query("update blog_articles set current_version_id = $2, body = $3::jsonb where id = $1", [id, version, JSON.stringify({ ...body, blocks })]);
+          await tx.query("insert into blog_activity (article_id, client_id, version_id, actor_user_id, action) values ($1, $2, $3, $4, 'saved')", [id, client.id, version, admin.id]);
+          versions.push(version);
+        }
+        return { id, versions };
+      }
+      const draft = await sqlArticle("Upgrade draft", "upgrade-draft", 2);
+      const published = await sqlArticle("Upgrade published", "upgrade-published", 1);
+      const live = published.versions[0]!;
+      await transition("submit");
+      await tx.query("update blog_articles set status = 'in_review' where id = $1", [published.id]);
+      await tx.query("insert into blog_approvals (article_id, client_id, version_id, reviewer_user_id, decision) values ($1, $2, $3, $4, 'approved')", [published.id, client.id, live, admin.id]);
+      await transition("approve");
+      await tx.query("update blog_articles set status = 'approved' where id = $1", [published.id]);
+      // The pre-0058 publish step, as publishArticle performed it (admin/manager rule of 0029).
+      await transition("publish");
       await tx.query(
         `update blog_articles set status = 'published', working_status = null, live_version_id = current_version_id,
            published_at = now(), first_published_at = now(), updated_by = $2, updated_at = now() where id = $1`,
-        [published, admin.id],
+        [published.id, admin.id],
       );
-      const live = (await getArticle(tx, published))!;
       await tx.query("insert into blog_publications (article_id, client_id, website_id, version_id, action, actor_user_id) values ($1, $2, $3, $4, 'publish', $5)",
-        [published, client.id, site.id, live.live_version_id, admin.id]);
+        [published.id, client.id, site.id, live, admin.id]);
       await tx.query("insert into blog_activity (article_id, client_id, version_id, actor_user_id, action) values ($1, $2, $3, $4, 'published')",
-        [published, client.id, live.live_version_id, admin.id]);
-      // 0057-shaped deliveries in every old state.
-      const versions = (await tx.query<{ id: string; article_id: string }>("select id, article_id from blog_article_versions where article_id = any($1) order by article_id, version_number", [[draft, published]])).rows;
-      const rows: Array<[string, string, string, number]> = [];
-      const states = ["delivering", "failed", "verification_pending"];
-      versions.forEach((version, i) => rows.push([version.article_id, version.id, states[i % states.length]!, i + 1]));
+        [published.id, client.id, live, admin.id]);
+      // 0057-shaped deliveries in every old state, including one 'verified' row on its own article.
+      const extra = await sqlArticle("Upgrade verified", "upgrade-verified", 1);
+      const rows: Array<[string, string, string, number]> = [
+        [draft.id, draft.versions[0]!, "delivering", 1],
+        [draft.id, draft.versions[1]!, "failed", 2],
+        [published.id, live, "verification_pending", 3],
+        [extra.id, extra.versions[0]!, "verified", 2],
+      ];
       for (const [articleId, versionId, state, attempts] of rows) {
-        await tx.query("insert into blog_deliveries (article_id, client_id, website_id, version_id, state, attempts, started_by) values ($1, $2, $3, $4, $5, $6, $7)",
-          [articleId, client.id, site.id, versionId, state, attempts, admin.id]);
+        await tx.query("insert into blog_deliveries (article_id, client_id, website_id, version_id, state, attempts, started_by, verified_at) values ($1, $2, $3, $4, $5, $6, $7, $8)",
+          [articleId, client.id, site.id, versionId, state, attempts, admin.id, state === "verified" ? new Date() : null]);
       }
-      return { clientId: client.id, websiteId: site.id, draft, published, liveVersion: live.live_version_id!, deliveries: rows };
-    }, { commit: true });
-    // A verified 0057 row needs its own revision: give the published article a second (unpublished) version.
-    await db.asContext(staffContext(admin), async (tx) => {
-      const extra = await createArticle(tx, {
-        clientId: seeded.clientId, websiteId: seeded.websiteId, title: "Upgrade verified", slug: "upgrade-verified", category: "Care",
-        authorUserId: specA.id, reviewerUserId: reviewer.id, seoTitle: "x", seoDescription: "x", canonicalPath: null, indexable: true, body,
-      }, admin.id);
-      const version = (await getArticle(tx, extra))!.current_version_id!;
-      await tx.query("insert into blog_deliveries (article_id, client_id, website_id, version_id, state, attempts, started_by, verified_at) values ($1, $2, $3, $4, 'verified', 2, $5, now())",
-        [extra, seeded.clientId, seeded.websiteId, version, admin.id]);
+      return { clientId: client.id, websiteId: site.id, draft: draft.id, published: published.id, liveVersion: live };
     }, { commit: true });
     const countsBefore = (await db.admin.query("select (select count(*) from blog_article_versions)::int v, (select count(*) from blog_publications)::int p, (select count(*) from blog_activity)::int a, (select count(*) from blog_deliveries)::int d")).rows[0];
 
@@ -165,8 +181,8 @@ describe("migration 0058 (D87)", () => {
       const state = (await getRevisionState(tx, seeded.published))!;
       expect(state.released?.versionId).toBe(seeded.liveVersion);
       expect(state.verified).toBeNull();
-      // The 0057 delivery of the live version maps to a new state; with none it would read "unverified".
-      expect(["delivery_pending", "delivery_failed", "awaiting_verification"]).toContain(state.websiteStatus);
+      // Its 0057 delivery (verification_pending) maps to awaiting verification; it is not marked verified.
+      expect(state.websiteStatus).toBe("awaiting_verification");
       const history = (await listArticleActivity(tx, seeded.published)).map((event) => event.action);
       expect(history).toContain("published");
     });

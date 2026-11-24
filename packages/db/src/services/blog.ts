@@ -1,3 +1,4 @@
+import { BLOG_QUEUES, LATEST_DECISION_SQL, QUEUE_SQL, WEBSITE_STATUS_SQL, type BlogQueue } from "./blog-queues";
 import { createHash, randomBytes } from "node:crypto";
 import type { BlogStatus, PlatformRole } from "@clinic-genie/contracts";
 import type { Queryable } from "../client";
@@ -118,6 +119,10 @@ export interface ArticleRow {
   created_by: string;
   native: boolean;
   requirements: BlogRequirements;
+  /** D87: see WEBSITE_STATUS_SQL. */
+  website_status: WebsitePublicationState;
+  /** The latest review decision on any revision. */
+  latest_decision: string | null;
 }
 
 export interface ArticleList {
@@ -179,11 +184,14 @@ export interface ArticleMediaRow {
   storage_key: string;
 }
 
+export type WebsitePublicationState = "not_published" | "unverified" | "delivery_pending" | "delivery_failed" | "awaiting_verification" | "verified";
+
 const ARTICLE_SELECT = `
   select a.*, c.name as client_name, w.name as website_name, w.platform as website_platform, w.url as website_url,
          w.blog_requirements,
          author.display_name as author_name, reviewer.display_name as reviewer_name,
-         v.version_number, live.slug as live_slug
+         v.version_number, live.slug as live_slug,
+         ${WEBSITE_STATUS_SQL} as website_status, ${LATEST_DECISION_SQL} as latest_decision
   from blog_articles a
   join clients c on c.id = a.client_id
   join websites w on w.id = a.website_id
@@ -241,6 +249,8 @@ export async function listArticles(db: Queryable, opts: {
   sort?: BlogSort;
   page?: number;
   pageSize?: number;
+  /** D87: one of the Overview queues; counts come from the same SQL (countArticleQueues). */
+  queue?: BlogQueue;
 } = {}): Promise<ArticleList> {
   const pageSize = Math.min(100, Math.max(1, opts.pageSize ?? PAGE_SIZE));
   const page = Math.max(1, opts.page ?? 1);
@@ -264,7 +274,8 @@ export async function listArticles(db: Queryable, opts: {
     filters,
   );
   const counts = countRows[0] ?? { all: 0, draft: 0, in_review: 0, approved: 0, published: 0, archived: 0 };
-  const statusSql = "and (($5::text is not null and a.status = $5) or ($5::text is null and a.status <> 'archived'))";
+  const queueSql = opts.queue ? `and ${QUEUE_SQL[opts.queue]}` : "";
+  const statusSql = `and (($5::text is not null and a.status = $5) or ($5::text is null and a.status <> 'archived')) ${queueSql}`;
   const order = opts.sort === "published"
     ? "a.first_published_at desc nulls last, a.updated_at desc"
     : "a.updated_at desc";
@@ -275,8 +286,26 @@ export async function listArticles(db: Queryable, opts: {
      limit $6 offset $7`,
     [...filters, opts.status ?? null, pageSize, (page - 1) * pageSize],
   );
-  const total = opts.status ? counts[opts.status] : counts.all;
+  let total = opts.status ? counts[opts.status] : counts.all;
+  if (opts.queue) {
+    const { rows: queued } = await db.query<{ n: number }>(
+      `select count(*)::int as n from blog_articles a where ${where} ${statusSql}`,
+      [...filters, opts.status ?? null],
+    );
+    total = queued[0]?.n ?? 0;
+  }
   return { articles: rows.map((row) => mapArticle(row)), total, page, pageSize, counts };
+}
+
+/** D87: Overview queue counts. Each equals the total of listArticles with that queue and the same scope. */
+export async function countArticleQueues(db: Queryable, opts: { clientId: string; websiteId?: string | null }): Promise<Record<BlogQueue, number>> {
+  const { rows } = await db.query<Record<BlogQueue, number>>(
+    `select ${BLOG_QUEUES.map((queue) => `count(*) filter (where ${QUEUE_SQL[queue]})::int as ${queue}`).join(", ")}
+     from blog_articles a
+     where a.client_id = $1 and ($2::uuid is null or a.website_id = $2) and a.status <> 'archived'`,
+    [opts.clientId, opts.websiteId ?? null],
+  );
+  return rows[0] ?? { changes_requested: 0, awaiting_review: 0, ready_to_publish: 0, publishing_issues: 0 };
 }
 
 export async function getArticle(db: Queryable, id: string): Promise<ArticleRow | null> {
@@ -1047,4 +1076,17 @@ export async function getPublishedBlogMedia(db: Queryable, websiteId: string, me
 export async function canShipWebsite(db: Queryable, websiteId: string): Promise<boolean> {
   const { rows } = await db.query<{ ok: boolean }>("select app_can_ship_website($1) as ok", [websiteId]);
   return rows[0]?.ok === true;
+}
+
+/** D87: the categories already used by a client's articles. Category management is a later step. */
+export async function listArticleCategories(db: Queryable, opts: { clientId: string; websiteId?: string | null }): Promise<Array<{ category: string; articles: number }>> {
+  const { rows } = await db.query<{ category: string; articles: number }>(
+    `select a.category, count(*)::int as articles
+     from blog_articles a
+     where a.client_id = $1 and ($2::uuid is null or a.website_id = $2) and a.status <> 'archived' and coalesce(trim(a.category), '') <> ''
+     group by a.category
+     order by lower(a.category)`,
+    [opts.clientId, opts.websiteId ?? null],
+  );
+  return rows;
 }

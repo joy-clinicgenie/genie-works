@@ -2,7 +2,7 @@ import type { Queryable } from "../client";
 import { recordAudit } from "./audit";
 import { PermissionDeniedError } from "./auth";
 import { BlogRuleError } from "./blog-content";
-import { canShipWebsite, getArticle, publishArticle } from "./blog";
+import { canShipWebsite, getArticle, publishArticle, type WebsitePublicationState } from "./blog";
 
 /**
  * D87. Revision and delivery tracking for "Ship to site".
@@ -19,7 +19,7 @@ import { canShipWebsite, getArticle, publishArticle } from "./blog";
 export type DeliveryState = "delivery_pending" | "delivery_failed" | "awaiting_verification" | "verified";
 export type AttemptKind = "deliver" | "verify";
 export type AttemptStatus = "started" | "succeeded" | "failed" | "timed_out" | "superseded";
-export type WebsitePublicationStatus = "not_published" | "unverified" | DeliveryState;
+export type WebsitePublicationStatus = WebsitePublicationState;
 
 /** An attempt still "started" after this long is treated as lost and marked timed out. */
 export const ATTEMPT_LEASE_SECONDS = 120;
@@ -127,12 +127,9 @@ export async function getRevisionState(db: Queryable, articleId: string): Promis
   const verified = verifiedRow
     ? { versionId: verifiedRow.version_id, versionNumber: verifiedRow.version_number, verifiedAt: verifiedRow.verified_at, publicUrl: verifiedRow.public_url }
     : null;
-  let websiteStatus: WebsitePublicationStatus;
-  if (!released) websiteStatus = "not_published";
-  else if (verified?.versionId === released.versionId) websiteStatus = "verified";
-  else if (releasedDelivery) websiteStatus = releasedDelivery.state;
-  // Released before D87, or released without a delivery: never inferred as verified.
-  else websiteStatus = "unverified";
+  // The same SQL as the Posts list and Overview labels (WEBSITE_STATUS_SQL). A release with no
+  // delivery (internal publication before D87) reads "unverified": never inferred as verified.
+  const websiteStatus: WebsitePublicationStatus = article.website_status;
   return {
     articleId,
     websiteId: article.website_id,
