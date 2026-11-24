@@ -1,7 +1,8 @@
 import type { Queryable } from "../client";
 import { recordAudit } from "./audit";
 import { PermissionDeniedError } from "./auth";
-import { BlogRuleError } from "./blog-content";
+import { articlePath, BlogRuleError, isNativeWebsitePlatform } from "./blog-content";
+import { decryptSecret, encryptSecret, tokenKeyConfigured } from "../analytics/crypto";
 import { canShipWebsite, getArticle, publishArticle, type WebsitePublicationState } from "./blog";
 
 /**
@@ -417,7 +418,7 @@ export interface EligiblePublisher {
 }
 
 /** D87: who may manage grants. Checked against the signed-in session, not a caller-supplied id. */
-async function requireGrantAdmin(db: Queryable, actorUserId: string, verb: "grant" | "revoke"): Promise<void> {
+async function requireGrantAdmin(db: Queryable, actorUserId: string, verb: "grant" | "revoke" | "configure"): Promise<void> {
   const { rows } = await db.query<{ session_role: string; actor_role: string | null; same: boolean }>(
     `select app_platform_role() as session_role,
             (select platform_role from staff_users where id = $1 and active) as actor_role,
@@ -426,7 +427,7 @@ async function requireGrantAdmin(db: Queryable, actorUserId: string, verb: "gran
   );
   const row = rows[0];
   if (!row || row.session_role !== "admin" || row.actor_role !== "admin" || !row.same) {
-    throw new PermissionDeniedError(`Only an administrator can ${verb} website publishing access.`);
+    throw new PermissionDeniedError(verb === "configure" ? "Only an administrator can change a website connection." : `Only an administrator can ${verb} website publishing access.`);
   }
 }
 
@@ -537,4 +538,98 @@ export async function revokeWebsitePublisher(db: Queryable, input: { websiteId: 
     clientId: rows[0].client_id, outcome: "success", metadata: { userId: input.userId },
   });
   return true;
+}
+
+// ---------------------------------------------------------------------------
+// D89: the website connection used by Ship to site
+// ---------------------------------------------------------------------------
+
+const BLOG_ROUTE = /^(\/[a-z0-9][a-z0-9-]{0,62})+$/;
+const SECRET = /^[A-Za-z0-9+/=_-]{32,200}$/;
+
+export interface WebsiteConnection {
+  websiteId: string;
+  clientId: string;
+  websiteName: string;
+  websiteUrl: string | null;
+  native: boolean;
+  basePath: string;
+  /** A publish secret has been saved. It does not mean the connection has been tested. */
+  configured: boolean;
+  secretSetAt: Date | null;
+}
+
+export async function getWebsiteConnection(db: Queryable, websiteId: string): Promise<WebsiteConnection | null> {
+  const { rows } = await db.query<{ id: string; client_id: string; name: string; url: string | null; platform: string; blog_base_path: string; secret_set_at: Date | null }>(
+    `select w.id, w.client_id, w.name, w.url, w.platform, w.blog_base_path, p.secret_set_at
+     from websites w left join website_blog_publishing p on p.website_id = w.id
+     where w.id = $1`,
+    [websiteId],
+  );
+  const row = rows[0];
+  if (!row) return null;
+  return {
+    websiteId: row.id, clientId: row.client_id, websiteName: row.name, websiteUrl: row.url, native: isNativeWebsitePlatform(row.platform),
+    basePath: row.blog_base_path, configured: row.secret_set_at !== null, secretSetAt: row.secret_set_at,
+  };
+}
+
+/** The intended public URL of an article: website origin + blog route + slug. */
+export function intendedArticleUrl(websiteUrl: string | null, basePath: string, slug: string | null): string | null {
+  if (!websiteUrl || !slug) return null;
+  try {
+    return `${new URL(websiteUrl).origin}${articlePath(slug, basePath)}`;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Administrator set-up of a website's blog route and, optionally, a new publish secret. The secret
+ * is stored encrypted; leaving it empty keeps the saved one. Nothing here marks the website tested.
+ */
+export async function saveWebsiteConnection(
+  db: Queryable,
+  input: { websiteId: string; basePath: string; secret?: string | null },
+  actorUserId: string,
+): Promise<WebsiteConnection> {
+  await requireGrantAdmin(db, actorUserId, "configure");
+  const site = await getWebsiteConnection(db, input.websiteId);
+  if (!site) throw new BlogRuleError("That website is not available.", "websiteId");
+  if (!site.native) throw new BlogRuleError("Ship to site is available for Next.js websites only.", "websiteId");
+  if (!site.websiteUrl) throw new BlogRuleError("Add the website URL on the client profile first.", "websiteId");
+  const basePath = input.basePath.trim().toLowerCase().replace(/\/$/, "") || "/blog";
+  if (!BLOG_ROUTE.test(basePath)) throw new BlogRuleError("The blog route starts with / and uses lowercase letters, numbers and hyphens, for example /genie-tips.", "basePath");
+  const secret = input.secret?.trim() || null;
+  if (secret && !SECRET.test(secret)) throw new BlogRuleError("The publish secret must be at least 32 characters of letters, numbers, +, /, =, _ or -. Generate one with: openssl rand -base64 32", "secret");
+  if (!secret && !site.configured) throw new BlogRuleError("Paste the publish secret you set as GENIE_WORKS_PUBLISH_SECRET on the website.", "secret");
+  if (secret && !tokenKeyConfigured()) throw new BlogRuleError("ANALYTICS_TOKEN_KEY is not set on this server, so the secret cannot be stored encrypted.", "secret");
+  await db.query("update websites set blog_base_path = $2 where id = $1", [site.websiteId, basePath]);
+  if (secret) {
+    const sealed = encryptSecret(secret);
+    await db.query(
+      `insert into website_blog_publishing (website_id, client_id, configured_by, secret_ciphertext, secret_nonce, secret_key_version, secret_set_at)
+       values ($1, $2, $3, $4, $5, $6, now())
+       on conflict (website_id) do update
+         set configured_by = excluded.configured_by, configured_at = now(), secret_ciphertext = excluded.secret_ciphertext,
+             secret_nonce = excluded.secret_nonce, secret_key_version = excluded.secret_key_version, secret_set_at = now()`,
+      [site.websiteId, site.clientId, actorUserId, sealed.ciphertext, sealed.nonce, sealed.keyVersion],
+    );
+  }
+  await recordAudit(db, {
+    actorType: "staff", actorUserId, action: "blog.website_connection_saved", targetType: "website", targetId: site.websiteId,
+    clientId: site.clientId, outcome: "success", metadata: { basePath, secretReplaced: Boolean(secret) },
+  });
+  return (await getWebsiteConnection(db, site.websiteId))!;
+}
+
+/** Server-only: the decrypted publish secret for a website, or null when none is saved. */
+export async function readPublishSecret(db: Queryable, websiteId: string): Promise<string | null> {
+  const { rows } = await db.query<{ secret_ciphertext: string | null; secret_nonce: string | null }>(
+    "select secret_ciphertext, secret_nonce from website_blog_publishing where website_id = $1",
+    [websiteId],
+  );
+  const row = rows[0];
+  if (!row?.secret_ciphertext || !row.secret_nonce) return null;
+  return decryptSecret(row.secret_ciphertext, row.secret_nonce);
 }

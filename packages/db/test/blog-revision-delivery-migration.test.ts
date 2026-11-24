@@ -73,7 +73,7 @@ describe("migration 0058 (D87)", () => {
     opened.push(db);
     const result = await runMigrations(db.admin);
     expect(result.applied).toContain("0057_blog_website_publishing.sql");
-    expect(result.applied.at(-1)).toBe("0058_blog_revision_delivery.sql");
+    expect(result.applied).toEqual(expect.arrayContaining(["0058_blog_revision_delivery.sql", "0059_blog_publish_secret.sql"]));
     const again = await runMigrations(db.admin);
     expect(again.applied).toEqual([]);
     cleanDigest = await schemaDigest(db);
@@ -156,7 +156,7 @@ describe("migration 0058 (D87)", () => {
     const countsBefore = (await db.admin.query("select (select count(*) from blog_article_versions)::int v, (select count(*) from blog_publications)::int p, (select count(*) from blog_activity)::int a, (select count(*) from blog_deliveries)::int d")).rows[0];
 
     const upgrade = await runMigrations(db.admin);
-    expect(upgrade.applied).toEqual(["0058_blog_revision_delivery.sql"]);
+    expect(upgrade.applied).toEqual(["0058_blog_revision_delivery.sql", "0059_blog_publish_secret.sql"]);
 
     const countsAfter = (await db.admin.query("select (select count(*) from blog_article_versions)::int v, (select count(*) from blog_publications)::int p, (select count(*) from blog_activity)::int a, (select count(*) from blog_deliveries)::int d")).rows[0];
     expect(countsAfter).toEqual(countsBefore);

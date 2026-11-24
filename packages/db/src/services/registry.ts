@@ -55,6 +55,7 @@ export interface WebsiteRow {
   wix_form_key: string | null;
   wix_counts_in_totals: boolean;
   blog_requirements: { author: boolean; category: boolean; featuredImage: boolean; seo: boolean; social: boolean };
+  blog_base_path: string;
   created_at: Date;
   archived_at: Date | null;
 }
