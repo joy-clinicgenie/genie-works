@@ -41,6 +41,13 @@ export const BACKUP_TABLES = [
   "blog_approvals",
   "blog_publications",
   "blog_preview_tokens",
+  // Website publishing (0057, 0058, D87): set-up, website-scoped grants, deliveries, the Publishing history
+  // and the verified live revision. No secret is stored (the publish secret is derived).
+  "website_blog_publishing",
+  "website_publishers",
+  "blog_deliveries",
+  "blog_delivery_attempts",
+  "blog_verified_revisions",
   "account_references",
   "tasks",
   "task_history",

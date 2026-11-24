@@ -702,9 +702,9 @@ async function withdrawVersion(db: Queryable, article: ArticleRow, versionId: st
 }
 
 export async function publishArticle(db: Queryable, id: string, actorUserId: string): Promise<void> {
-  const role = await actorRole(db, actorUserId);
-  if (role !== "admin" && role !== "manager") throw new PermissionDeniedError("Only an admin or manager can publish.");
   const article = await requireArticle(db, id);
+  // D87: publishing is website-scoped. The guard trigger and publication policy check the same predicate.
+  if (!(await canShipWebsite(db, article.website_id))) throw new PermissionDeniedError("You are not authorised to publish to this website.");
   if (!article.native) throw new BlogRuleError("Publishing is not available for this website. Native websites can be published from Genie Works. Wix Blog publishing is not available.");
   if (!article.current_version_id) throw new BlogRuleError("Approve the current version before publishing.");
   if (article.status === "published" && !article.working_status && article.live_version_id === article.current_version_id) return;
@@ -736,9 +736,8 @@ export async function publishArticle(db: Queryable, id: string, actorUserId: str
 }
 
 export async function unpublishArticle(db: Queryable, id: string, actorUserId: string): Promise<void> {
-  const role = await actorRole(db, actorUserId);
-  if (role !== "admin" && role !== "manager") throw new PermissionDeniedError("Only an admin or manager can unpublish.");
   const article = await requireArticle(db, id);
+  if (!(await canShipWebsite(db, article.website_id))) throw new PermissionDeniedError("You are not authorised to unpublish from this website.");
   if (!article.live_version_id) throw new BlogRuleError("This article is not published.");
   const live = await getArticleVersion(db, id, article.live_version_id);
   if (!live) throw new BlogRuleError("This article is not published.");
@@ -1042,4 +1041,10 @@ export async function getPublishedBlogMedia(db: Queryable, websiteId: string, me
   const featured = media.featured_media_id === media.id || media.social_media_id === media.id;
   if (!inBody && !featured) return null;
   return { id: media.id, alt_text: media.alt_text, content_type: media.content_type, byte_size: media.byte_size, storage_key: media.storage_key };
+}
+
+/** D87: an administrator, or an active website_publishers grant for this website. Same predicate as the database. */
+export async function canShipWebsite(db: Queryable, websiteId: string): Promise<boolean> {
+  const { rows } = await db.query<{ ok: boolean }>("select app_can_ship_website($1) as ok", [websiteId]);
+  return rows[0]?.ok === true;
 }
