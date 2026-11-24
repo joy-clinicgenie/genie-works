@@ -5,7 +5,6 @@ import {
   FIXTURE_SECOND_ADMIN,
   FIXTURE_VERSION,
   FIXTURE_WEBSITES,
-  FIXTURE_WIX_BINDING,
   anchorDateSgt,
   fixtureWindows,
   loadPerfFixture,
@@ -50,13 +49,6 @@ describe("performance fixture shape", () => {
     for (const membership of FIXTURE_MEMBERSHIPS) {
       expect(membership.email).toMatch(/@example\.invalid$/);
     }
-  });
-
-  it("binds the Wix form to Clinic B's website with the namespace the schema requires", () => {
-    expect(FIXTURE_WIX_BINDING.websiteId).toBe(FIXTURE_WEBSITES.bProduction.id);
-    expect(FIXTURE_WIX_BINDING.namespace).toBe("wix.form_app.form");
-    expect(FIXTURE_WIX_BINDING.instanceId).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/);
-    expect(FIXTURE_WIX_BINDING.formId).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/);
   });
 
   it("keeps every website URL on example.invalid", () => {

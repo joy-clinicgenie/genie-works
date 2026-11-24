@@ -127,7 +127,7 @@ describe("isolated enquiry follow-up and report recovery", () => {
       });
       expect(verified.mismatches).toEqual([]);
       expect(verified.counts.enquiry_follow_ups).toBe(1);
-      expect(verified.orphans.follow_ups_without_wix_website).toBe(0);
+      expect(verified.orphans.follow_ups_without_website).toBe(0);
       expect(verified.reportArtifacts.restored).toBe(1);
       expect(verified.reportArtifacts.mismatches).toEqual([]);
     } finally {

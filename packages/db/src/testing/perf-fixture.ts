@@ -30,15 +30,6 @@ export const FIXTURE_WEBSITES = {
   bProduction: { id: "b0000000-0000-4000-8000-00000000b001", clientId: FIXTURE_CLIENTS.b.id, name: "Demo Clinic B website", url: "https://demo-clinic-b.example.invalid", platform: "Wix", environment: "production", enquiryKey: "demo-clinic-b-production" },
 } as const;
 
-/** The Wix binding the mock provider answers for. The instance and form ids are fictional. */
-export const FIXTURE_WIX_BINDING = {
-  websiteId: FIXTURE_WEBSITES.bProduction.id,
-  instanceId: "dddddddd-0000-4000-8000-00000000d001",
-  formId: "eeeeeeee-0000-4000-8000-00000000e001",
-  namespace: "wix.form_app.form",
-  formKey: "appointment-enquiry",
-} as const;
-
 /** Clinic scoping. The admin and manager roles are global and need no membership. */
 export const FIXTURE_MEMBERSHIPS = [
   { email: "specialist-a@example.invalid", clientId: FIXTURE_CLIENTS.a.id },
@@ -242,15 +233,6 @@ async function insertWebsitesAndForms(db: pg.PoolClient, actor: string): Promise
       [site.id, site.clientId, site.name, site.url, site.platform, site.environment, site.enquiryKey],
     );
   }
-  // enquiry_source must move to 'wix' in the same statement: websites_wix_binding_shape requires the
-  // whole binding to be present together.
-  await db.query(
-    `update websites
-     set enquiry_source = 'wix', wix_instance_id = $2, wix_form_id = $3, wix_form_namespace = $4,
-         wix_form_key = $5, wix_counts_in_totals = true
-     where id = $1`,
-    [FIXTURE_WIX_BINDING.websiteId, FIXTURE_WIX_BINDING.instanceId, FIXTURE_WIX_BINDING.formId, FIXTURE_WIX_BINDING.namespace, FIXTURE_WIX_BINDING.formKey],
-  );
   // Two active forms and one proposed-inactive form on Clinic A, one on Clinic B.
   const forms: Array<[string, string, string, string, boolean, string]> = [
     [FIXTURE_WEBSITES.aProduction.id, FIXTURE_CLIENTS.a.id, "appointment-enquiry", "Appointment enquiry", true, "applied"],

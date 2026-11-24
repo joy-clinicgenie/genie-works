@@ -48,7 +48,7 @@ export interface WebsiteRow {
   status: "active" | "archived";
   notes: string | null;
   enquiry_key: string | null;
-  enquiry_source: "database" | "wix";
+  enquiry_source: "database" | "wix" | "supabase";
   wix_instance_id: string | null;
   wix_form_id: string | null;
   wix_form_namespace: string | null;

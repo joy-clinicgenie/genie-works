@@ -2,7 +2,7 @@
 
 import { useActionState, useState } from "react";
 import { ACCOUNT_REFERENCE_KINDS, CLIENT_CHANNELS } from "@clinic-genie/contracts";
-import { createClientAction, deleteClientAction, removeWebsiteAction, saveContactAction, saveFileLinkAction, saveReferenceAction, saveWebsiteAction, saveWixEnquiryBindingAction, updateClientAction } from "@/app/actions/clients";
+import { createClientAction, deleteClientAction, removeWebsiteAction, saveContactAction, saveFileLinkAction, saveReferenceAction, saveWebsiteAction, saveEnquirySourceAction, updateClientAction } from "@/app/actions/clients";
 import type { ActionState } from "@/lib/actions";
 import { Button } from "@/components/ui/Button";
 import { Checkbox, Field, FormError, Input, Select, Textarea } from "@/components/ui/Field";
@@ -175,7 +175,7 @@ export function ContactForm({ clientId, values }: { clientId: string; values?: {
   );
 }
 
-export function WebsiteForm({ clientId, clientSlug, admin = false, values }: { clientId: string; clientSlug: string; admin?: boolean; values?: { id: string; name: string; url: string | null; platform: string; environment: string; status: string; notes: string | null; enquiry_key?: string | null; enquiry_source?: string; wix_instance_id?: string | null; wix_form_id?: string | null; wix_form_key?: string | null; blog_requirements?: { author?: boolean; category?: boolean; featuredImage?: boolean; seo?: boolean; social?: boolean } } }) {
+export function WebsiteForm({ clientId, clientSlug, admin = false, values }: { clientId: string; clientSlug: string; admin?: boolean; values?: { id: string; name: string; url: string | null; platform: string; environment: string; status: string; notes: string | null; enquiry_key?: string | null; enquiry_source?: string; blog_requirements?: { author?: boolean; category?: boolean; featuredImage?: boolean; seo?: boolean; social?: boolean } } }) {
   const [state, action, pending] = useActionState(saveWebsiteAction, null);
   const [name, setName] = useState(values?.name ?? "");
   const [url, setUrl] = useState(values?.url ?? "");
@@ -241,8 +241,7 @@ export function WebsiteForm({ clientId, clientSlug, admin = false, values }: { c
       <FormError state={banner(state)} />
       <Button type="submit" variant={values ? "secondary" : "primary"} size="sm" disabled={pending} aria-busy={pending} data-form-submit="">{pending ? "Saving…" : values ? "Save website" : "Add website"}</Button>
     </form>
-    {/* D82: the Wix form section belongs only to Wix websites, or to one that already has a Wix form to clear. */}
-    {values && (/wix/i.test(values.platform) || values.enquiry_source === "wix") && <WixBindingForm clientId={clientId} websiteId={values.id} admin={admin} source={values.enquiry_source ?? "database"} instanceId={values.wix_instance_id ?? ""} formId={values.wix_form_id ?? ""} formKey={values.wix_form_key ?? ""} />}
+    {values && values.status !== "archived" && <EnquirySourceForm clientId={clientId} websiteId={values.id} admin={admin} source={values.enquiry_source ?? "database"} />}
     {values && values.status !== "archived" && <RemoveWebsiteForm clientId={clientId} websiteId={values.id} name={values.name} />}
     </>
   );
@@ -302,39 +301,36 @@ export function DeleteClientForm({ clientId, name }: { clientId: string; name: s
   );
 }
 
-function WixBindingForm({ clientId, websiteId, admin, source, instanceId, formId, formKey }: { clientId: string; websiteId: string; admin: boolean; source: string; instanceId: string; formId: string; formKey: string }) {
-  const [state, action, pending] = useActionState(saveWixEnquiryBindingAction, null);
-  const [instance, setInstance] = useState(instanceId);
-  const [form, setForm] = useState(formId);
-  const [key, setKey] = useState(formKey);
+const ENQUIRY_SOURCE_LABEL: Record<string, string> = {
+  database: "Its own enquiry database",
+  supabase: "Clinic Genie website contact form (Supabase)",
+  wix: "Wix form (no longer read)",
+};
+
+/** D85. Where this website's enquiries are read from. Administrators change it; at most one website reads the Supabase contact form. */
+function EnquirySourceForm({ clientId, websiteId, admin, source }: { clientId: string; websiteId: string; admin: boolean; source: string }) {
+  const [state, action, pending] = useActionState(saveEnquirySourceAction, null);
+  const [value, setValue] = useState(source === "supabase" ? "supabase" : "database");
   const err = (field: string) => (state && !state.ok && state.field === field ? state.error : null);
   if (!admin) {
-    return <p className="text-xs text-muted">{source === "wix" ? "An administrator has connected one Wix form. Answers stay at Wix." : "An administrator can connect one Wix form. Answers stay at Wix, and this website currently reads its enquiry database."}</p>;
+    return <p className="text-xs text-muted">Enquiry source: {ENQUIRY_SOURCE_LABEL[source] ?? ENQUIRY_SOURCE_LABEL.database}. An administrator can change it.</p>;
   }
   return (
-    <form action={action} className="space-y-4 border-t border-line pt-4" data-edit-form="Wix form">
+    <form action={action} className="space-y-4 border-t border-line pt-4" data-edit-form="Enquiry source">
       <input type="hidden" name="clientId" value={clientId} />
       <input type="hidden" name="websiteId" value={websiteId} />
       <div>
-        <h3 className="text-sm font-semibold">Wix form</h3>
-        <p className="text-xs text-muted">Stores the site id, form id and form key for this website. The namespace is wix.form_app.form. Answers are not copied. This does not approve a live connection.</p>
+        <h3 className="text-sm font-semibold">Enquiry source</h3>
+        <p className="text-xs text-muted">Where Enquiries reads this website&apos;s form submissions. Submissions are read live and not copied.{source === "wix" && " This website was connected to a Wix form, which is no longer read."}</p>
       </div>
-      <div className="grid gap-4 sm:grid-cols-2">
-        <Field label="Wix site id" htmlFor={`wix-instance-${websiteId}`} error={err("instanceId")}>
-          <Input id={`wix-instance-${websiteId}`} name="instanceId" value={instance} onChange={(e) => setInstance(e.target.value)} maxLength={36} autoComplete="off" spellCheck={false} {...describedBy(`wix-instance-${websiteId}`, err("instanceId"))} />
-        </Field>
-        <Field label="Wix form id" htmlFor={`wix-form-${websiteId}`} error={err("formId")}>
-          <Input id={`wix-form-${websiteId}`} name="formId" value={form} onChange={(e) => setForm(e.target.value)} maxLength={36} autoComplete="off" spellCheck={false} {...describedBy(`wix-form-${websiteId}`, err("formId"))} />
-        </Field>
-        <Field label="Form key" htmlFor={`wix-key-${websiteId}`} hint="For example contact. Not the visitor's message." error={err("formKey")}>
-          <Input id={`wix-key-${websiteId}`} name="formKey" value={key} onChange={(e) => setKey(e.target.value)} maxLength={64} {...describedBy(`wix-key-${websiteId}`, err("formKey"), true)} />
-        </Field>
-      </div>
+      <Field label="Read enquiries from" htmlFor={`enquiry-source-${websiteId}`} error={err("enquirySource")}>
+        <Select id={`enquiry-source-${websiteId}`} name="enquirySource" value={value} onChange={(e) => setValue(e.target.value)} {...describedBy(`enquiry-source-${websiteId}`, err("enquirySource"))}>
+          <option value="database">{ENQUIRY_SOURCE_LABEL.database}</option>
+          <option value="supabase">{ENQUIRY_SOURCE_LABEL.supabase}</option>
+        </Select>
+      </Field>
       <FormError state={banner(state)} />
-      <div className="flex flex-wrap gap-2">
-        <Button type="submit" name="binding" value="wix" variant="secondary" size="sm" disabled={pending} aria-busy={pending} data-form-submit="">{pending ? "Saving…" : "Connect Wix form"}</Button>
-        {source === "wix" && <Button type="submit" name="binding" value="database" variant="ghost" size="sm" disabled={pending} data-direct="">Use the enquiry database</Button>}
-      </div>
+      <Button type="submit" variant="secondary" size="sm" disabled={pending} aria-busy={pending} data-form-submit="">{pending ? "Saving…" : "Save enquiry source"}</Button>
     </form>
   );
 }

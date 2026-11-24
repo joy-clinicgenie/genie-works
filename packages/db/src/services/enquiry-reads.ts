@@ -2,7 +2,7 @@ import type { Queryable } from "../client";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-export type EnquiryReadSource = "database" | "wix";
+export type EnquiryReadSource = "database" | "wix" | "supabase";
 
 /** Records the first open. A later open keeps the original row. Follow-up status is not changed. */
 export async function markEnquiryRead(
@@ -13,7 +13,7 @@ export async function markEnquiryRead(
   const clientId = input.clientId.toLowerCase();
   const userId = input.userId.toLowerCase();
   if (!UUID.test(externalId) || !UUID.test(clientId) || !UUID.test(userId)) return false;
-  if (input.source !== "database" && input.source !== "wix") return false;
+  if (input.source !== "database" && input.source !== "wix" && input.source !== "supabase") return false;
   const result = await db.query(
     `insert into enquiry_reads (client_id, external_id, source, read_by)
      values ($1, $2, $3, $4)

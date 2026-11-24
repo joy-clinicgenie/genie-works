@@ -2,16 +2,13 @@ import { randomBytes } from "node:crypto";
 import { afterAll, describe, expect, it } from "vitest";
 import { applyContext } from "../src/client";
 import { adminPool, appPool, asContext, staffByEmail, staffCtx } from "./helpers";
-import { bindWixEnquiryForm, clearWixEnquiryForm } from "../src/services/wix-enquiry-binding";
+import { setWebsiteEnquirySource } from "../src/services/enquiry-source";
 import { assertEnquiryKeyForSlug, createClient, createWebsite, enquiryKeyForClient, setWebsiteEnquiryKey } from "../src/services/registry";
 
 afterAll(async () => {
   await adminPool.end();
   await appPool.end();
 });
-
-const INSTANCE = "00000000-0000-4000-8000-0000000000b1";
-const FORM = "00000000-0000-4000-8000-0000000000b2";
 
 describe("enquiry source binding", () => {
   it("builds a client-scoped key and refuses another clinic's key", () => {
@@ -22,7 +19,7 @@ describe("enquiry source binding", () => {
     expect(() => assertEnquiryKeyForSlug("fixture-source", "fixture-source-production")).not.toThrow();
   });
 
-  it("assigns the native key, keeps it on this client, and lets only an administrator connect a Wix form", async () => {
+  it("assigns the native key, keeps it on this client, and lets only an administrator change the enquiry source", async () => {
     const admin = await staffByEmail("admin@example.invalid");
     const manager = await staffByEmail("manager@example.invalid");
     const specialist = await staffByEmail("specialist-a@example.invalid");
@@ -57,45 +54,34 @@ describe("enquiry source binding", () => {
 
       await applyContext(db, staffCtx(manager));
       await setWebsiteEnquiryKey(db, first.id, client.id, `${slug}-manager`, manager.id);
-      await db.query("savepoint manager_bind");
-      await expect(bindWixEnquiryForm(db, {
-        clientId: client.id, websiteId: first.id, instanceId: INSTANCE, formId: FORM, formKey: "contact",
-      }, manager.id)).rejects.toThrow(/administrator/i);
-      await db.query("rollback to savepoint manager_bind");
+      await db.query("savepoint manager_source");
+      await expect(setWebsiteEnquirySource(db, { clientId: client.id, websiteId: first.id, source: "supabase" }, manager.id)).rejects.toThrow(/administrator/i);
+      await db.query("rollback to savepoint manager_source");
 
       await applyContext(db, staffCtx(admin));
-      await bindWixEnquiryForm(db, {
-        clientId: client.id, websiteId: first.id, instanceId: INSTANCE, formId: FORM, formKey: "contact",
-      }, admin.id);
-      const bound = (await db.query<{ enquiry_source: string; wix_form_namespace: string; wix_counts_in_totals: boolean }>(
-        "select enquiry_source, wix_form_namespace, wix_counts_in_totals from websites where id = $1",
+      await expect(setWebsiteEnquirySource(db, { clientId: client.id, websiteId: first.id, source: "wix" }, admin.id)).rejects.toThrow(/Choose where/);
+      await expect(setWebsiteEnquirySource(db, { clientId: other.id, websiteId: first.id, source: "supabase" }, admin.id)).rejects.toThrow(/not available/);
+      // Any website already reading Supabase in the shared dev database is moved aside inside this rolled-back transaction.
+      await db.query("update websites set enquiry_source = 'database' where enquiry_source = 'supabase'");
+      await setWebsiteEnquirySource(db, { clientId: client.id, websiteId: first.id, source: "supabase" }, admin.id);
+      expect((await db.query<{ enquiry_source: string }>("select enquiry_source from websites where id = $1", [first.id])).rows[0]?.enquiry_source).toBe("supabase");
+      const audit = (await db.query<{ metadata: { source: string } }>(
+        "select metadata from audit_events where action = 'enquiry_source.set' and target_id = $1",
         [first.id],
-      )).rows[0];
-      expect(bound).toEqual({ enquiry_source: "wix", wix_form_namespace: "wix.form_app.form", wix_counts_in_totals: false });
-      expect((await db.query<{ n: number }>("select count(*)::int as n from enquiry_follow_ups where website_id = $1", [first.id])).rows[0]?.n).toBe(0);
+      )).rows;
+      expect(audit.map((row) => row.metadata.source)).toEqual(["supabase"]);
 
-      const staging = await createWebsite(db, { clientId: client.id, name: "Staging", url: "https://source-three.example.invalid", platform: "Next.js", environment: "staging", notes: null }, admin.id);
-      await db.query("savepoint duplicate_form");
-      await expect(bindWixEnquiryForm(db, {
-        clientId: client.id, websiteId: staging.id, instanceId: INSTANCE, formId: FORM, formKey: "contact",
-      }, admin.id)).rejects.toThrow(/already connected/);
-      await db.query("rollback to savepoint duplicate_form");
-      await expect(bindWixEnquiryForm(db, {
-        clientId: other.id, websiteId: first.id, instanceId: "00000000-0000-4000-8000-0000000000b3", formId: "00000000-0000-4000-8000-0000000000b4", formKey: "contact",
-      }, admin.id)).rejects.toThrow(/not available/);
+      await db.query("savepoint second_supabase");
+      await expect(setWebsiteEnquirySource(db, { clientId: client.id, websiteId: second.id, source: "supabase" }, admin.id)).rejects.toThrow(/already reads/);
+      await db.query("rollback to savepoint second_supabase");
 
-      await db.query("savepoint manager_clear");
-      await applyContext(db, staffCtx(manager));
-      await expect(clearWixEnquiryForm(db, { clientId: client.id, websiteId: first.id }, manager.id)).rejects.toThrow(/administrator/i);
-      await db.query("rollback to savepoint manager_clear");
-
-      await applyContext(db, staffCtx(admin));
-      await clearWixEnquiryForm(db, { clientId: client.id, websiteId: first.id }, admin.id);
-      const cleared = (await db.query<{ enquiry_source: string; wix_form_id: string | null }>(
-        "select enquiry_source, wix_form_id from websites where id = $1",
-        [first.id],
-      )).rows[0];
-      expect(cleared).toEqual({ enquiry_source: "database", wix_form_id: null });
+      await setWebsiteEnquirySource(db, { clientId: client.id, websiteId: first.id, source: "database" }, admin.id);
+      await setWebsiteEnquirySource(db, { clientId: client.id, websiteId: second.id, source: "supabase" }, admin.id);
+      const sources = (await db.query<{ id: string; enquiry_source: string }>(
+        "select id, enquiry_source from websites where id = any($1::uuid[]) order by name",
+        [[first.id, second.id]],
+      )).rows.map((row) => row.enquiry_source);
+      expect(sources).toEqual(["database", "supabase"]);
     });
   });
 });

@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { canEditClient, getClientBySlug, recordAudit, recordEnquiryStatusEvent, setWixEnquiryFollowUp } from "@clinic-genie/db";
+import { canEditClient, getClientBySlug, recordAudit, recordEnquiryStatusEvent, setSupabaseEnquiryFollowUp } from "@clinic-genie/db";
 import { requireAccess } from "@/lib/session";
 import { staffTx } from "@/lib/db";
 import { canRetryNotifications, enquiryConnection, enquiryUnavailableCopy, getFormSubmission, retryNotification, submissionClinicScope, submissionEditScope, submissionStatus, updateEnquiryStatus } from "@/lib/form-submissions";
@@ -57,11 +57,9 @@ export async function updateEnquiryStatusAction(_prev: ActionState, form: FormDa
   if (!client || !canEditClient(access, client.id)) return { ok: false, error: "You do not have permission to change follow-up status." };
   if (editScope && !editScope.includes(current.clinicId)) return { ok: false, error: "You do not have permission to change follow-up status." };
   if (fromStatus !== toStatus) {
-    if (current.source === "wix") {
-      if (!current.websiteKey) return { ok: false, error: "That enquiry is not available." };
-      const saved = await staffTx(access, (db) => setWixEnquiryFollowUp(db, {
+    if (current.source === "supabase") {
+      const saved = await staffTx(access, (db) => setSupabaseEnquiryFollowUp(db, {
         externalId: id,
-        enquiryKey: current.websiteKey,
         fromStatus,
         toStatus,
         scope: editScope,

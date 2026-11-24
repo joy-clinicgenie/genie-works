@@ -204,6 +204,37 @@ export function assertEnquirySourceUrl(url: string): { host: string; port: strin
   return { host: fixture.host, port: fixture.port, database: fixture.database, live: false };
 }
 
+/**
+ * D85. The Supabase contact-form source. Only a dedicated read-only role is accepted: the Supabase
+ * owner (`postgres`, or `postgres.<project>` through the pooler) and the service role are refused,
+ * as are the sibling clinic database and the platform's own database. A local host is accepted only
+ * under Vitest, where a disposable fixture stands in for Supabase.
+ */
+export function assertSupabaseEnquiryUrl(url: string, env: Record<string, string | undefined> = process.env): { host: string; database: string } {
+  const target = parsed(url);
+  const database = decodeURIComponent(target.pathname.replace(/^\//, ""));
+  const user = decodeURIComponent(target.username);
+  if (target.port === SIBLING_CLINIC_PORT) {
+    throw new Error("Refusing Supabase enquiry source: port 54329 is the sibling clinic website database.");
+  }
+  if (!/^[a-z0-9_]+$/.test(database)) {
+    throw new Error("Refusing Supabase enquiry source: the database name is not a plain identifier.");
+  }
+  if (!user || /^(postgres|supabase_admin|service_role)(\.|$)/.test(user)) {
+    throw new Error("Refusing Supabase enquiry source: use the read-only enquiry role, not the owner or service role.");
+  }
+  if (LOCAL_HOSTS.has(target.hostname) && !env.VITEST) {
+    throw new Error("Refusing Supabase enquiry source: a local host is only used by tests.");
+  }
+  for (const name of ["DATABASE_URL", "DATABASE_ADMIN_URL", "ENQUIRY_DATABASE_URL"]) {
+    const other = env[name];
+    if (other && sameDatabase(other, url)) {
+      throw new Error(`Refusing Supabase enquiry source: the target is the same database as ${name}.`);
+    }
+  }
+  return { host: LOCAL_HOSTS.has(target.hostname) ? "local" : "remote", database };
+}
+
 function sameDatabase(left: string, right: string): boolean {
   try {
     const a = new URL(left);
@@ -257,43 +288,4 @@ export function maintenanceUrl(adminUrl: string): string {
   const target = new URL(adminUrl);
   target.pathname = "/postgres";
   return target.toString();
-}
-
-/** The real Wix Forms API. Nothing but an explicitly approved local mock may replace it. */
-export const WIX_API_BASE_URL = "https://www.wixapis.com";
-
-/**
- * Resolves the Wix Forms API origin. The default is always the real provider.
- *
- * `FORMS_WIX_BASE_URL` redirects Wix reads at a local mock so enquiry pages can be measured without
- * contacting a production Wix account. Three things must all hold, or the override is refused:
- *
- * 1. The mock host is local.
- * 2. `VERCEL_ENV` is unset, so nothing deployed can use it whatever its value.
- * 3. `DATABASE_URL` is a local database, which is the same "local rehearsal" test
- *    `localRehearsalDatabase` already applies to development sign-in links.
- *
- * NODE_ENV is deliberately not the gate: `next start` sets it to production for a local production
- * build, which is exactly the build a baseline needs to measure. The database check is the stronger
- * signal, because a process pointed at the shared database is refused even when it looks local.
- */
-export function resolveWixApiBaseUrl(env: Record<string, string | undefined> = process.env): string {
-  const override = env.FORMS_WIX_BASE_URL?.trim();
-  if (!override) return WIX_API_BASE_URL;
-  if (env.VERCEL_ENV) {
-    throw new Error("Refusing FORMS_WIX_BASE_URL: a Wix mock is not available in a hosted environment.");
-  }
-  if (isSharedDatabaseUrl(env.DATABASE_URL ?? "")) {
-    throw new Error("Refusing FORMS_WIX_BASE_URL: a Wix mock is only available alongside a local database.");
-  }
-  let parsed: URL;
-  try {
-    parsed = new URL(override);
-  } catch {
-    throw new Error("Refusing FORMS_WIX_BASE_URL: the value is not a valid URL.");
-  }
-  if (!LOCAL_HOSTS.has(parsed.hostname)) {
-    throw new Error("Refusing FORMS_WIX_BASE_URL: the mock host is not local.");
-  }
-  return override.replace(/\/$/, "");
 }

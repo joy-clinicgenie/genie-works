@@ -2,7 +2,7 @@ import { randomBytes } from "node:crypto";
 import pg from "pg";
 import { assertEnquirySourceUrl, canManageRegistry, enquiryStatusCountQuery, formatDateTime, setEnquiryFollowUp, todaySgt, websiteFormConfigPresent, type AccessProfile } from "@clinic-genie/db";
 import { customWindow, periodRange } from "@/lib/period-range";
-import { countWixEnquiryStatuses, loadWixEnquirySlice, readWixEnquiryDetail, type WixEnquirySlice } from "@/lib/wix-enquiries";
+import { NO_EXTERNAL, countSupabaseEnquiryStatuses, loadSupabaseEnquirySlice, readSupabaseEnquiryDetail, type ExternalEnquirySlice } from "@/lib/supabase-enquiries";
 
 const STATUSES = ["new", "acknowledged", "closed"] as const;
 export type SubmissionStatus = (typeof STATUSES)[number];
@@ -42,7 +42,7 @@ export interface SubmissionListItem {
   contactNumber?: string | null;
   email?: string | null;
   notificationDelivery?: "unavailable";
-  source?: "database" | "wix";
+  source?: "database" | "supabase";
 }
 
 export interface SubmissionDetail extends SubmissionListItem {
@@ -54,6 +54,8 @@ export interface SubmissionDetail extends SubmissionListItem {
   preferredTimeWindow: string | null;
   formVersion: number;
   notification: ClinicNotification | null;
+  /** The clinic name typed into the website contact form (Supabase connector only). */
+  organisation?: string | null;
 }
 
 export interface SubmissionClinic {
@@ -238,7 +240,7 @@ export function pageHandledEnquiries(
 
 /** The read connector. It is not the visitor attribution source. */
 export function enquiryConnectorLabel(source: SubmissionListItem["source"]): string {
-  return source === "wix" ? "Wix Forms" : "Website database";
+  return source === "supabase" ? "Website contact form" : "Website database";
 }
 
 /** Two connectors can use the same external id without becoming one enquiry. */
@@ -300,7 +302,7 @@ export function notificationBoundary(input: {
 }
 
 export function enquiryUnavailableCopy(connection: { configured: boolean; refused: boolean }, fallback: string): string {
-  if (connection.refused) return "The enquiry database target was refused before any read or write. Nothing was changed. A Wix form is a separate connection.";
+  if (connection.refused) return "The enquiry database target was refused before any read or write. Nothing was changed. The website contact form in Supabase is a separate connection.";
   return fallback;
 }
 
@@ -505,7 +507,7 @@ export async function submissionStatusCounts(
 
 export function combineEnquiryCounts(
   database: { connected: true; counts: Record<SubmissionStatus, number> } | { connected: false },
-  wix: { configured: boolean; failed: boolean; counts: Record<SubmissionStatus, number> },
+  external: { configured: boolean; failed: boolean; counts: Record<SubmissionStatus, number> },
 ): { connected: true; counts: Record<SubmissionStatus, number> } | { connected: false } {
   const counts: Record<SubmissionStatus, number> = { new: 0, acknowledged: 0, closed: 0 };
   let connected = false;
@@ -513,32 +515,32 @@ export function combineEnquiryCounts(
     connected = true;
     for (const status of STATUSES) counts[status] += database.counts[status];
   }
-  const wixTotal = STATUSES.reduce((sum, status) => sum + wix.counts[status], 0);
-  if (wix.configured && (!wix.failed || wixTotal > 0)) {
+  const externalTotal = STATUSES.reduce((sum, status) => sum + external.counts[status], 0);
+  if (external.configured && (!external.failed || externalTotal > 0)) {
     connected = true;
-    for (const status of STATUSES) counts[status] += wix.counts[status];
+    for (const status of STATUSES) counts[status] += external.counts[status];
   }
   return connected ? { connected: true, counts } : { connected: false };
 }
 
-/** Database submissions plus production Wix forms. The result is counts only. */
+/** Database submissions plus the website contact form in Supabase. The result is counts only. */
 export async function dashboardEnquiryCounts(
   access: AccessProfile,
   scope: string[] | null,
   window?: { from?: string | null; to?: string | null; clinicId?: string | null },
-): Promise<{ connected: true; counts: Record<SubmissionStatus, number>; wixNotice: string | null } | { connected: false; wixNotice: string | null }> {
-  const [database, wix] = await Promise.all([
+): Promise<{ connected: true; counts: Record<SubmissionStatus, number>; sourceNotice: string | null } | { connected: false; sourceNotice: string | null }> {
+  const [database, external] = await Promise.all([
     submissionStatusCounts(scope, window),
-    countWixEnquiryStatuses(access, scope, window).catch(() => ({
+    countSupabaseEnquiryStatuses(access, scope, window).catch(() => ({
       configured: true,
       failed: true,
-      notice: "A Wix form could not be read. Other websites are unchanged. Nothing was copied.",
+      notice: "The website contact form could not be read from Supabase. Other enquiries are unchanged.",
       counts: { new: 0, acknowledged: 0, closed: 0 } satisfies Record<SubmissionStatus, number>,
     })),
   ]);
-  const combined = combineEnquiryCounts(database, wix);
-  if (!combined.connected) return { connected: false, wixNotice: wix.notice };
-  return { connected: true, counts: combined.counts, wixNotice: wix.notice };
+  const combined = combineEnquiryCounts(database, external);
+  if (!combined.connected) return { connected: false, sourceNotice: external.notice };
+  return { connected: true, counts: combined.counts, sourceNotice: external.notice };
 }
 
 export async function notificationAttention(scope: string[] | null, clinicId?: string | null): Promise<{ connected: true; pending: number; failed: number; unconfigured: number } | { connected: false }> {
@@ -593,16 +595,14 @@ function rollup(rows: Array<{ period: string; key: string; label: string; count:
     .map((row) => ({ ...row, label: keyName === "form" ? formName(row.label) : keyName === "source" ? sourceLabel(row.label) : row.label || "Not recorded" }));
 }
 
-const NO_WIX: WixEnquirySlice = { configured: false, failed: false, notice: null, current: [], productionPrevious: [] };
-
 function pageEnquiryItems(items: SubmissionListItem[], paging: { limit: number | null; offset: number; page: number }): { items: SubmissionListItem[]; total: number; page: number; pageSize: number } {
   const sorted = [...items].sort((a, b) => b.submittedAt.getTime() - a.submittedAt.getTime() || a.reference.localeCompare(b.reference));
   const slice = paging.limit === null ? sorted : sorted.slice(paging.offset, paging.offset + paging.limit);
   return { items: slice, total: sorted.length, page: paging.page, pageSize: paging.limit ?? ENQUIRY_PAGE_SIZE };
 }
 
-function boardFromWix(wix: WixEnquirySlice, paging: { limit: number | null; offset: number; page: number }, window?: EnquiryWindow): EnquiryBoard {
-  const paged = pageEnquiryItems(wix.current, paging);
+function boardFromExternal(external: ExternalEnquirySlice, paging: { limit: number | null; offset: number; page: number }, window?: EnquiryWindow): EnquiryBoard {
+  const paged = pageEnquiryItems(external.current, paging);
   const board: EnquiryBoard = {
     connected: true,
     items: paged.items,
@@ -613,30 +613,30 @@ function boardFromWix(wix: WixEnquirySlice, paging: { limit: number | null; offs
     websites: [],
     currentTotal: 0,
     previousTotal: 0,
-    sourceNotice: wix.notice,
+    sourceNotice: external.notice,
     breakdowns: { client: [], website: [], form: [], source: [] },
   };
-  rememberEnquirySites(board, wix.current);
-  addWixProduction(board, wix, window);
+  rememberEnquirySites(board, external.current);
+  addExternalProduction(board, external, window);
   return board;
 }
 
-function mergeWixBoard(
+function mergeExternalBoard(
   board: EnquiryBoard,
   dbItems: SubmissionListItem[],
-  wix: WixEnquirySlice,
+  external: ExternalEnquirySlice,
   paging: { limit: number | null; offset: number; page: number },
   window?: EnquiryWindow,
 ): EnquiryBoard {
   const seen = new Set(dbItems.map((item) => enquiryIdentity(item)));
-  const paged = pageEnquiryItems([...dbItems, ...wix.current.filter((item) => !seen.has(enquiryIdentity(item)))], paging);
+  const paged = pageEnquiryItems([...dbItems, ...external.current.filter((item) => !seen.has(enquiryIdentity(item)))], paging);
   board.items = paged.items;
   board.total = paged.total;
   board.page = paged.page;
   board.pageSize = paged.pageSize;
-  rememberEnquirySites(board, wix.current);
-  addWixProduction(board, wix, window);
-  board.sourceNotice = wix.notice;
+  rememberEnquirySites(board, external.current);
+  addExternalProduction(board, external, window);
+  board.sourceNotice = external.notice;
   return board;
 }
 
@@ -647,19 +647,19 @@ function rememberEnquirySites(board: EnquiryBoard, items: SubmissionListItem[]):
   }
 }
 
-function addWixProduction(board: EnquiryBoard, wix: WixEnquirySlice, window?: EnquiryWindow): void {
+function addExternalProduction(board: EnquiryBoard, external: ExternalEnquirySlice, window?: EnquiryWindow): void {
   if (!window) return;
-  const current = wix.current.filter((item) => !item.isSynthetic);
+  const current = external.current.filter((item) => !item.isSynthetic);
   board.currentTotal += current.length;
-  board.previousTotal += wix.productionPrevious.length;
-  for (const item of current) addWixBreakdown(board, item, "current");
-  for (const item of wix.productionPrevious) addWixBreakdown(board, item, "previous");
+  board.previousTotal += external.productionPrevious.length;
+  for (const item of current) addExternalBreakdown(board, item, "current");
+  for (const item of external.productionPrevious) addExternalBreakdown(board, item, "previous");
   for (const key of ["client", "website", "form", "source"] as const) {
     board.breakdowns[key].sort((a, b) => b.current - a.current || a.label.localeCompare(b.label));
   }
 }
 
-function addWixBreakdown(
+function addExternalBreakdown(
   board: EnquiryBoard,
   item: { clinicId: string; clinicName: string; websiteKey: string | null; formKey: string; attributionSource: string },
   period: "current" | "previous",
@@ -688,8 +688,8 @@ function bumpBreakdown(rows: EnquiryBreakdownRow[], key: string, label: string, 
 
 export async function listEnquiryBoard(scope: string[] | null, filters: EnquiryFilters, window?: EnquiryWindow, access?: AccessProfile): Promise<EnquiryBoard> {
   const paging = enquiryPage(filters.page ?? 1, filters.pageSize ?? ENQUIRY_PAGE_SIZE);
-  const wix = access ? await loadWixEnquirySlice(access, scope, filters, window) : NO_WIX;
-  const sqlPaging = wix.configured ? { limit: null, offset: 0, page: paging.page } : paging;
+  const external = access ? await loadSupabaseEnquirySlice(access, scope, filters, window).catch(() => ({ ...NO_EXTERNAL, configured: true, failed: true, notice: "The website contact form could not be read from Supabase. Other enquiries are unchanged." })) : NO_EXTERNAL;
+  const sqlPaging = external.configured ? { limit: null, offset: 0, page: paging.page } : paging;
   const currentDates = window ? { from: window.from, to: window.to } : undefined;
   const listProduction = true;
   const listWhere = enquiryWhere(scope, filters, currentDates, listProduction);
@@ -707,8 +707,8 @@ export async function listEnquiryBoard(scope: string[] | null, filters: EnquiryF
     listParams,
   );
   if (!rows) {
-    if (wix.configured && (!wix.failed || wix.current.length > 0)) return boardFromWix(wix, paging, window);
-    return { connected: false, items: [], total: 0, page: 1, pageSize: paging.limit ?? ENQUIRY_PAGE_SIZE, clinics: [], websites: [], currentTotal: 0, previousTotal: 0, sourceNotice: wix.notice, breakdowns: { client: [], website: [], form: [], source: [] } };
+    if (external.configured && (!external.failed || external.current.length > 0)) return boardFromExternal(external, paging, window);
+    return { connected: false, items: [], total: 0, page: 1, pageSize: paging.limit ?? ENQUIRY_PAGE_SIZE, clinics: [], websites: [], currentTotal: 0, previousTotal: 0, sourceNotice: external.notice, breakdowns: { client: [], website: [], form: [], source: [] } };
   }
   const countWhere = enquiryWhere(scope, filters, currentDates, listProduction);
   const countRows = await readEnquiry<{ count: number }>(
@@ -779,11 +779,11 @@ export async function listEnquiryBoard(scope: string[] | null, filters: EnquiryF
     websites: (websites ?? []).map((site) => ({ key: site.website_key, clinicId: site.clinic_id })),
     currentTotal,
     previousTotal,
-    sourceNotice: wix.notice,
+    sourceNotice: external.notice,
     breakdowns,
   };
-  if (!wix.configured) return board;
-  return mergeWixBoard(board, board.items, wix, paging, window);
+  if (!external.configured) return board;
+  return mergeExternalBoard(board, board.items, external, paging, window);
 }
 
 export async function listFormSubmissions(scope: string[] | null, filters: EnquiryFilters = {}): Promise<EnquiryBoard> {
@@ -820,9 +820,9 @@ export async function getFormSubmission(scope: string[] | null, id: string, acce
     };
   }
   if (access) {
-    const wix = await readWixEnquiryDetail(access, scope, submissionId);
-    if (wix.detail) return wix.detail;
-    if (wix.failed) return "unavailable";
+    const external = await readSupabaseEnquiryDetail(access, scope, submissionId);
+    if (external.detail) return external.detail;
+    if (external.failed) return "unavailable";
   }
   if (!rows) return "unavailable";
   return null;

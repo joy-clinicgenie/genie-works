@@ -1,23 +1,21 @@
 /**
  * Signed-in performance baselines against the isolated `perf` suite.
  *
- * It starts the local Wix mock, starts a production build of the platform against the isolated
- * databases, signs in with the suite's own session helper, and measures each page. Nothing touches a
- * shared or production database, and Wix reads never leave this machine.
+ * It starts a production build of the platform against the isolated databases, signs in with the
+ * suite's own session helper, and measures each page. Nothing touches a shared or production database.
  *
  * Usage (see docs/testing/PERFORMANCE_BASELINES.md for the full sequence):
  *   npx tsx e2e-batch08/prepare.mts perf
  *   NEXT_DIST_DIR=.next-perf npm run build -w @clinic-genie/platform
  *   npx tsx e2e-batch08/perf-baseline.mts
  *
- * Flags: --skip-concurrency, --skip-scenarios, --warm=<n>, --viewport=desktop|mobile|both
+ * Flags: --skip-concurrency, --warm=<n>, --viewport=desktop|mobile|both
  */
 import { mkdir, writeFile } from "node:fs/promises";
 import { readFileSync } from "node:fs";
 import { spawn, type ChildProcess } from "node:child_process";
 import { chromium, type Browser } from "@playwright/test";
-import { FIXTURE_CLIENTS, FIXTURE_WEBSITES, FIXTURE_WIX_BINDING, type PerfFixtureSummary } from "../packages/db/src/testing/perf-fixture.ts";
-import { startWixMock, WIX_MOCK_SCENARIOS, type WixMockScenario } from "../packages/db/src/testing/wix-mock.ts";
+import { FIXTURE_CLIENTS, FIXTURE_WEBSITES, type PerfFixtureSummary } from "../packages/db/src/testing/perf-fixture.ts";
 import { FIXTURE_VERSION } from "../packages/db/src/testing/perf-fixture.ts";
 import { suiteTargets } from "./targets.ts";
 import { openAs } from "./support.ts";
@@ -28,7 +26,6 @@ const flag = (name: string) => args.includes(`--${name}`);
 const value = (name: string, fallback: string) => args.find((a) => a.startsWith(`--${name}=`))?.split("=")[1] ?? fallback;
 
 const WARM_RUNS = Number(value("warm", "5"));
-const MOCK_PORT = 3420;
 const targets = suiteTargets("perf");
 const ORIGIN = targets.prodOrigin;
 const OUT_DIR = "docs/testing/baselines";
@@ -102,7 +99,6 @@ interface BaselineReport {
   warmRuns: number;
   databaseCounts: string;
   pages: PageResult[];
-  wixScenarios: Array<Record<string, unknown>>;
   concurrency: Array<Record<string, unknown>>;
 }
 
@@ -143,13 +139,11 @@ async function assertPortIsFree(): Promise<void> {
 
 async function main(): Promise<void> {
   await assertPortIsFree();
-  const mock = await startWixMock({ scenario: "normal", formId: FIXTURE_WIX_BINDING.formId, namespace: FIXTURE_WIX_BINDING.namespace, port: MOCK_PORT, pageSize: 25, pages: 3, delayMs: 1_500 });
-  log(`Wix mock listening on ${mock.url}`);
 
   // detached puts the server in its own process group, so stopping it also stops the next start
   // grandchild. Killing only the immediate child leaves that grandchild holding the port.
   const server: ChildProcess = spawn("npx", ["tsx", "e2e-batch08/server.mts", "perf", "start"], {
-    env: { ...process.env, WIX_MOCK_URL: mock.url, NEXT_DIST_DIR: ".next-perf" },
+    env: { ...process.env, NEXT_DIST_DIR: ".next-perf" },
     stdio: ["ignore", "pipe", "pipe"],
     detached: true,
   });
@@ -171,7 +165,6 @@ async function main(): Promise<void> {
   const sampler = new BackendSampler("perf");
   let browser: Browser | undefined;
   const results: PageResult[] = [];
-  const scenarioResults: Array<Record<string, unknown>> = [];
   const concurrencyResults: Array<Record<string, unknown>> = [];
 
   try {
@@ -192,10 +185,9 @@ async function main(): Promise<void> {
           await installObservers(session.page);
           const samples: Array<NavigationSample & { providerCalls: number; providerMs: number }> = [];
           for (let run = 0; run <= WARM_RUNS; run += 1) {
-            mock.reset();
             const sample = await measureNavigation(session.page, `${ORIGIN}${page.path}`, page.primary);
-            const provider = mock.summary();
-            samples.push({ ...sample, providerCalls: provider.calls, providerMs: provider.totalDurationMs });
+            // No provider is read on these pages since D85, so provider calls are always zero.
+            samples.push({ ...sample, providerCalls: 0, providerMs: 0 });
           }
           const [cold, ...warm] = samples;
           results.push({
@@ -227,54 +219,6 @@ async function main(): Promise<void> {
           await session.close();
         }
       }
-    }
-
-    // Wix scenarios, measured on the enquiries page because that is where provider reads happen.
-    if (!flag("skip-scenarios")) {
-      // `timeout` runs last: it holds sockets for 18 seconds, and a later scenario should not inherit
-      // that even though the mock now destroys them.
-      const ordered = [...WIX_MOCK_SCENARIOS].sort((a, b) => Number(a.id === "timeout") - Number(b.id === "timeout"));
-      for (const scenario of ordered) {
-        const session = await openAs(browser, "admin@example.invalid", "perf", { viewport: { width: 1440, height: 900 } });
-        try {
-          await fetch(`${mock.url}/__mock/scenario`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ scenario: scenario.id }) });
-          mock.reset();
-          // The page is measured to the point it responds and renders, then the state it reached is
-          // recorded. Waiting for a table would measure the selector timeout rather than the server,
-          // because several of these scenarios legitimately render "no enquiries are available".
-          const started = Date.now();
-          const response = await session.page.goto(`${ORIGIN}/enquiries`, { waitUntil: "domcontentloaded", timeout: 120_000 });
-          const renderedMs = Date.now() - started;
-          const serverMs = await session.page.evaluate(() => {
-            const nav = performance.getEntriesByType("navigation")[0] as PerformanceNavigationTiming | undefined;
-            return nav ? Math.round(nav.responseStart) : null;
-          });
-          const provider = mock.summary();
-          const [table, emptyState, notice] = await Promise.all([
-            session.page.locator("table").count(),
-            session.page.locator("text=No enquiries are available").count(),
-            session.page.locator("text=A Wix form could not be read").count(),
-          ]);
-          const rowText = await session.page.locator("text=matching enquir").first().textContent().catch(() => null);
-          scenarioResults.push({
-            scenario: scenario.id,
-            description: scenario.description,
-            status: response?.status() ?? null,
-            serverMs,
-            renderedMs,
-            providerCalls: provider.calls,
-            providerMs: provider.totalDurationMs,
-            providerByPath: provider.byPath,
-            state: table > 0 ? "list rendered" : emptyState > 0 ? "no enquiries available" : "unknown",
-            rowCount: rowText?.trim() ?? null,
-            sourceNoticeShown: notice > 0,
-          });
-          log(`scenario ${scenario.id}: server ${serverMs}ms, rendered ${renderedMs}ms, ${provider.calls} provider calls, ${table > 0 ? "list" : emptyState > 0 ? "empty state" : "unknown"}${notice > 0 ? " + failure notice" : ""}`);
-        } finally {
-          await session.close();
-        }
-      }
-      await fetch(`${mock.url}/__mock/scenario`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ scenario: "normal" }) });
     }
 
     // Controlled concurrency against the isolated server only.
@@ -312,9 +256,6 @@ async function main(): Promise<void> {
     await browser?.close().catch(() => {});
     await sampler.close().catch(() => {});
     stopServer();
-    await mock.stop();
-    // Give the port a moment to come back, so a following run's pre-flight check is accurate.
-    await new Promise((resolve) => setTimeout(resolve, 1_000));
   }
 
   const report: BaselineReport = {
@@ -322,11 +263,10 @@ async function main(): Promise<void> {
     suite: "perf",
     origin: ORIGIN,
     build: "production build (next start) from .next-perf",
-    provider: "Wix reads served by the local mock. Real-provider measurements: NOT MEASURED, by design.",
+    provider: "No live provider reads. Real-provider measurements: NOT MEASURED, by design.",
     warmRuns: WARM_RUNS,
     databaseCounts: "NOT MEASURED per navigation. pg_stat_statements needs shared_preload_libraries, which the embedded server does not set, and pg_stat_database.xact_commit is flushed on a timer with a lag longer than any usable settle delay (measured: 50 statements gave a delta of 1, then the next window of 6 gave 52). Exact per-path query and round-trip counts come from npm run perf:query-counts.",
     pages: results,
-    wixScenarios: scenarioResults,
     concurrency: concurrencyResults,
   };
   await mkdir(OUT_DIR, { recursive: true });
@@ -361,16 +301,6 @@ function markdown(report: BaselineReport): string {
     }
     const w = page.warm;
     lines.push(`| ${page.label} | ${page.viewport} | ${cell(page.cold?.primaryDataVisibleMs, "ms")} | ${cell(w?.primaryDataVisibleMs?.p50, "ms")} | ${cell(w?.primaryDataVisibleMs?.p95, "ms")} | ${cell(w?.ttfbMs?.p50, "ms")} | ${cell(w?.firstContentfulPaintMs?.p50, "ms")} | ${cell(w?.providerCalls?.p50)} | ${cell(w?.providerMs?.p50)} | ${cell(w?.cumulativeLayoutShift)} | ${cell(w?.requestCount)} |`);
-  }
-
-  if (report.wixScenarios.length) {
-    lines.push("", "## Wix provider scenarios, measured on /enquiries", "");
-    lines.push("| Scenario | Server ms | Rendered ms | Provider calls | Provider ms | Page state | Rows | Failure notice |");
-    lines.push("| --- | --- | --- | --- | --- | --- | --- | --- |");
-    for (const row of report.wixScenarios) {
-      lines.push(`| ${row.scenario} | ${cell(row.serverMs)} | ${cell(row.renderedMs)} | ${cell(row.providerCalls)} | ${cell(row.providerMs)} | ${cell(row.state)} | ${cell(row.rowCount ?? "")} | ${row.sourceNoticeShown ? "yes" : "no"} |`);
-    }
-    lines.push("", "Server ms is the browser's `responseStart`: the time the server took. A scenario that renders \"no enquiries available\" is not slow — the provider failed and the page said so.");
   }
 
   if (report.concurrency.length) {

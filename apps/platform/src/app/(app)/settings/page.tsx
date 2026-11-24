@@ -8,6 +8,7 @@ import { Badge, label, type Tone } from "@/components/ui/Badge";
 import { SettingsProfile } from "@/components/modules/SettingsProfile";
 import { AnalyticsConnections } from "@/components/modules/AnalyticsConnections";
 import { enquiryConnection } from "@/lib/form-submissions";
+import { supabaseEnquiryConnection } from "@/lib/supabase-enquiries";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Platform settings" };
@@ -54,8 +55,9 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
   const global = canManageRegistry(access);
   const exportAllowed = canExport(access);
   const checkedAt = new Date();
-  const [forms, admin] = await Promise.all([
+  const [forms, contactForm, admin] = await Promise.all([
     enquiryConnection(),
+    supabaseEnquiryConnection(),
     privileged
       ? staffTx(access, async (db) => ({
           staff: await listStaff(db),
@@ -69,7 +71,12 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
   const formsTone: Tone = !forms.configured ? "neutral" : forms.reachable ? "good" : "warn";
   const formsDetail = forms.refused
     ? "The enquiry target was refused before any read or write. Enquiry messages stay in their source database."
-    : "Read from the clinic website database or from a Wix form bound to a website. A submission is not copied into Genie Works. A Wix clinic email stays on Wix and is shown as Unavailable. Demonstration submissions stay out of production totals. A contact click is not an enquiry.";
+    : "Read from the clinic website database, or from the Clinic Genie website contact form in Supabase for the website marked to read it. A submission is not copied into Genie Works. The website sends its own clinic email, which is shown as Unavailable here. Demonstration submissions stay out of production totals. A contact click is not an enquiry.";
+  const contactStatus = !contactForm.configured ? "Not connected" : contactForm.refused ? "Refused" : contactForm.reachable ? "Reachable" : "Unreachable";
+  const contactTone: Tone = !contactForm.configured ? "neutral" : contactForm.reachable ? "good" : "warn";
+  const contactDetail = contactForm.refused
+    ? "The Supabase target was refused before connecting. Use the read-only enquiry role, not the owner or service role."
+    : "The Clinic Genie website contact form, read live from Supabase for the one website an administrator marks. Read only; nothing is copied or written back.";
   const latest = admin?.events[0];
   const restore = admin?.status.lastRestoreTest;
   const activeStaff = admin?.staff.filter((person) => person.active).length ?? 0;
@@ -112,6 +119,12 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
             status={formsStatus}
             tone={formsTone}
             detail={formsDetail}
+          />
+          <Connection
+            name="Website contact form (Supabase)"
+            status={contactStatus}
+            tone={contactTone}
+            detail={contactDetail}
           />
           <Connection
             name="Google Workspace"

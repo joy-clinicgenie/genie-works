@@ -31,6 +31,7 @@ const HISTORY: Record<string, string> = {
   "website.enquiry_key": "Updated the enquiry key",
   "wix_enquiry.bind": "Connected a Wix form",
   "wix_enquiry.clear": "Returned a website to its enquiry database",
+  "enquiry_source.set": "Changed where a website's enquiries are read from",
   "client_file_link.create": "Added a file link",
   "client_file_link.archive": "Removed a file link",
 };

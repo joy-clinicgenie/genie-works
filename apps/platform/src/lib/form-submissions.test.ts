@@ -136,7 +136,7 @@ describe("enquiry comparison and export", () => {
     expect(csv).not.toMatch(/(^|,)@/);
   });
 
-  it("labels a Wix clinic email as unavailable and the list handling separately", () => {
+  it("labels an external clinic email as unavailable and the list handling separately", () => {
     expect(enquiryNotificationLabel({ notificationStatus: null, notificationDelivery: "unavailable" })).toBe("Unavailable");
     expect(enquiryNotificationLabel({ notificationStatus: "sent" })).toBe("Sent");
     expect(enquiryHandling("new", false)).toBe("unopened");
@@ -157,11 +157,11 @@ describe("enquiry comparison and export", () => {
     expect(enquiryCsv(rows, new Map(), { opened })).not.toContain("Unavailable");
   });
 
-  it("keeps a website database and a Wix form as separate enquiries", () => {
+  it("keeps a website database and the Supabase contact form as separate enquiries", () => {
     expect(enquiryConnectorLabel("database")).toBe("Website database");
-    expect(enquiryConnectorLabel("wix")).toBe("Wix Forms");
+    expect(enquiryConnectorLabel("supabase")).toBe("Website contact form");
     expect(enquiryConnectorLabel(undefined)).toBe("Website database");
-    expect(enquiryIdentity({ id: "same", source: "database" })).not.toBe(enquiryIdentity({ id: "same", source: "wix" }));
+    expect(enquiryIdentity({ id: "same", source: "database" })).not.toBe(enquiryIdentity({ id: "same", source: "supabase" }));
   });
 
   it("limits export to admins and managers", () => {
