@@ -33,7 +33,7 @@ import { requireAccess } from "@/lib/session";
 import { staffTx } from "@/lib/db";
 import { bool, optional, str, toActionError, type ActionState } from "@/lib/actions";
 import { MAX_UPLOAD_BYTES, MAX_UPLOAD_LABEL, isBlogImage, storeBlogImage } from "@/lib/storage";
-import { assertDeliveryOrigin, retryVerification, shipToSite, websitePreviewUrl } from "@/lib/blog-delivery";
+import { assertDeliveryOrigin, refreshWebsiteAfterUnpublish, retryVerification, shipToSite, websitePreviewUrl } from "@/lib/blog-delivery";
 
 
 function articleInput(form: FormData) {
@@ -159,7 +159,12 @@ export async function unpublishArticleAction(_prev: ActionState, form: FormData)
   }
   revalidatePath("/blog", "layout");
   revalidatePath(`/blog/${id}`);
-  return { ok: true, message: "Unpublished. The public page and sitemap no longer include it. Version history is kept." };
+  // D89 websites cache articles; tell a connected website to drop this one now (D92).
+  const websiteFailure = await refreshWebsiteAfterUnpublish(access, id).catch(() => "site_unreachable" as const);
+  if (websiteFailure) {
+    return { ok: true, message: "Unpublished. The website could not be told straight away, so the article may stay visible there for up to 10 minutes. Version history is kept." };
+  }
+  return { ok: true, message: "Unpublished. The website, public page and sitemap no longer include it. Version history is kept." };
 }
 
 export async function archiveArticleAction(_prev: ActionState, form: FormData): Promise<ActionState> {
