@@ -4,6 +4,8 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import {
   addArticleMedia,
+  getWebsiteConnection,
+  saveWebsiteConnection,
   grantWebsitePublisher,
   isAdmin,
   revokeWebsitePublisher,
@@ -31,6 +33,7 @@ import { requireAccess } from "@/lib/session";
 import { staffTx } from "@/lib/db";
 import { bool, optional, str, toActionError, type ActionState } from "@/lib/actions";
 import { isBlogImage, storeBlogImage } from "@/lib/storage";
+import { assertDeliveryOrigin, retryVerification, shipToSite, websitePreviewUrl } from "@/lib/blog-delivery";
 
 const MAX_IMAGE_BYTES = 1_000_000;
 
@@ -327,4 +330,75 @@ export async function revokePublishingAccessAction(_prev: ActionState, form: For
   return revoked
     ? { ok: true, message: `${names.person} no longer has publishing access to ${names.website}.` }
     : { ok: false, error: `${names.person} did not have publishing access to ${names.website}.` };
+}
+
+/** D89: Ship to site. The service re-checks the website grant, the article's website and the approved revision. */
+export async function shipToSiteAction(_prev: ActionState, form: FormData): Promise<ActionState> {
+  const access = await requireAccess();
+  const id = str(form, "articleId");
+  const existing = await staffTx(access, (db) => getArticle(db, id));
+  if (!existing || !(await staffTx(access, (db) => canShipWebsite(db, existing.website_id)))) {
+    return { ok: false, error: "You are not authorised to ship to this website. Your publishing access may have been revoked; reload the page." };
+  }
+  let result;
+  try {
+    result = await shipToSite(access, id);
+  } catch (err) {
+    return toActionError(err);
+  }
+  revalidatePath("/blog", "layout");
+  revalidatePath(`/blog/${id}`);
+  if (!result.ok) return { ok: false, error: result.error };
+  return { ok: true, message: "Shipped and verified on the website.", href: result.publicUrl };
+}
+
+/** D89: re-checks the website without sending anything again. */
+export async function retryVerificationAction(_prev: ActionState, form: FormData): Promise<ActionState> {
+  const access = await requireAccess();
+  const id = str(form, "articleId");
+  const existing = await staffTx(access, (db) => getArticle(db, id));
+  if (!existing || !(await staffTx(access, (db) => canShipWebsite(db, existing.website_id)))) return { ok: false, error: "You are not authorised to ship to this website." };
+  let result;
+  try {
+    result = await retryVerification(access, id);
+  } catch (err) {
+    return toActionError(err);
+  }
+  revalidatePath("/blog", "layout");
+  revalidatePath(`/blog/${id}`);
+  if (!result.ok) return { ok: false, error: result.error };
+  return { ok: true, message: "Verified: the website shows this revision.", href: result.publicUrl };
+}
+
+/** D89: a private preview of the saved revision in the website's own article template (72 hours). */
+export async function websitePreviewAction(_prev: ActionState, form: FormData): Promise<ActionState> {
+  const access = await requireAccess();
+  const id = str(form, "articleId");
+  const existing = await staffTx(access, (db) => getArticle(db, id));
+  if (!existing) return { ok: false, error: "Article not found." };
+  const connection = await staffTx(access, (db) => getWebsiteConnection(db, existing.website_id));
+  if (!connection?.configured || !connection.websiteUrl) return { ok: false, error: "This website is not connected for previews." };
+  try {
+    const origin = assertDeliveryOrigin(connection.websiteUrl);
+    const preview = await staffTx(access, (db) => issueArticlePreview(db, id, access.user.id));
+    return { ok: true, message: "Website preview ready. The link expires in 72 hours.", href: websitePreviewUrl(origin, preview.token) };
+  } catch (err) {
+    if (err instanceof Error && /^(Delivery needs|A hosted server|The website URL)/.test(err.message)) return { ok: false, error: err.message };
+    return toActionError(err);
+  }
+}
+
+/** D89: administrator saves a website's blog route and, optionally, a new publish secret (stored encrypted). */
+export async function saveWebsiteConnectionAction(_prev: ActionState, form: FormData): Promise<ActionState> {
+  const access = await requireAccess();
+  if (!isAdmin(access)) return { ok: false, error: "Only an administrator can change a website connection." };
+  const websiteId = str(form, "websiteId");
+  if (!UUID_ID.test(websiteId)) return { ok: false, error: "Choose a website.", field: "websiteId" };
+  try {
+    const saved = await staffTx(access, (db) => saveWebsiteConnection(db, { websiteId, basePath: str(form, "basePath"), secret: optional(form, "secret") }, access.user.id));
+    revalidatePath("/blog", "layout");
+    return { ok: true, message: `Saved for ${saved.websiteName}. The connection is not tested until an article is shipped and verified.` };
+  } catch (err) {
+    return toActionError(err);
+  }
 }
