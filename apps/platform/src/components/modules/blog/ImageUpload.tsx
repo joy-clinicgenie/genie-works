@@ -13,7 +13,7 @@ export function ImageUpload({ articleId }: { articleId: string }) {
       <input type="hidden" name="articleId" value={articleId} />
       <FormError state={state} />
       {state?.ok && <Notice tone="good">{state.message}</Notice>}
-      <Field label="Upload image" htmlFor="file" hint="PNG, JPEG or WebP. 1 MB or smaller.">
+      <Field label="Upload image" htmlFor="file" hint="PNG, JPEG or WebP. 4 MB or smaller.">
         <Input id="file" name="file" type="file" accept="image/png,image/jpeg,image/webp" />
       </Field>
       <Field label="Alt text" htmlFor="altText">

@@ -32,10 +32,9 @@ import {
 import { requireAccess } from "@/lib/session";
 import { staffTx } from "@/lib/db";
 import { bool, optional, str, toActionError, type ActionState } from "@/lib/actions";
-import { isBlogImage, storeBlogImage } from "@/lib/storage";
+import { MAX_UPLOAD_BYTES, MAX_UPLOAD_LABEL, isBlogImage, storeBlogImage } from "@/lib/storage";
 import { assertDeliveryOrigin, retryVerification, shipToSite, websitePreviewUrl } from "@/lib/blog-delivery";
 
-const MAX_IMAGE_BYTES = 1_000_000;
 
 function articleInput(form: FormData) {
   let body;
@@ -212,11 +211,11 @@ export async function uploadArticleMediaAction(_prev: ActionState, form: FormDat
   const alt = str(form, "altText");
   if (!(file instanceof File) || file.size < 1) return { ok: false, error: "Choose an image.", field: "file" };
   if (!isBlogImage(file.type)) return { ok: false, error: "Use a PNG, JPEG or WebP image.", field: "file" };
-  if (file.size > MAX_IMAGE_BYTES) return { ok: false, error: "Images must be 1 MB or smaller.", field: "file" };
+  if (file.size > MAX_UPLOAD_BYTES) return { ok: false, error: `Images must be ${MAX_UPLOAD_LABEL} or smaller.`, field: "file" };
   if (!alt) return { ok: false, error: "Alt text is required.", field: "altText" };
   try {
     const bytes = Buffer.from(await file.arrayBuffer());
-    const stored = await storeBlogImage(existing.client_id, bytes, file.name);
+    const stored = await storeBlogImage(existing.client_id, bytes, file.name, file.type);
     await staffTx(access, (db) => addArticleMedia(db, id, { storageKey: stored.storageKey, altText: alt, contentType: file.type, byteSize: bytes.length }, access.user.id));
   } catch (err) {
     return toActionError(err);
