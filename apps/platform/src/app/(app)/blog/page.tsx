@@ -60,7 +60,19 @@ export default async function BlogOverviewPage({ searchParams }: { searchParams:
               <CardHeader
                 title={scope.client.name}
                 description={scope.websites.length === 0 ? "This client has no active website." : scope.multiple ? `${scope.websites.length} websites` : scope.websites[0]!.name}
-                action={canCreate ? <LinkButton href={createHref}>Create post</LinkButton> : undefined}
+                action={
+                  <span className="flex flex-wrap items-center gap-2">
+                    {canCreate && <LinkButton href={createHref}>Create post</LinkButton>}
+                    {scope.websites.length > 0 && (
+                      <details className="relative">
+                        <summary className="inline-flex min-h-11 cursor-pointer list-none items-center rounded-full border border-line px-4 text-sm font-medium hover:bg-brand-pale">More actions</summary>
+                        <ul className="absolute right-0 z-40 mt-1 min-w-52 overflow-hidden rounded-2xl bg-surface py-1 text-ink shadow-pop">
+                          <li><Link href={blogHref("/blog/publishing", scope)} className="block px-3 py-2 text-sm hover:bg-brand-pale">Publishing settings</Link></li>
+                        </ul>
+                      </details>
+                    )}
+                  </span>
+                }
               />
               {scope.websites.length > 0 && (
                 <div className="space-y-3 px-5 pb-5 text-sm">

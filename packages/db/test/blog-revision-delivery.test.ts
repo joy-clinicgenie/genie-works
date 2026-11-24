@@ -413,10 +413,12 @@ describe("website-scoped shipping (D87)", () => {
       await expect(grantWebsitePublisher(tx, { websiteId: siteA, userId: specB.id }, manager.id)).rejects.toThrow(/administrator/);
       await as(tx, admin);
       await tx.query("savepoint ro");
-      await expect(grantWebsitePublisher(tx, { websiteId: siteA, userId: readonly.id }, admin.id)).rejects.toThrow(/read-only/);
+      await expect(grantWebsitePublisher(tx, { websiteId: siteA, userId: readonly.id }, admin.id)).rejects.toThrow(/managers and specialists/);
       await tx.query("rollback to savepoint ro");
-      // A grant without client access does not authorise: specB is not a member of this client.
-      await grantWebsitePublisher(tx, { websiteId: siteA, userId: specB.id }, admin.id);
+      // A specialist without client access cannot be granted: specB is not a member of this client.
+      await tx.query("savepoint outsider");
+      await expect(grantWebsitePublisher(tx, { websiteId: siteA, userId: specB.id }, admin.id)).rejects.toThrow(/not assigned to the client/);
+      await tx.query("rollback to savepoint outsider");
       const article = await approvedArticle(tx, clientId, siteA);
       await as(tx, specB);
       await expect(requestShip(tx, { articleId: article.id, websiteId: siteA, versionId: article.versionId }, specB.id)).rejects.toThrow(/not found/);

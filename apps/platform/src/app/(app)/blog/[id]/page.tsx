@@ -69,6 +69,9 @@ export default async function ArticlePage({ params, searchParams }: { params: Pr
     try { domain = new URL(article.website_url).host; } catch { domain = null; }
   }
   const liveUrl = article.website_url && article.live_slug ? `${article.website_url.replace(/\/$/, "")}/blog/${article.live_slug}` : null;
+  const intendedUrl = article.website_url && article.slug ? `${article.website_url.replace(/\/$/, "")}/blog/${article.slug}` : null;
+  // D87: only a website-verified revision is "live"; an internal release is not.
+  const verifiedLive = article.website_status === "verified";
   // Return to the exact list or Overview the article was opened from.
   const backHref = safeBlogReturn(requestedReturn) ?? blogHref("/blog/posts", { clientId: article.client_id, websiteId: article.website_id });
   const backLabel = backHref.startsWith("/blog/posts") ? "Posts" : "Blog";
@@ -98,7 +101,8 @@ export default async function ArticlePage({ params, searchParams }: { params: Pr
           clientName={article.client_name}
           websiteName={article.website_name}
           domain={domain}
-          publicUrl={liveUrl}
+          publicUrl={verifiedLive ? liveUrl : null}
+          intendedUrl={intendedUrl}
           approver={latestApproval?.reviewer_name ?? null}
           versionLabel={versionLabel}
           canEdit={canEditClient(access, article.client_id)}
@@ -106,10 +110,11 @@ export default async function ArticlePage({ params, searchParams }: { params: Pr
           canPublish={data.canShip}
         />
       </div>
-      {article.status === "published" && article.working_status && <div className="mb-4"><Notice tone="neutral">A published revision is still on the website. This working copy is not public.</Notice></div>}
-      {article.status === "published" && !article.working_status && <div className="mb-4"><Notice tone="neutral">Create a revision before editing. The published page stays as it is until that revision is approved and published.</Notice></div>}
+      {article.status === "published" && article.working_status && <div className="mb-4"><Notice tone="neutral">The released revision is unchanged. This working copy is not released.</Notice></div>}
+      {article.status === "published" && !article.working_status && <div className="mb-4"><Notice tone="neutral">Create a revision before editing. The released revision stays as it is until the new revision is approved and released.</Notice></div>}
       {stale && <div className="mb-4"><Notice tone="warn" title="Resubmission required">An earlier approval does not cover this version.</Notice></div>}
-      {article.live_version_id && liveUrl && <p className="mb-4 text-sm">Live URL: <a href={liveUrl} className="text-action underline" target="_blank" rel="noreferrer">{liveUrl}</a> · Published {stamp(article.first_published_at)}</p>}
+      {article.live_version_id && liveUrl && verifiedLive && <p className="mb-4 text-sm">Live URL: <a href={liveUrl} className="text-action underline" target="_blank" rel="noreferrer">{liveUrl}</a></p>}
+      {article.live_version_id && !verifiedLive && <p className="mb-4 text-sm text-muted">Released to the content API. Website publication unverified: this revision has not been delivered to or checked on the website.</p>}
         </>
       }
       editor={

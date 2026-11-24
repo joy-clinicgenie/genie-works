@@ -26,6 +26,7 @@
     "build": "npm run build --workspaces --if-present",
     "test": "npm run test --workspaces --if-present",
     "test:decisions": "node --test tests/*.test.mjs",
+    "test:e2e:blog-grants": "playwright test -c playwright.blog-grants.config.mts",
     "db:seed-load": "npm run seed-load -w @clinic-genie/db",
     "analytics:work": "npm run analytics:work -w @clinic-genie/db",
     "enquiry:check": "npm run enquiry:check -w @clinic-genie/db",

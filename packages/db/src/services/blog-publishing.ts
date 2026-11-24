@@ -397,29 +397,136 @@ export async function listPublishingHistory(db: Queryable, articleId: string): P
   return rows;
 }
 
-/** Administrator grant of website-scoped shipping. */
-export async function grantWebsitePublisher(db: Queryable, input: { websiteId: string; userId: string }, actorUserId: string): Promise<string> {
-  const role = (await db.query<{ platform_role: string }>("select platform_role from staff_users where id = $1", [actorUserId])).rows[0]?.platform_role;
-  if (role !== "admin") throw new PermissionDeniedError("Only an administrator can grant website publishing.");
+export interface WebsitePublisherRow {
+  id: string;
+  user_id: string;
+  display_name: string;
+  email: string;
+  platform_role: string;
+  granted_by_name: string | null;
+  granted_at: Date;
+  revoked_at: Date | null;
+  revoked_by_name: string | null;
+}
+
+export interface EligiblePublisher {
+  id: string;
+  display_name: string;
+  email: string;
+  platform_role: "manager" | "specialist";
+}
+
+/** D87: who may manage grants. Checked against the signed-in session, not a caller-supplied id. */
+async function requireGrantAdmin(db: Queryable, actorUserId: string, verb: "grant" | "revoke"): Promise<void> {
+  const { rows } = await db.query<{ session_role: string; actor_role: string | null; same: boolean }>(
+    `select app_platform_role() as session_role,
+            (select platform_role from staff_users where id = $1 and active) as actor_role,
+            app_current_user_id() = $1::uuid as same`,
+    [actorUserId],
+  );
+  const row = rows[0];
+  if (!row || row.session_role !== "admin" || row.actor_role !== "admin" || !row.same) {
+    throw new PermissionDeniedError(`Only an administrator can ${verb} website publishing access.`);
+  }
+}
+
+/** Active grants for one website, then revoked ones (kept for history), newest first. */
+export async function listWebsitePublishers(db: Queryable, websiteId: string): Promise<{ active: WebsitePublisherRow[]; revoked: WebsitePublisherRow[] }> {
+  const { rows } = await db.query<WebsitePublisherRow>(
+    `select p.id, p.user_id, u.display_name, u.email, u.platform_role, g.display_name as granted_by_name, p.granted_at,
+            p.revoked_at, r.display_name as revoked_by_name
+     from website_publishers p
+     join staff_users u on u.id = p.user_id
+     left join staff_users g on g.id = p.granted_by
+     left join staff_users r on r.id = p.revoked_by
+     where p.website_id = $1
+     order by p.revoked_at desc nulls first, p.granted_at desc
+     limit 100`,
+    [websiteId],
+  );
+  return { active: rows.filter((row) => !row.revoked_at), revoked: rows.filter((row) => row.revoked_at) };
+}
+
+/**
+ * Staff who may be granted access to this website: active managers, and active specialists with
+ * an active membership of the website's client. Administrators already have the override;
+ * reviewers and read-only accounts never publish. Current grant holders are left out.
+ */
+export async function listEligiblePublishers(db: Queryable, websiteId: string): Promise<EligiblePublisher[]> {
+  const { rows } = await db.query<EligiblePublisher>(
+    `select u.id, u.display_name, u.email, u.platform_role
+     from staff_users u
+     join websites w on w.id = $1 and w.status = 'active'
+     where u.active
+       and (u.platform_role = 'manager'
+            or (u.platform_role = 'specialist' and exists (
+              select 1 from memberships m where m.user_id = u.id and m.client_id = w.client_id and m.active)))
+       and not exists (select 1 from website_publishers p where p.website_id = w.id and p.user_id = u.id and p.revoked_at is null)
+     order by u.display_name`,
+    [websiteId],
+  );
+  return rows;
+}
+
+/** Administrators who can release to any website without a grant (the D87 override). */
+export async function listPublishingAdmins(db: Queryable): Promise<Array<{ id: string; display_name: string }>> {
+  const { rows } = await db.query<{ id: string; display_name: string }>(
+    "select id, display_name from staff_users where active and platform_role = 'admin' order by display_name",
+  );
+  return rows;
+}
+
+/**
+ * Administrator grant of website-scoped shipping. The grantee must be an active manager, or an
+ * active specialist who is a member of the website's client. Repeating a grant returns the
+ * existing active grant; a grant after a revocation adds a new row and keeps the revoked one.
+ * It does not touch the website's connection or set-up records.
+ */
+export async function grantWebsitePublisher(db: Queryable, input: { websiteId: string; userId: string }, actorUserId: string): Promise<{ id: string; created: boolean }> {
+  await requireGrantAdmin(db, actorUserId, "grant");
   const { rows: sites } = await db.query<{ client_id: string }>("select client_id from websites where id = $1 and status = 'active'", [input.websiteId]);
   const site = sites[0];
   if (!site) throw new BlogRuleError("That website is not available.", "websiteId");
-  const existing = await db.query<{ id: string }>("select id from website_publishers where website_id = $1 and user_id = $2 and revoked_at is null", [input.websiteId, input.userId]);
-  if (existing.rows[0]) return existing.rows[0].id;
-  const { rows } = await db.query<{ id: string }>(
-    "insert into website_publishers (website_id, client_id, user_id, granted_by) values ($1, $2, $3, $4) returning id",
-    [input.websiteId, site.client_id, input.userId, actorUserId],
+  const { rows: people } = await db.query<{ platform_role: string; active: boolean; member: boolean }>(
+    `select u.platform_role, u.active,
+            exists (select 1 from memberships m where m.user_id = u.id and m.client_id = $2 and m.active) as member
+     from staff_users u where u.id = $1`,
+    [input.userId, site.client_id],
   );
-  await recordAudit(db, {
-    actorType: "staff", actorUserId, action: "blog.publisher_granted", targetType: "website", targetId: input.websiteId,
-    clientId: site.client_id, outcome: "success", metadata: { userId: input.userId },
-  });
-  return rows[0]!.id;
+  const person = people[0];
+  if (!person || !person.active) throw new BlogRuleError("Choose an active staff member.", "userId");
+  if (person.platform_role === "admin") throw new BlogRuleError("Administrators can already release to every website. No grant is needed.", "userId");
+  if (person.platform_role !== "manager" && person.platform_role !== "specialist") {
+    throw new BlogRuleError("Only managers and specialists can be granted publishing access.", "userId");
+  }
+  if (person.platform_role === "specialist" && !person.member) {
+    throw new BlogRuleError("This specialist is not assigned to the client. Assign them to the client first.", "userId");
+  }
+  const existing = await db.query<{ id: string }>("select id from website_publishers where website_id = $1 and user_id = $2 and revoked_at is null", [input.websiteId, input.userId]);
+  if (existing.rows[0]) return { id: existing.rows[0].id, created: false };
+  try {
+    await db.query("savepoint grant_publisher");
+    const { rows } = await db.query<{ id: string }>(
+      "insert into website_publishers (website_id, client_id, user_id, granted_by) values ($1, $2, $3, $4) returning id",
+      [input.websiteId, site.client_id, input.userId, actorUserId],
+    );
+    await db.query("release savepoint grant_publisher");
+    await recordAudit(db, {
+      actorType: "staff", actorUserId, action: "blog.publisher_granted", targetType: "website", targetId: input.websiteId,
+      clientId: site.client_id, outcome: "success", metadata: { userId: input.userId },
+    });
+    return { id: rows[0]!.id, created: true };
+  } catch (err) {
+    // A concurrent grant won the unique active-grant index: return that grant, never a second one.
+    if ((err as { code?: string }).code !== "23505") throw err;
+    await db.query("rollback to savepoint grant_publisher");
+    const again = await db.query<{ id: string }>("select id from website_publishers where website_id = $1 and user_id = $2 and revoked_at is null", [input.websiteId, input.userId]);
+    return { id: again.rows[0]!.id, created: false };
+  }
 }
 
 export async function revokeWebsitePublisher(db: Queryable, input: { websiteId: string; userId: string }, actorUserId: string): Promise<boolean> {
-  const role = (await db.query<{ platform_role: string }>("select platform_role from staff_users where id = $1", [actorUserId])).rows[0]?.platform_role;
-  if (role !== "admin") throw new PermissionDeniedError("Only an administrator can revoke website publishing.");
+  await requireGrantAdmin(db, actorUserId, "revoke");
   const { rows } = await db.query<{ client_id: string }>(
     "update website_publishers set revoked_at = now(), revoked_by = $3 where website_id = $1 and user_id = $2 and revoked_at is null returning client_id",
     [input.websiteId, input.userId, actorUserId],
