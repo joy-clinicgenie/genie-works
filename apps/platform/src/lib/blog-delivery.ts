@@ -204,6 +204,32 @@ export async function shipToSite(access: AccessProfile, articleId: string): Prom
   return verify(access, t);
 }
 
+/**
+ * After Unpublish, asks a connected website to drop the article straight away instead of
+ * waiting for its cache to expire. Returns null when the website was refreshed or is not
+ * connected for Ship to site (nothing to tell), otherwise the failure.
+ */
+export async function refreshWebsiteAfterUnpublish(access: AccessProfile, articleId: string): Promise<DeliveryFailure | null> {
+  const prepared = await staffTx(access, async (db) => {
+    const article = await getArticle(db, articleId);
+    const connection = article ? await getWebsiteConnection(db, article.website_id) : null;
+    if (!article || !connection?.configured) return null;
+    const secret = await readPublishSecret(db, article.website_id);
+    if (!secret) return null;
+    const publicUrl = intendedArticleUrl(connection.websiteUrl, connection.basePath, article.slug);
+    if (!publicUrl) return "invalid_url" as const;
+    let origin: string;
+    try {
+      origin = assertDeliveryOrigin(publicUrl);
+    } catch {
+      return "invalid_url" as const;
+    }
+    return { origin, secret, paths: [connection.basePath, new URL(publicUrl).pathname] };
+  });
+  if (prepared === null || typeof prepared === "string") return prepared;
+  return requestRevalidate(prepared.origin, prepared.secret, prepared.paths);
+}
+
 /** Retry verification: re-checks the website for the released revision without sending anything. */
 export async function retryVerification(access: AccessProfile, articleId: string): Promise<ShipResult> {
   const prepared = await staffTx(access, async (db) => {
