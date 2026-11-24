@@ -37,8 +37,8 @@ test("in-app blog review, protected preview and published API revision", async (
   const author = await openAs(browser, "specialist-a@example.invalid");
   try {
     await author.page.goto(articlePath);
-    await expect(author.page.getByText("Publishing and unpublishing are limited to an admin or manager.")).toBeVisible();
-    await expect(author.page.getByRole("button", { name: "Publish", exact: true })).toHaveCount(0);
+    await expect(author.page.getByText("Releasing to this website needs publishing access for it from an administrator.")).toBeVisible();
+    await expect(author.page.getByRole("button", { name: "Release to content API" })).toHaveCount(0);
     const preview = await author.page.request.get(`${articlePath}/preview`);
     expect(preview.status()).toBe(200);
     expect(preview.headers()["x-robots-tag"] ?? "").toContain("noindex");
@@ -75,9 +75,9 @@ test("in-app blog review, protected preview and published API revision", async (
   try {
     await admin.page.goto(articlePath);
     slug = await admin.page.locator("#slug").inputValue();
-    await admin.page.getByRole("button", { name: "Publish", exact: true }).click();
-    await admin.page.getByRole("button", { name: "Publish now" }).click();
-    await expect(admin.page.getByRole("status").filter({ hasText: "Published." }).first()).toBeVisible();
+    await admin.page.getByRole("button", { name: "Release to content API" }).click();
+    await admin.page.getByRole("button", { name: "Release now" }).click();
+    await expect(admin.page.getByRole("status").filter({ hasText: "Released to the content API" }).first()).toBeVisible();
     const protectedPreview = await admin.page.request.get(`${articlePath}/preview`);
     expect(protectedPreview.headers()["x-robots-tag"] ?? "").toContain("noindex");
     expect(protectedPreview.headers()["cache-control"] ?? "").toContain("private");

@@ -4,9 +4,12 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import {
   addArticleMedia,
+  grantWebsitePublisher,
+  isAdmin,
+  revokeWebsitePublisher,
   archiveArticle,
   canEditClient,
-  canPublishClient,
+  canShipWebsite,
   canReviewClient,
   createArticle,
   decideArticleReview,
@@ -73,7 +76,7 @@ export async function createArticleAction(_prev: ActionState, form: FormData): P
   } catch (err) {
     return toActionError(err);
   }
-  revalidatePath("/blog");
+  revalidatePath("/blog", "layout");
   redirect(`/blog/${id}`);
 }
 
@@ -88,7 +91,7 @@ export async function updateArticleAction(_prev: ActionState, form: FormData): P
   } catch (err) {
     return toActionError(err);
   }
-  revalidatePath("/blog");
+  revalidatePath("/blog", "layout");
   revalidatePath(`/blog/${id}`);
   const keptLive = Boolean(existing.live_version_id) || existing.status === "published";
   return { ok: true, message: keptLive ? "Draft saved. The published page is unchanged until this revision is approved and published." : "Draft saved. A new version was kept." };
@@ -127,30 +130,32 @@ export async function publishArticleAction(_prev: ActionState, form: FormData): 
   const access = await requireAccess();
   const id = str(form, "articleId");
   const existing = await staffTx(access, (db) => getArticle(db, id));
-  if (!existing || !canPublishClient(access, existing.client_id)) return { ok: false, error: "You cannot publish this article." };
+  // D87: the same website-scoped predicate as the database; a client-level role alone is not enough.
+  if (!existing || !(await staffTx(access, (db) => canShipWebsite(db, existing.website_id)))) return { ok: false, error: "You are not authorised to release to this website. Your publishing access may have been revoked; reload the page." };
   if (str(form, "confirm") !== "yes") return { ok: false, error: "Confirm publication before continuing." };
   try {
     await staffTx(access, (db) => publishArticle(db, id, access.user.id));
   } catch (err) {
     return toActionError(err);
   }
-  revalidatePath("/blog");
+  revalidatePath("/blog", "layout");
   revalidatePath(`/blog/${id}`);
-  return { ok: true, message: existing.indexable ? "Published. The native site reads this revision, and the sitemap includes it." : "Published. The native site reads this revision. It is marked noindex, so the sitemap omits it." };
+  // D87: this releases the revision to the content API only. Nothing is delivered to or checked on the website.
+  return { ok: true, message: `Released to the content API${existing.indexable ? "" : " (marked noindex, so the sitemap omits it)"}. Website publication is unverified: nothing was delivered to or checked on the website.` };
 }
 
 export async function unpublishArticleAction(_prev: ActionState, form: FormData): Promise<ActionState> {
   const access = await requireAccess();
   const id = str(form, "articleId");
   const existing = await staffTx(access, (db) => getArticle(db, id));
-  if (!existing || !canPublishClient(access, existing.client_id)) return { ok: false, error: "You cannot unpublish this article." };
+  if (!existing || !(await staffTx(access, (db) => canShipWebsite(db, existing.website_id)))) return { ok: false, error: "You are not authorised to unpublish from this website." };
   if (str(form, "confirm") !== "yes") return { ok: false, error: "Confirm removal before continuing." };
   try {
     await staffTx(access, (db) => unpublishArticle(db, id, access.user.id));
   } catch (err) {
     return toActionError(err);
   }
-  revalidatePath("/blog");
+  revalidatePath("/blog", "layout");
   revalidatePath(`/blog/${id}`);
   return { ok: true, message: "Unpublished. The public page and sitemap no longer include it. Version history is kept." };
 }
@@ -273,4 +278,53 @@ export async function restoreVersionAction(_prev: ActionState, form: FormData): 
   }
   revalidatePath(`/blog/${id}`);
   return { ok: true, message: existing.live_version_id ? "Restored into the working revision. The live article is unchanged." : "Restored as a new draft. Earlier versions are kept." };
+}
+
+const UUID_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+async function publishingNames(access: Awaited<ReturnType<typeof requireAccess>>, websiteId: string, userId: string) {
+  return staffTx(access, async (db) => {
+    const site = (await db.query<{ name: string }>("select name from websites where id = $1", [websiteId])).rows[0];
+    const person = (await db.query<{ display_name: string }>("select display_name from staff_users where id = $1", [userId])).rows[0];
+    return { website: site?.name ?? "this website", person: person?.display_name ?? "This staff member" };
+  });
+}
+
+/** D87: an administrator grants one staff member publishing access to one website. */
+export async function grantPublishingAccessAction(_prev: ActionState, form: FormData): Promise<ActionState> {
+  const access = await requireAccess();
+  if (!isAdmin(access)) return { ok: false, error: "Only an administrator can grant website publishing access." };
+  const websiteId = str(form, "websiteId");
+  const userId = str(form, "userId");
+  if (!UUID_ID.test(websiteId)) return { ok: false, error: "Choose a website.", field: "websiteId" };
+  if (!UUID_ID.test(userId)) return { ok: false, error: "Choose a staff member.", field: "userId" };
+  let created = false;
+  try {
+    created = (await staffTx(access, (db) => grantWebsitePublisher(db, { websiteId, userId }, access.user.id))).created;
+  } catch (err) {
+    return toActionError(err);
+  }
+  const names = await publishingNames(access, websiteId, userId);
+  revalidatePath("/blog", "layout");
+  return { ok: true, message: created ? `${names.person} can now release to ${names.website}.` : `${names.person} already had publishing access to ${names.website}.` };
+}
+
+/** D87: an administrator revokes one staff member's publishing access to one website. The record is kept. */
+export async function revokePublishingAccessAction(_prev: ActionState, form: FormData): Promise<ActionState> {
+  const access = await requireAccess();
+  if (!isAdmin(access)) return { ok: false, error: "Only an administrator can revoke website publishing access." };
+  const websiteId = str(form, "websiteId");
+  const userId = str(form, "userId");
+  if (!UUID_ID.test(websiteId) || !UUID_ID.test(userId)) return { ok: false, error: "Choose a grant to revoke." };
+  let revoked = false;
+  try {
+    revoked = await staffTx(access, (db) => revokeWebsitePublisher(db, { websiteId, userId }, access.user.id));
+  } catch (err) {
+    return toActionError(err);
+  }
+  const names = await publishingNames(access, websiteId, userId);
+  revalidatePath("/blog", "layout");
+  return revoked
+    ? { ok: true, message: `${names.person} no longer has publishing access to ${names.website}.` }
+    : { ok: false, error: `${names.person} did not have publishing access to ${names.website}.` };
 }

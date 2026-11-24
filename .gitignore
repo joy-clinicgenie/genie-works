@@ -31,3 +31,5 @@ test-results/
 
 # Browser-testing output (Playwright MCP)
 .playwright-mcp/
+.next-blog-grants/
+e2e-blog-grants/.run/

@@ -28,6 +28,7 @@ export function BlogWorkflow({
   websiteName,
   domain,
   publicUrl,
+  intendedUrl = null,
   approver,
   versionLabel,
   canEdit,
@@ -45,6 +46,8 @@ export function BlogWorkflow({
   websiteName: string;
   domain: string | null;
   publicUrl: string | null;
+  /** The address the article is meant to have on the website; not evidence that it is there. */
+  intendedUrl?: string | null;
   approver: string | null;
   versionLabel: string;
   canEdit: boolean;
@@ -79,13 +82,13 @@ export function BlogWorkflow({
       {submitted?.ok && <Notice tone="good">{submitted.message}</Notice>}
       {reviewed?.ok && <Notice tone="good">{reviewed.message}</Notice>}
       {returned?.ok && <Notice tone="good">{returned.message}</Notice>}
-      {published?.ok && <Notice tone="good">{published.message} {publicUrl && <a href={publicUrl} className="underline" target="_blank" rel="noreferrer">View live article</a>}</Notice>}
+      {published?.ok && <Notice tone="good">{published.message}</Notice>}
       {unpublished?.ok && <Notice tone="good">{unpublished.message}</Notice>}
       {archived?.ok && <Notice tone="good">{archived.message}</Notice>}
       {restored?.ok && <Notice tone="good">{restored.message}</Notice>}
       {started?.ok && <Notice tone="good">{started.message}</Notice>}
       {!native && <Notice tone="warn" title="Publishing is unavailable">This website is not a native site. The article can be drafted and approved here. It will not be published to Wix.</Notice>}
-      {!canPublish && native && <p className="text-sm text-muted">Publishing and unpublishing are limited to an admin or manager.</p>}
+      {!canPublish && native && <p className="text-sm text-muted">Releasing to this website needs publishing access for it from an administrator.</p>}
       <div className="flex flex-wrap gap-2">
         {canEdit && draft && (
           <form action={submit}><input type="hidden" name="articleId" value={articleId} /><Button type="submit" disabled={submitting}>Submit for review</Button></form>
@@ -109,7 +112,7 @@ export function BlogWorkflow({
         {(canEdit || canDecide) && (inReview || approved) && (
           <form action={returnDraft}><input type="hidden" name="articleId" value={articleId} /><Button type="submit" variant="secondary" disabled={returning}>Return for editing</Button></form>
         )}
-        {canPublish && approved && native && <Button type="button" onClick={() => setConfirmPublish(true)}>Publish</Button>}
+        {canPublish && approved && native && <Button type="button" onClick={() => setConfirmPublish(true)}>Release to content API</Button>}
         {canEdit && status === "published" && !workingStatus && (
           <form action={start}><input type="hidden" name="articleId" value={articleId} /><Button type="submit" variant="secondary" disabled={starting}>Create revision</Button></form>
         )}
@@ -124,17 +127,18 @@ export function BlogWorkflow({
       </div>
       {confirmPublish && (
         <dialog open className="w-[min(32rem,calc(100vw-2rem))] rounded-2xl border border-line bg-surface p-5 text-ink">
-          <h2 className="text-lg font-semibold">Publish this article now</h2>
+          <h2 className="text-lg font-semibold">Release to content API</h2>
+          <p className="mt-2 text-sm">This makes the approved revision available through the content API. It does not deliver the article to the website or check it there, so website publication stays unverified until Ship to site is available.</p>
           <dl className="mt-3 space-y-2 text-sm">
             <div><dt className="text-muted">Destination</dt><dd>{clientName} · {websiteName}{domain ? ` · ${domain}` : ""}</dd></div>
             <div><dt className="text-muted">Article</dt><dd>{title || "Untitled article"}</dd></div>
-            <div><dt className="text-muted">URL</dt><dd>{publicUrl ?? "The public URL is not configured."}</dd></div>
+            <div><dt className="text-muted">Intended URL</dt><dd>{intendedUrl ?? "The website URL or slug is not set."}</dd></div>
             <div><dt className="text-muted">Approval</dt><dd>{approver ?? "Approved"} · {versionLabel}</dd></div>
           </dl>
           <form action={publish} className="mt-4 flex flex-wrap gap-2">
             <input type="hidden" name="articleId" value={articleId} />
             <input type="hidden" name="confirm" value="yes" />
-            <Button type="submit" disabled={publishing}>Publish now</Button>
+            <Button type="submit" disabled={publishing}>Release now</Button>
             <Button type="button" variant="secondary" onClick={() => setConfirmPublish(false)}>Cancel</Button>
           </form>
         </dialog>

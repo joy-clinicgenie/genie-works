@@ -4,6 +4,7 @@ import { applyContext } from "../src/client";
 import { createWebsite } from "../src/services/registry";
 import { adminPool, appPool, asContext, staffByEmail, staffCtx } from "./helpers";
 import { provisionClinic } from "./provision";
+import { grantWebsitePublisher } from "../src/services/blog-publishing";
 import {
   addArticleMedia,
   archiveArticle,
@@ -76,7 +77,8 @@ describe("native blog", () => {
         indexable: true,
         body,
       }, specA.id);
-      await expect(publishArticle(db, id, specA.id)).rejects.toThrow(/admin or manager/);
+      // D87: publishing is website-scoped. A client member without a website grant cannot publish.
+      await expect(publishArticle(db, id, specA.id)).rejects.toThrow(/not authorised to publish/);
       await submitArticleForReview(db, id, specA.id);
       await expect(decideArticleReview(db, id, "approved", null, specA.id)).rejects.toThrow();
       await applyContext(db, staffCtx(reviewer));
@@ -165,7 +167,9 @@ describe("native blog", () => {
       await db.query("savepoint duplicate_slug");
       await expect(createArticle(db, { ...input, title: "Duplicate slug" }, specA.id)).rejects.toThrow(/slug/);
       await db.query("rollback to savepoint duplicate_slug");
-      await expect(publishArticle(db, id, admin.id)).rejects.toThrow(/not published|Approve|admin or manager/);
+      await applyContext(db, staffCtx(admin));
+      await expect(publishArticle(db, id, admin.id)).rejects.toThrow(/not published|Approve/);
+      await applyContext(db, staffCtx(specA));
 
       const token = randomBytes(32).toString("base64url");
       await applyContext(db, { kind: "service" });
@@ -361,7 +365,11 @@ describe("native blog", () => {
       await decideArticleReview(db, id, "approved", null, reviewer.id);
       await applyContext(db, staffCtx(specA));
       await returnArticleToDraft(db, id, specA.id);
+      await applyContext(db, staffCtx(admin));
       await expect(publishArticle(db, id, admin.id)).rejects.toThrow(/Approve/);
+      // D87: the manager role alone does not publish; an administrator grants this website.
+      await grantWebsitePublisher(db, { websiteId: clinic.websiteId, userId: manager.id }, admin.id);
+      await applyContext(db, staffCtx(specA));
       const stale = await getArticle(db, id);
       expect(stale?.status).toBe("draft");
       expect(stale?.current_version_id).toBe(submitted?.current_version_id);
@@ -434,7 +442,9 @@ describe("native blog", () => {
       expect((await getArticle(db, id))?.status).toBe("archived");
       await restoreArticle(db, id, specA.id);
       expect((await getArticle(db, id))?.status).toBe("draft");
+      await applyContext(db, staffCtx(admin));
       await expect(publishArticle(db, id, admin.id)).rejects.toThrow(/Approve/);
+      await applyContext(db, staffCtx(specA));
 
       await applyContext(db, staffCtx(specB));
       expect(await getArticle(db, id)).toBeNull();
