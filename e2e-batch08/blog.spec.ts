@@ -37,7 +37,7 @@ test("in-app blog review, protected preview and published API revision", async (
   const author = await openAs(browser, "specialist-a@example.invalid");
   try {
     await author.page.goto(articlePath);
-    await expect(author.page.getByText("Publishing and unpublishing are limited to an admin or manager.")).toBeVisible();
+    await expect(author.page.getByText("Publishing to this website needs a publishing grant for it from an administrator.")).toBeVisible();
     await expect(author.page.getByRole("button", { name: "Publish", exact: true })).toHaveCount(0);
     const preview = await author.page.request.get(`${articlePath}/preview`);
     expect(preview.status()).toBe(200);

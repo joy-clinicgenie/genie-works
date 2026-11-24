@@ -1,11 +1,10 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { canEditClient, canPublishClient, canReviewClient, getArticle, listActiveStaff, listArticleActivity, listArticleApprovals, listArticleMedia, listArticleVersions, listBlogWebsites } from "@clinic-genie/db";
-import type { BlogStatus } from "@clinic-genie/contracts";
+import { canEditClient, canReviewClient, canShipWebsite, getArticle, listActiveStaff, listArticleActivity, listArticleApprovals, listArticleMedia, listArticleVersions, listBlogWebsites } from "@clinic-genie/db";
 import { requireAccess } from "@/lib/session";
 import { staffTx } from "@/lib/db";
 import { PageHeader, Card, CardHeader } from "@/components/ui/Card";
-import { Badge, type Tone } from "@/components/ui/Badge";
+import { Badge } from "@/components/ui/Badge";
 import { Notice } from "@/components/ui/Notice";
 import { updateArticleAction } from "@/app/actions/blog";
 import { ArticleForm } from "@/components/modules/blog/ArticleForm";
@@ -13,11 +12,11 @@ import { ArticleTabs } from "@/components/modules/blog/ArticleTabs";
 import { BlogWorkflow } from "@/components/modules/blog/BlogWorkflow";
 import { HistoryRestore } from "@/components/modules/blog/HistoryRestore";
 import { ImageUpload } from "@/components/modules/blog/ImageUpload";
+import { blogHref, safeBlogReturn } from "@/lib/blog-scope";
+import { articleStatus } from "@/lib/blog-status";
 
 export const dynamic = "force-dynamic";
 
-const STATUS_LABEL: Record<BlogStatus, string> = { draft: "Draft", in_review: "In review", approved: "Approved", published: "Published", archived: "Archived" };
-const STATUS_TONE: Record<BlogStatus, Tone> = { draft: "neutral", in_review: "warn", approved: "info", published: "good", archived: "neutral" };
 const REVISION_LABEL = { draft_revision: "Draft revision", revision_in_review: "Revision in review", approved_revision: "Approved revision" } as const;
 const ACTIVITY_LABEL: Record<string, string> = {
   saved: "Saved",
@@ -38,8 +37,9 @@ function stamp(value: Date | string | null) {
   return new Intl.DateTimeFormat("en-SG", { timeZone: "Asia/Singapore", dateStyle: "medium", timeStyle: "short" }).format(new Date(value));
 }
 
-export default async function ArticlePage({ params }: { params: Promise<{ id: string }> }) {
+export default async function ArticlePage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ return?: string }> }) {
   const { id } = await params;
+  const { return: requestedReturn } = await searchParams;
   const access = await requireAccess();
   const data = await staffTx(access, async (db) => {
     const article = await getArticle(db, id);
@@ -52,6 +52,8 @@ export default async function ArticlePage({ params }: { params: Promise<{ id: st
       media: await listArticleMedia(db, id),
       websites: await listBlogWebsites(db),
       staff: await listActiveStaff(db),
+      // D87: the same website-scoped predicate the server enforces when publishing.
+      canShip: await canShipWebsite(db, article.website_id),
     };
   });
   if (!data) notFound();
@@ -67,6 +69,10 @@ export default async function ArticlePage({ params }: { params: Promise<{ id: st
     try { domain = new URL(article.website_url).host; } catch { domain = null; }
   }
   const liveUrl = article.website_url && article.live_slug ? `${article.website_url.replace(/\/$/, "")}/blog/${article.live_slug}` : null;
+  // Return to the exact list or Overview the article was opened from.
+  const backHref = safeBlogReturn(requestedReturn) ?? blogHref("/blog/posts", { clientId: article.client_id, websiteId: article.website_id });
+  const backLabel = backHref.startsWith("/blog/posts") ? "Posts" : "Blog";
+  const headerStatus = articleStatus(article);
   const reviewers = data.staff.filter((person) => person.platform_role === "admin" || person.platform_role === "manager" || person.platform_role === "reviewer");
   const versionLabel = article.version_number ? `Version ${article.version_number}` : "Saved version";
 
@@ -75,10 +81,10 @@ export default async function ArticlePage({ params }: { params: Promise<{ id: st
       lead={
         <>
       <PageHeader
-        eyebrow={<Link href={`/blog?client=${article.client_id}&website=${article.website_id}`} className="text-action hover:underline">Blog</Link>}
+        eyebrow={<Link href={backHref} className="text-action hover:underline">{backLabel}</Link>}
         title={article.title.trim() || "Untitled article"}
         description={`${article.client_name} · ${article.website_name}`}
-        action={<span className="inline-flex flex-wrap gap-2">{article.revision_indicator && <Badge tone="info">{REVISION_LABEL[article.revision_indicator]}</Badge>}<Badge tone={STATUS_TONE[article.status]}>{STATUS_LABEL[article.status]}</Badge></span>}
+        action={<span className="inline-flex flex-wrap gap-2">{article.revision_indicator && <Badge tone="info">{REVISION_LABEL[article.revision_indicator]}</Badge>}<Badge tone={headerStatus.tone}>{headerStatus.label}</Badge></span>}
       />
       <div className="mb-6">
         <BlogWorkflow
@@ -97,7 +103,7 @@ export default async function ArticlePage({ params }: { params: Promise<{ id: st
           versionLabel={versionLabel}
           canEdit={canEditClient(access, article.client_id)}
           canDecide={canDecide}
-          canPublish={canPublishClient(access, article.client_id)}
+          canPublish={data.canShip}
         />
       </div>
       {article.status === "published" && article.working_status && <div className="mb-4"><Notice tone="neutral">A published revision is still on the website. This working copy is not public.</Notice></div>}
@@ -119,7 +125,7 @@ export default async function ArticlePage({ params }: { params: Promise<{ id: st
               readOnly={!canEdit}
               feedback={latestReturn?.note}
               article={article}
-              backHref={`/blog?client=${article.client_id}&website=${article.website_id}`}
+              backHref={backHref}
               context={`${article.client_name} · ${article.website_name}`}
               previewHref={article.current_version_id ? `/blog/${article.id}/preview?version=${article.current_version_id}` : undefined}
               upload={canEdit ? <ImageUpload articleId={article.id} /> : undefined}

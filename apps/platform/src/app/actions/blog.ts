@@ -6,7 +6,7 @@ import {
   addArticleMedia,
   archiveArticle,
   canEditClient,
-  canPublishClient,
+  canShipWebsite,
   canReviewClient,
   createArticle,
   decideArticleReview,
@@ -73,7 +73,7 @@ export async function createArticleAction(_prev: ActionState, form: FormData): P
   } catch (err) {
     return toActionError(err);
   }
-  revalidatePath("/blog");
+  revalidatePath("/blog", "layout");
   redirect(`/blog/${id}`);
 }
 
@@ -88,7 +88,7 @@ export async function updateArticleAction(_prev: ActionState, form: FormData): P
   } catch (err) {
     return toActionError(err);
   }
-  revalidatePath("/blog");
+  revalidatePath("/blog", "layout");
   revalidatePath(`/blog/${id}`);
   const keptLive = Boolean(existing.live_version_id) || existing.status === "published";
   return { ok: true, message: keptLive ? "Draft saved. The published page is unchanged until this revision is approved and published." : "Draft saved. A new version was kept." };
@@ -127,14 +127,15 @@ export async function publishArticleAction(_prev: ActionState, form: FormData): 
   const access = await requireAccess();
   const id = str(form, "articleId");
   const existing = await staffTx(access, (db) => getArticle(db, id));
-  if (!existing || !canPublishClient(access, existing.client_id)) return { ok: false, error: "You cannot publish this article." };
+  // D87: the same website-scoped predicate as the database; a client-level role alone is not enough.
+  if (!existing || !(await staffTx(access, (db) => canShipWebsite(db, existing.website_id)))) return { ok: false, error: "You are not authorised to publish to this website." };
   if (str(form, "confirm") !== "yes") return { ok: false, error: "Confirm publication before continuing." };
   try {
     await staffTx(access, (db) => publishArticle(db, id, access.user.id));
   } catch (err) {
     return toActionError(err);
   }
-  revalidatePath("/blog");
+  revalidatePath("/blog", "layout");
   revalidatePath(`/blog/${id}`);
   return { ok: true, message: existing.indexable ? "Published. The native site reads this revision, and the sitemap includes it." : "Published. The native site reads this revision. It is marked noindex, so the sitemap omits it." };
 }
@@ -143,14 +144,14 @@ export async function unpublishArticleAction(_prev: ActionState, form: FormData)
   const access = await requireAccess();
   const id = str(form, "articleId");
   const existing = await staffTx(access, (db) => getArticle(db, id));
-  if (!existing || !canPublishClient(access, existing.client_id)) return { ok: false, error: "You cannot unpublish this article." };
+  if (!existing || !(await staffTx(access, (db) => canShipWebsite(db, existing.website_id)))) return { ok: false, error: "You are not authorised to unpublish from this website." };
   if (str(form, "confirm") !== "yes") return { ok: false, error: "Confirm removal before continuing." };
   try {
     await staffTx(access, (db) => unpublishArticle(db, id, access.user.id));
   } catch (err) {
     return toActionError(err);
   }
-  revalidatePath("/blog");
+  revalidatePath("/blog", "layout");
   revalidatePath(`/blog/${id}`);
   return { ok: true, message: "Unpublished. The public page and sitemap no longer include it. Version history is kept." };
 }

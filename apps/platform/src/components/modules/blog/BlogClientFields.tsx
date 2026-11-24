@@ -2,24 +2,29 @@
 
 import { useRouter } from "next/navigation";
 import { FilterSelect } from "@/components/ui/Filters";
-import { chooseClientWebsite, type BlogWebsiteChoice } from "@/lib/blog-workspace";
+import type { BlogWebsiteChoice } from "@/lib/blog-workspace";
 
 export function BlogClientFields({
   clients,
   websites,
   clientId,
   websiteId,
+  path = "/blog/posts",
+  allWebsites = false,
 }: {
   clients: Array<{ value: string; label: string }>;
   websites: BlogWebsiteChoice[];
   clientId?: string;
   websiteId?: string;
+  /** D87: the Blog page this filter reloads. */
+  path?: string;
+  /** D87: the client has several websites, so it may be viewed across all of them. */
+  allWebsites?: boolean;
 }) {
   const router = useRouter();
   const sites = websites.filter((site) => !clientId || site.clientId === clientId);
 
   function openClient(nextClient: string, form: HTMLFormElement | null) {
-    const nextWebsite = nextClient ? chooseClientWebsite(nextClient, websites) : "";
     const params = new URLSearchParams();
     if (form) {
       for (const [key, value] of new FormData(form)) {
@@ -28,13 +33,13 @@ export function BlogClientFields({
     }
     if (nextClient) params.set("client", nextClient);
     else params.delete("client");
-    if (nextWebsite) params.set("website", nextWebsite);
-    else params.delete("website");
+    // A new client starts at All websites (or its only website); its websites load with the page.
+    params.delete("website");
     if (params.get("sort") !== "published") params.delete("sort");
     params.delete("page");
     for (const [key, value] of [...params.entries()]) if (!value) params.delete(key);
     const query = params.toString();
-    router.push(query ? `/blog?${query}` : "/blog");
+    router.push(query ? `${path}?${query}` : path);
   }
 
   return (
@@ -51,7 +56,7 @@ export function BlogClientFields({
         name="website"
         label="Website"
         value={websiteId}
-        allLabel="Choose a website"
+        allLabel={allWebsites ? "All websites" : "Choose a website"}
         options={sites.map((site) => ({ value: site.id, label: site.name }))}
       />
     </>

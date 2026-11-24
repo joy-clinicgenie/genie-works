@@ -85,7 +85,7 @@ export function BlogWorkflow({
       {restored?.ok && <Notice tone="good">{restored.message}</Notice>}
       {started?.ok && <Notice tone="good">{started.message}</Notice>}
       {!native && <Notice tone="warn" title="Publishing is unavailable">This website is not a native site. The article can be drafted and approved here. It will not be published to Wix.</Notice>}
-      {!canPublish && native && <p className="text-sm text-muted">Publishing and unpublishing are limited to an admin or manager.</p>}
+      {!canPublish && native && <p className="text-sm text-muted">Publishing to this website needs a publishing grant for it from an administrator.</p>}
       <div className="flex flex-wrap gap-2">
         {canEdit && draft && (
           <form action={submit}><input type="hidden" name="articleId" value={articleId} /><Button type="submit" disabled={submitting}>Submit for review</Button></form>
